@@ -16,7 +16,7 @@
 
 ```text
 backend/crates/
-  doctor-api/          HTTP 服务（Axum）：信任边界、访问令牌、路由、静态页面
+  doctor-api/          HTTP 服务（Axum）：信任边界、登录、路由、静态页面
   doctor-core/         内核：规范化 IR、Typed Metric Parser、执行结构、规则、对比、指纹、趋势
   doctor-contracts/    对外的线上契约（DTO），经 ts-rs 导出给前端
   doctor-connector/    StarRocks 只读连接：MySQL 文本协议、TLS、短期会话、有界操作

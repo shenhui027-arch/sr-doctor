@@ -1,6 +1,7 @@
-//! Network deployments: one operator-configured access token, exchanged once
-//! for an HttpOnly session cookie. The token is never logged, echoed or
-//! written anywhere; sessions live only in this process and end on restart.
+//! Network deployments: one operator account (default `admin` / `123456`,
+//! changed through `DOCTOR_ADMIN_USER` / `DOCTOR_ADMIN_PASSWORD`), exchanged
+//! once for an HttpOnly session cookie. The password is never logged, echoed
+//! or written anywhere; sessions live only in this process and end on restart.
 use std::{
     collections::{HashMap, VecDeque},
     sync::Mutex,
@@ -11,8 +12,8 @@ use axum::http::{HeaderMap, header::COOKIE};
 
 /// The cookie that carries a session id after a successful login.
 pub(crate) const SESSION_COOKIE: &str = "doctor_session";
-/// Shorter tokens are refused at startup: they are guessable.
-pub const MIN_TOKEN_CHARS: usize = 16;
+pub const DEFAULT_ADMIN_USER: &str = "admin";
+pub const DEFAULT_ADMIN_PASSWORD: &str = "123456";
 const SESSION_TTL: Duration = Duration::from_secs(12 * 3600);
 const MAX_SESSIONS: usize = 256;
 /// Failed logins allowed in `FAILURE_WINDOW` before logins are throttled.
@@ -21,16 +22,34 @@ const FAILURE_WINDOW: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct AccessConfig {
-    pub token: String,
+    pub username: String,
+    pub password: String,
     /// Add `Secure` to the cookie; set when browsers reach the server over HTTPS.
     pub secure_cookie: bool,
+}
+
+impl AccessConfig {
+    /// The default account, `admin` / `123456`.
+    pub fn default_admin(secure_cookie: bool) -> Self {
+        Self {
+            username: DEFAULT_ADMIN_USER.into(),
+            password: DEFAULT_ADMIN_PASSWORD.into(),
+            secure_cookie,
+        }
+    }
+
+    /// Whether the login is still the public default `admin` / `123456`.
+    pub fn is_default_admin(&self) -> bool {
+        self.username == DEFAULT_ADMIN_USER && self.password == DEFAULT_ADMIN_PASSWORD
+    }
 }
 
 impl std::fmt::Debug for AccessConfig {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("AccessConfig")
-            .field("token", &"<redacted>")
+            .field("username", &self.username)
+            .field("password", &"<redacted>")
             .field("secure_cookie", &self.secure_cookie)
             .finish()
     }
@@ -43,7 +62,9 @@ pub(crate) enum LoginError {
 }
 
 pub(crate) struct AccessGate {
-    token: Box<[u8]>,
+    default_account: bool,
+    username: Box<[u8]>,
+    password: Box<[u8]>,
     secure_cookie: bool,
     sessions: Mutex<HashMap<String, Instant>>,
     failures: Mutex<VecDeque<Instant>>,
@@ -52,11 +73,17 @@ pub(crate) struct AccessGate {
 impl AccessGate {
     pub(crate) fn new(config: &AccessConfig) -> Self {
         Self {
-            token: config.token.as_bytes().into(),
+            default_account: config.is_default_admin(),
+            username: config.username.as_bytes().into(),
+            password: config.password.as_bytes().into(),
             secure_cookie: config.secure_cookie,
             sessions: Mutex::new(HashMap::new()),
             failures: Mutex::new(VecDeque::new()),
         }
+    }
+
+    pub(crate) fn default_account(&self) -> bool {
+        self.default_account
     }
 
     /// Whether the request carries a live session cookie.
@@ -70,8 +97,8 @@ impl AccessGate {
         sessions.contains_key(id)
     }
 
-    /// Checks the token and returns the `Set-Cookie` value of a new session.
-    pub(crate) fn login(&self, token: &str) -> Result<String, LoginError> {
+    /// Checks the account and returns the `Set-Cookie` value of a new session.
+    pub(crate) fn login(&self, username: &str, password: &str) -> Result<String, LoginError> {
         let now = Instant::now();
         {
             let mut failures = self.failures.lock().expect("access failures");
@@ -84,7 +111,10 @@ impl AccessGate {
             if failures.len() >= MAX_FAILURES {
                 return Err(LoginError::Throttled);
             }
-            if !constant_time_eq(token.as_bytes(), &self.token) {
+            // Both are compared so the timing does not say which one was wrong.
+            let user_ok = constant_time_eq(username.as_bytes(), &self.username);
+            let password_ok = constant_time_eq(password.as_bytes(), &self.password);
+            if !(user_ok & password_ok) {
                 failures.push_back(now);
                 return Err(LoginError::Invalid);
             }
@@ -157,10 +187,7 @@ mod tests {
     use axum::http::HeaderValue;
 
     fn gate() -> AccessGate {
-        AccessGate::new(&AccessConfig {
-            token: "correct-horse-battery-staple".into(),
-            secure_cookie: false,
-        })
+        AccessGate::new(&AccessConfig::default_admin(false))
     }
 
     fn with_cookie(set_cookie: &str) -> HeaderMap {
@@ -174,13 +201,13 @@ mod tests {
     }
 
     #[test]
-    fn a_correct_token_opens_an_http_only_strict_session() {
+    fn the_default_account_opens_an_http_only_strict_session() {
         let gate = gate();
-        let cookie = gate.login("correct-horse-battery-staple").unwrap();
+        let cookie = gate.login("admin", "123456").unwrap();
         assert!(cookie.contains("HttpOnly") && cookie.contains("SameSite=Strict"));
         assert!(
-            !cookie.contains("correct-horse"),
-            "the token never reaches the cookie"
+            !cookie.contains("123456") && !cookie.contains("admin"),
+            "the account never reaches the cookie"
         );
         assert!(gate.authenticated(&with_cookie(&cookie)));
         assert!(!gate.authenticated(&HeaderMap::new()));
@@ -188,50 +215,47 @@ mod tests {
     }
 
     #[test]
+    fn a_wrong_user_or_password_is_refused() {
+        let gate = gate();
+        assert_eq!(gate.login("admin", "1234567"), Err(LoginError::Invalid));
+        assert_eq!(gate.login("root", "123456"), Err(LoginError::Invalid));
+        assert_eq!(gate.login("", ""), Err(LoginError::Invalid));
+    }
+
+    #[test]
     fn logout_ends_the_session() {
         let gate = gate();
-        let cookie = gate.login("correct-horse-battery-staple").unwrap();
+        let cookie = gate.login("admin", "123456").unwrap();
         let headers = with_cookie(&cookie);
         assert!(gate.logout(&headers).contains("Max-Age=0"));
         assert!(!gate.authenticated(&headers));
     }
 
     #[test]
-    fn repeated_wrong_tokens_throttle_even_the_right_one() {
+    fn repeated_wrong_passwords_throttle_even_the_right_one() {
         let gate = gate();
         for _ in 0..MAX_FAILURES {
-            assert_eq!(
-                gate.login("wrong-token-wrong-token"),
-                Err(LoginError::Invalid)
-            );
+            assert_eq!(gate.login("admin", "wrong"), Err(LoginError::Invalid));
         }
-        assert_eq!(
-            gate.login("correct-horse-battery-staple"),
-            Err(LoginError::Throttled)
-        );
+        assert_eq!(gate.login("admin", "123456"), Err(LoginError::Throttled));
     }
 
     #[test]
     fn secure_cookie_is_added_only_when_configured() {
         let gate = AccessGate::new(&AccessConfig {
-            token: "correct-horse-battery-staple".into(),
+            username: "ops".into(),
+            password: "changed-password".into(),
             secure_cookie: true,
         });
         assert!(
-            gate.login("correct-horse-battery-staple")
+            gate.login("ops", "changed-password")
                 .unwrap()
                 .ends_with("; Secure")
         );
-        assert!(
-            format!(
-                "{:?}",
-                AccessConfig {
-                    token: "secret-value-0000".into(),
-                    secure_cookie: false
-                }
-            )
-            .contains("<redacted>")
-        );
+        let debug = format!("{:?}", AccessConfig::default_admin(false));
+        assert!(debug.contains("<redacted>") && !debug.contains("123456"));
+        assert!(AccessConfig::default_admin(false).is_default_admin());
+        assert!(!gate.default_account());
     }
 
     #[test]

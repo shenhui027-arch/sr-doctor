@@ -20,21 +20,16 @@ cd sr-doctor
 docker compose up -d --build
 ```
 
-首次运行会编译前后端，需要十几分钟；之后启动只要几秒。`docker compose ps` 里 `doctor` 显示 `healthy` 后，查看首次启动时自动生成的访问令牌：
-
-```bash
-docker compose exec doctor cat /etc/sr-doctor/access-token
-```
-
-把访问地址 `http://服务器地址:8000` 和令牌发给需要使用的人。
+首次运行会编译前后端，需要十几分钟；之后启动只要几秒。`docker compose ps` 里 `doctor` 显示 `healthy` 后，把访问地址 `http://服务器地址:8000` 发给需要使用的人即可。
 
 - 端口被占用：在仓库根目录的 `.env` 里写 `DOCTOR_PORT=18000`，再运行 `docker compose up -d`。
+- 改登录密码（默认 `123456`）：在 `.env` 里写 `DOCTOR_ADMIN_PASSWORD=新密码`，再运行 `docker compose up -d`。
 - 想要状态、备份、升级等运维命令：用 `./deploy.sh`，它包装的是同一个 `compose.yaml`，见 [部署脚本](deployment.md#部署脚本-deploysh)。
 - 服务器无法访问外网：见 [离线安装](deployment.md#离线安装)。
 
 ## 第 2 步：登录
 
-浏览器打开访问地址，输入访问令牌。令牌只用来换取浏览器会话（12 小时有效），页面不会保存令牌本身。
+浏览器打开访问地址，用默认账号 `admin` / `123456` 登录（改过密码就用新密码）。登录后浏览器会话 12 小时有效，页面不会保存密码。
 
 ## 第 3 步：连接 StarRocks
 

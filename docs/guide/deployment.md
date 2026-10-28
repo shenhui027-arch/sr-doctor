@@ -4,14 +4,14 @@
 
 | 方式 | 适合 | 历史监控（趋势 / 告警 / 治理） | 访问方式 |
 |---|---|---|---|
-| [Docker Compose 一键部署](#docker-compose-一键部署推荐) | 团队共用一台 Linux 服务器 | ✅ | 浏览器打开 `http://服务器:8000`，输入访问令牌 |
+| [Docker Compose 一键部署](#docker-compose-一键部署推荐) | 团队共用一台 Linux 服务器 | ✅ | 浏览器打开 `http://服务器:8000`，用 `admin` / `123456` 登录 |
 | [部署脚本 deploy.sh](#部署脚本-deploysh) | 同上，并且想要状态、备份、升级等运维命令 | ✅ | 同上 |
 | [离线安装](#离线安装) | 服务器不能访问外网 | ✅ | 同上 |
-| [本机进程](#本机进程) | 个人使用、开发调试 | ✅ | `http://127.0.0.1:8000`，无需令牌 |
+| [本机进程](#本机进程) | 个人使用、开发调试 | ✅ | `http://127.0.0.1:8000`，无需登录 |
 | [常开主机 + SSH 隧道](#常开主机--ssh-隧道) | 个人使用，采集不随笔记本休眠中断 | ✅ | SSH 隧道后访问 `http://127.0.0.1:8000` |
-| [Windows 单机容器](#windows-单机容器) | 在 Windows 上快速看一眼 | ❌ | `http://127.0.0.1:8000`，无需令牌 |
+| [Windows 单机容器](#windows-单机容器) | 在 Windows 上快速看一眼 | ❌ | `http://127.0.0.1:8000`，无需登录 |
 
-前三种是**网络模式**：服务监听所有网卡，必须有访问令牌，否则拒绝启动。后三种是**回环模式**：只监听 `127.0.0.1`，不需要登录。
+前三种是**网络模式**：服务监听所有网卡，需要登录（默认账号 `admin` / `123456`）。后三种是**回环模式**：只监听 `127.0.0.1`，不需要登录。
 
 v1.0 起服务器部署统一用 Docker。
 
@@ -32,29 +32,22 @@ cd sr-doctor
 docker compose up -d --build
 ```
 
-首次启动会构建镜像 `sr-doctor:local`（十几分钟，之后复用缓存），然后：
+首次启动会构建镜像 `sr-doctor:local`（十几分钟，之后复用缓存），然后启动 `doctor`，监听 `8000` 端口。`docker compose ps` 中 `doctor` 显示 `healthy` 即可使用。
 
-1. `token-init` 在独立的 Docker 卷里生成 48 位十六进制的访问令牌，只生成一次，不写日志；
-2. `doctor` 等令牌就绪后启动，监听 `8000` 端口；
-3. `docker compose ps` 中 `doctor` 显示 `healthy` 即可使用。
+浏览器打开 `http://服务器地址:8000`，用默认账号 `admin` / `123456` 登录，点“连接”，填写 StarRocks FE 的 IP、端口（默认 `9030`）、用户名、口令。
 
-查看访问令牌：
-
-```bash
-docker compose exec doctor cat /etc/sr-doctor/access-token
-```
-
-浏览器打开 `http://服务器地址:8000`，输入令牌，点“连接”，填写 StarRocks FE 的 IP、端口（默认 `9030`）、用户名、口令。
+默认密码写在公开文档里，服务暴露在不完全可信的网络时请先改密码：在根目录的 `.env` 里写 `DOCTOR_ADMIN_PASSWORD=新密码`，再运行 `docker compose up -d`。
 
 用旧版 `docker-compose` 时，把上面的 `docker compose` 换成 `docker-compose` 即可。
 
 ### 配置
 
-端口、监听地址等写在仓库根目录的 `.env` 里，`docker compose` 会自动读取：
+端口、监听地址、登录密码等写在仓库根目录的 `.env` 里，`docker compose` 会自动读取：
 
 ```bash
 DOCTOR_PORT=18000            # 对外端口
 DOCTOR_BIND=10.0.0.5         # 只在这一个网卡上监听
+DOCTOR_ADMIN_PASSWORD=change-me-2026   # 登录密码（默认 123456）
 DOCTOR_COOKIE_SECURE=on      # 经 HTTPS 反向代理访问时
 ```
 
@@ -63,11 +56,10 @@ DOCTOR_COOKIE_SECURE=on      # 经 HTTPS 反向代理访问时
 ### 升级与常用命令
 
 ```bash
-git pull --ff-only && docker compose up -d --build   # 升级；令牌与历史数据都在卷里，保持不变
+git pull --ff-only && docker compose up -d --build --remove-orphans   # 升级；历史数据在卷里，保持不变
 docker compose ps                                     # 状态
-docker compose logs -f doctor                         # 日志（不含令牌、口令或 SQL 原文）
-docker compose down                                   # 停止并删除容器，保留令牌与历史数据
-docker compose run --rm -e DOCTOR_TOKEN_ROTATE=1 token-init && docker compose restart doctor   # 换令牌
+docker compose logs -f doctor                         # 日志（不含密码、口令或 SQL 原文）
+docker compose down                                   # 停止并删除容器，保留历史数据
 ```
 
 ## 部署脚本 deploy.sh
@@ -75,37 +67,37 @@ docker compose run --rm -e DOCTOR_TOKEN_ROTATE=1 token-init && docker compose re
 `./deploy.sh` 用的是同一个 `compose.yaml`，另外负责等待就绪、打印访问地址、备份恢复和离线打包：
 
 ```bash
-./deploy.sh                          # 安装或更新并启动；首次会打印访问令牌
+./deploy.sh                          # 安装或更新并启动，打印访问地址与登录账号
 ./deploy.sh --port 18000             # 换端口
 ./deploy.sh --bind 10.0.0.5          # 只在这一个网卡上监听
+./deploy.sh --password 新密码        # 改登录密码（默认 123456），已登录的浏览器要重新登录
 ./deploy.sh --https --bind 127.0.0.1 # 放在 HTTPS 反向代理后面（见下文）
 ```
 
-这些选项会写入根目录的 `.env`，之后的命令、升级以及直接运行的 `docker compose` 都会沿用。重复运行 `./deploy.sh` 是安全的：已有的令牌、配置和历史数据都会保留。
+这些选项会写入根目录的 `.env`，之后的命令、升级以及直接运行的 `docker compose` 都会沿用。重复运行 `./deploy.sh` 是安全的：已有的配置和历史数据都会保留。
 
 | 命令 | 作用 |
 |---|---|
 | `./deploy.sh status` | 运行状态、健康检查与访问地址 |
-| `./deploy.sh logs` | 跟随查看日志。日志里不会出现令牌、口令或 SQL 原文 |
+| `./deploy.sh logs` | 跟随查看日志。日志里不会出现密码、口令或 SQL 原文 |
 | `./deploy.sh stop` / `start` | 停止 / 启动。停止不会删除历史数据 |
 | `./deploy.sh restart` | 重启 |
 | `./deploy.sh upgrade` | `git pull --ff-only` 后重新构建并启动 |
-| `./deploy.sh token` | 显示访问令牌 |
-| `./deploy.sh rotate-token` | 生成新令牌并重启；所有已登录的浏览器都要重新输入 |
-| `./deploy.sh backup [文件]` | 备份历史库。会暂停服务几秒，保证 SQLite 文件一致；备份里没有令牌 |
+| `./deploy.sh backup [文件]` | 备份历史库。会暂停服务几秒，保证 SQLite 文件一致；备份里没有密码 |
 | `./deploy.sh restore 文件` | 用备份覆盖当前历史库（会先确认） |
-| `./deploy.sh uninstall` | 删除容器，保留历史数据、令牌与配置 |
-| `./deploy.sh uninstall --purge` | 同时删除历史数据、令牌与配置，不可恢复（会先确认） |
+| `./deploy.sh uninstall` | 删除容器，保留历史数据与配置 |
+| `./deploy.sh uninstall --purge` | 同时删除历史数据与配置，不可恢复（会先确认） |
 
 需要确认的命令在非交互环境下要加 `--yes`。完整用法：`./deploy.sh help`。
 
 ### 从早期版本升级
 
-早期版本的 Compose 项目叫 `starrocks-doctor`，数据卷是 `starrocks-doctor_doctor-history` 与 `starrocks-doctor_doctor-secrets`；更早的版本还把令牌、`.env` 和 `compose.override.yaml` 放在 `deploy/linux/` 下。升级后第一次运行 `./deploy.sh` 时：
+早期版本用访问令牌登录，现在改为账号密码：升级后用 `admin` / `123456`（或 `.env` 里设置的 `DOCTOR_ADMIN_PASSWORD`）登录，旧令牌不再使用。存令牌的卷 `sr-doctor_doctor-secrets` 与 `token-init` 容器不再需要：脚本启动时会删掉 `token-init` 容器，令牌卷可以自行删除（`docker volume rm sr-doctor_doctor-secrets`）。
 
-- 旧数据卷会复制到新卷 `sr-doctor_doctor-history`、`sr-doctor_doctor-secrets`，历史数据和令牌都保留，旧项目的容器会先停掉；旧卷不删除；
+再早的版本 Compose 项目叫 `starrocks-doctor`，数据卷是 `starrocks-doctor_doctor-history`；更早的版本还把 `.env` 和 `compose.override.yaml` 放在 `deploy/linux/` 下。升级后第一次运行 `./deploy.sh` 时：
+
+- 旧数据卷会复制到新卷 `sr-doctor_doctor-history`，历史数据保留，旧项目的容器会先停掉；旧卷不删除；
 - `deploy/linux/.env` 会复制到根目录；
-- `deploy/linux/access-token` 里的令牌会写入新的令牌卷，已发给使用者的令牌继续有效；
 - 如果有 `deploy/linux/compose.override.yaml`，脚本会提示你把它移到根目录并检查其中的相对路径。
 
 确认无误后可以删掉旧卷（`docker volume rm starrocks-doctor_doctor-history starrocks-doctor_doctor-secrets`）和 `deploy/linux/` 下的旧文件。不用脚本时，等价的做法是：
@@ -113,15 +105,11 @@ docker compose run --rm -e DOCTOR_TOKEN_ROTATE=1 token-init && docker compose re
 ```bash
 docker rm -f $(docker ps -aq --filter label=com.docker.compose.project=starrocks-doctor) 2>/dev/null || true
 docker compose build
-for v in doctor-history doctor-secrets; do
-  docker volume inspect starrocks-doctor_$v >/dev/null 2>&1 || continue
-  docker volume create --label com.docker.compose.project=sr-doctor --label com.docker.compose.volume=$v sr-doctor_$v
-  docker run --rm --network none --user 0 -v starrocks-doctor_$v:/from:ro -v sr-doctor_$v:/to \
-    --entrypoint bash sr-doctor:local -c 'cp -a /from/. /to/ && chown -R 10001 /to'
-done
-docker run --rm --user 0 -v sr-doctor_doctor-secrets:/to --entrypoint chmod sr-doctor:local 700 /to
+docker volume create --label com.docker.compose.project=sr-doctor --label com.docker.compose.volume=doctor-history sr-doctor_doctor-history
+docker run --rm --network none --user 0 -v starrocks-doctor_doctor-history:/from:ro -v sr-doctor_doctor-history:/to \
+  --entrypoint bash sr-doctor:local -c 'cp -a /from/. /to/ && chown -R 10001 /to'
 cp -p deploy/linux/.env .env 2>/dev/null || true
-docker compose up -d
+docker compose up -d --remove-orphans
 ```
 
 ## 离线安装
@@ -143,7 +131,7 @@ cd sr-doctor-<版本>-linux-amd64
 
 安装包里有部署脚本、`compose.yaml` 和镜像，服务器只需要 Docker Engine 与 Compose。
 
-**升级**：解压新包，把旧目录里的 `.env`（如果有）复制过去，再在新目录运行脚本。令牌和历史数据都保存在 Docker 卷里，不随目录变化：
+**升级**：解压新包，把旧目录里的 `.env`（如果有）复制过去，再在新目录运行脚本。历史数据保存在 Docker 卷里，不随目录变化：
 
 ```bash
 tar xzf sr-doctor-<新版本>-linux-amd64.tar.gz
@@ -228,7 +216,7 @@ ssh -N -L 8000:127.0.0.1:8000 user@always-on-host
 
 ## Windows 单机容器
 
-只想在 Windows 上快速看一眼，并且不需要历史监控时，可以用 `deploy/local/compose.yaml`（回环模式，无需令牌）：
+只想在 Windows 上快速看一眼，并且不需要历史监控时，可以用 `deploy/local/compose.yaml`（回环模式，无需登录）：
 
 ```powershell
 docker compose -f deploy/local/compose.yaml up -d --build
@@ -254,15 +242,14 @@ Start-Process "http://127.0.0.1:8000"
 | 数据 | 位置 | 内容 |
 |---|---|---|
 | 历史库 | Docker 卷 `sr-doctor_doctor-history`（本机进程见上文） | 脱敏 SQL 模板、指纹、小时聚合、告警与治理记录；默认保留 30 天 |
-| 访问令牌 | Docker 卷 `sr-doctor_doctor-secrets` | 仅网络模式；与历史库分开，备份里不含令牌 |
-| 部署配置 | 根目录的 `.env`、`compose.override.yaml` | 端口、监听地址等 |
+| 部署配置 | 根目录的 `.env`、`compose.override.yaml` | 端口、监听地址、登录密码等；备份里不含 |
 | StarRocks 口令 | 只在服务进程内存里 | 断开、空闲 15 分钟或重启后删除 |
 
 不会保存的：SQL 字面量、Profile 原文、StarRocks 口令。导入的 Profile 只在内存中分析。
 
 ## 边界
 
-- 所有使用者共用一个访问令牌，没有账号与权限区分。拿到令牌的人，都能用这个服务连接任何自己知道口令的 StarRocks。只把令牌给需要的人，并用防火墙限制可访问的网段。
+- 所有使用者共用一个登录账号，没有权限区分。能登录的人，都能用这个服务连接任何自己知道口令的 StarRocks。默认密码 `123456` 人人都知道：服务暴露在不完全可信的网络时，先改密码，并用防火墙限制可访问的网段。
 - 历史、告警与治理队列在服务器上共享，所有使用者看到同一份数据。
 - 明文连接时，口令与 SQL 在网络上不加密；跨不可信网络时请使用 TLS verify-full。
 - 生产集群的连接安全与负载影响尚未经 G1 验证，不宣称 Production-safe。

@@ -1,71 +1,32 @@
 # SR Doctor server deployment. From the repository root:
 #
 #   docker compose up -d --build        # or: docker-compose up -d --build (1.29+)
-#   docker compose exec doctor cat /etc/sr-doctor/access-token
 #
-# Then open http://<server>:8000, sign in with that token, and connect to any
-# StarRocks FE by host, port, user and password. The first start generates the
-# token into its own volume; it is never written to logs. `./deploy.sh` wraps
-# this same file with status, backup, upgrade and offline packages.
+# Then open http://<server>:8000, sign in as admin / 123456, and connect to any
+# StarRocks FE by host, port, user and password. `./deploy.sh` wraps this same
+# file with status, backup, upgrade and offline packages.
 #
-# Settings (port, bind address, HTTPS cookies) go in a `.env` file next to this
-# one; local additions (a private CA, extra mounts) go in compose.override.yaml,
-# which Compose merges automatically. Both are ignored by Git.
-# See docs/guide/deployment.md and docs/guide/configuration.md.
+# Settings (port, bind address, login password, HTTPS cookies) go in a `.env`
+# file next to this one; local additions (a private CA, extra mounts) go in
+# compose.override.yaml, which Compose merges automatically. Both are ignored by
+# Git. See docs/guide/deployment.md and docs/guide/configuration.md.
 name: sr-doctor
 
 services:
-  # Writes the access token once, when the secrets volume has none (or one
-  # shorter than 16 characters). DOCTOR_ACCESS_TOKEN seeds it instead of a
-  # random one; DOCTOR_TOKEN_ROTATE=1 replaces it (./deploy.sh rotate-token).
-  token-init:
-    # Same build as `doctor` (a cache hit), so the first `up` never tries to
-    # pull this local-only image.
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: sr-doctor:local
-    network_mode: none
-    entrypoint: ["bash", "-c"]
-    command:
-      - |
-        set -eu
-        file=/etc/sr-doctor/access-token
-        current="$$(tr -d '[:space:]' < "$$file" 2>/dev/null || true)"
-        if [ "$${DOCTOR_TOKEN_ROTATE:-0}" != 1 ] && [ "$${#current}" -ge 16 ]; then exit 0; fi
-        token="$$(printf '%s' "$${DOCTOR_ACCESS_TOKEN:-}" | tr -d '[:space:]')"
-        if [ "$${DOCTOR_TOKEN_ROTATE:-0}" = 1 ] || [ "$${#token}" -lt 16 ]; then
-          token="$$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
-        fi
-        umask 077
-        printf '%s\n' "$$token" > "$$file.tmp"
-        mv "$$file.tmp" "$$file"
-    environment:
-      DOCTOR_ACCESS_TOKEN: "${DOCTOR_ACCESS_TOKEN:-}"
-      DOCTOR_TOKEN_ROTATE: "${DOCTOR_TOKEN_ROTATE:-0}"
-    volumes:
-      - doctor-secrets:/etc/sr-doctor
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-
   doctor:
     build:
       context: .
       dockerfile: Dockerfile
     image: sr-doctor:local
-    depends_on:
-      token-init:
-        condition: service_completed_successfully
     # One container needs no network of its own; the default bridge also avoids
     # exhausting Docker's address pools on busy hosts.
     network_mode: bridge
     environment:
       DOCTOR_DEPLOYMENT_MODE: network
       DOCTOR_LISTEN: 0.0.0.0:8000
-      DOCTOR_ACCESS_TOKEN_FILE: /etc/sr-doctor/access-token
+      # Login account; empty means the default admin / 123456.
+      DOCTOR_ADMIN_USER: "${DOCTOR_ADMIN_USER:-}"
+      DOCTOR_ADMIN_PASSWORD: "${DOCTOR_ADMIN_PASSWORD:-}"
       DOCTOR_FRONTEND_DIST: /app/frontend
       DOCTOR_HISTORY_PATH: /var/lib/sr-doctor/history.sqlite
       # "on" when users reach the server over HTTPS (a TLS reverse proxy).
@@ -78,7 +39,6 @@ services:
       - "${DOCTOR_BIND:-0.0.0.0}:${DOCTOR_PORT:-8000}:8000"
     volumes:
       - doctor-history:/var/lib/sr-doctor
-      - doctor-secrets:/etc/sr-doctor:ro
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
@@ -95,5 +55,3 @@ services:
 
 volumes:
   doctor-history:
-  # The access token, kept apart from history so backups never contain it.
-  doctor-secrets:

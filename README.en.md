@@ -42,12 +42,11 @@ On a Linux server with Docker and Compose:
 git clone https://github.com/shenhui027-arch/sr-doctor.git
 cd sr-doctor
 docker compose up -d --build
-docker compose exec doctor cat /etc/sr-doctor/access-token   # generated on first start
 ```
 
 Then:
 
-1. Open `http://<server>:8000` in a browser and enter the access token;
+1. Open `http://<server>:8000` in a browser and sign in as `admin` / `123456` (to change the password, put `DOCTOR_ADMIN_PASSWORD=<new>` in `.env` and run `docker compose up -d` again);
 2. Click **Connect** and enter the StarRocks FE IP, port (default `9030`), user and password;
 3. Pick an audit record or a Profile under **Queries** to see its diagnosis.
 
@@ -110,7 +109,7 @@ No cluster? **Import a Profile** on the first page to analyze a JSON or text Pro
 
 ```mermaid
 flowchart LR
-    B[Browser] -->|access token → session cookie| API[doctor-api<br>Rust / Axum]
+    B[Browser] -->|user and password → session cookie| API[doctor-api<br>Rust / Axum]
     API --> CORE[Diagnosis core<br>IR · metric parser · rules · compare]
     CORE --> VP[VersionPack<br>3.5.14 baseline + release deltas]
     API -->|read-only MySQL protocol| SR[(StarRocks FE)]
@@ -124,7 +123,7 @@ One process serves both the pages and the API; the frontend renders what the bac
 - **Read-only connections**: no DDL/DML, multi-statements or `EXPLAIN ANALYZE`; SQL and settings are never changed automatically.
 - **Credentials never touch disk**: StarRocks passwords live only in a short-lived in-memory session; they are never returned to the page or logged.
 - **Redacted history**: only redacted templates, fingerprints and hourly aggregates, kept 30 days by default; no SQL literals, raw Profiles or passwords.
-- **Access control**: a server deployment refuses to start without an access token; writes also require same-origin and a CSRF token. All users share one token; there are no accounts or roles.
+- **Access control**: a server deployment asks for a login, `admin` / `123456` by default and changeable in `.env`; writes also require same-origin and a CSRF token. All users share one account; there are no roles. Everyone knows the default password, so change it before exposing the server to a network you do not fully trust.
 - **Transport**: plaintext by default to any reachable host, clearly labelled in the UI; TLS verify-full when the FE has SSL enabled.
 
 The full security model and how to report a vulnerability are in [SECURITY.md](SECURITY.md).

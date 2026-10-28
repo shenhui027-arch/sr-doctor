@@ -104,7 +104,7 @@ const CONNECTION_EXPLAIN_PATH: &str = "/api/v1/connections/{id}/explain";
 const CONNECTION_RUNTIME_PROFILE_PATH: &str = "/api/v1/connections/{id}/runtime-profile";
 const CAPABILITIES_PATH: &str = "/api/v1/capabilities";
 const HEALTH_PATH: &str = "/api/v1/health";
-/// Access-token login (network deployments): GET status, POST log in, DELETE log out.
+/// Account login (network deployments): GET status, POST log in, DELETE log out.
 const AUTH_SESSION_PATH: &str = "/api/v1/auth/session";
 const CSRF_HEADER: &str = "x-doctor-csrf";
 const MAX_HTTP_BODY_BYTES: usize = 34 * 1024 * 1024;
@@ -120,12 +120,12 @@ pub enum DeploymentMode {
     /// independent from the fixed container listener port (8000).
     DockerLoopbackPublished { public_port: u16 },
     /// A server reached over the network (e.g. a Linux host or container):
-    /// any listener and any peer, but every API call needs the access-token
+    /// any listener and any peer, but every API call needs the account login
     /// session, the browser must be same-origin, and writes need the CSRF nonce.
     Network,
 }
 
-pub use access::{AccessConfig, MIN_TOKEN_CHARS};
+pub use access::{AccessConfig, DEFAULT_ADMIN_PASSWORD, DEFAULT_ADMIN_USER};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ApiConfig {
@@ -142,7 +142,7 @@ pub struct ApiConfig {
     pub build: BuildCapability,
     /// Stage B history store and collection; disabled when its path is unset.
     pub history: HistoryConfig,
-    /// Access token required by network deployments (optional elsewhere).
+    /// Account required by network deployments (optional elsewhere).
     pub access: Option<AccessConfig>,
 }
 
@@ -613,13 +613,15 @@ impl ApiState {
             }
             _ => {}
         }
-        // Reachable from the network means nothing answers without the token.
-        if let Some(access) = &config.access {
-            if access.token.chars().count() < access::MIN_TOKEN_CHARS {
-                return Err(ApiSetupError::AccessTokenTooShort);
+        // Reachable from the network means nothing answers without the login.
+        match &config.access {
+            Some(access) if access.username.is_empty() || access.password.is_empty() => {
+                return Err(ApiSetupError::AccessAccountEmpty);
             }
-        } else if config.deployment_mode == DeploymentMode::Network {
-            return Err(ApiSetupError::AccessTokenRequired);
+            None if config.deployment_mode == DeploymentMode::Network => {
+                return Err(ApiSetupError::AccessAccountRequired);
+            }
+            _ => {}
         }
         config.budgets.validate()?;
         let nonce = nonce.into();
@@ -662,7 +664,7 @@ impl ApiState {
             DeploymentMode::Local => self.config.bind_addr.port(),
             DeploymentMode::DockerLoopbackPublished { public_port } => public_port,
             // Reached by whatever name or address the operator gives users; the
-            // access token, not the Host header, is what keeps others out.
+            // account login, not the Host header, is what keeps others out.
             DeploymentMode::Network => {
                 return !host.is_empty() && host.bytes().all(|byte| byte.is_ascii_graphic());
             }
@@ -849,8 +851,8 @@ pub enum ApiSetupError {
     NonLoopbackBind(SocketAddr),
     InvalidDockerBind(SocketAddr),
     InvalidDockerPublicPort,
-    AccessTokenRequired,
-    AccessTokenTooShort,
+    AccessAccountRequired,
+    AccessAccountEmpty,
     EmptyNonce,
     ZeroConcurrentRequests,
     CapabilityLimitOutOfRange(&'static str),
@@ -870,14 +872,11 @@ impl fmt::Display for ApiSetupError {
             Self::InvalidDockerPublicPort => {
                 formatter.write_str("docker loopback-published public port must be positive")
             }
-            Self::AccessTokenRequired => formatter.write_str(
-                "network mode requires an access token (DOCTOR_ACCESS_TOKEN_FILE or DOCTOR_ACCESS_TOKEN)",
-            ),
-            Self::AccessTokenTooShort => write!(
-                formatter,
-                "the access token must have at least {} characters",
-                access::MIN_TOKEN_CHARS
-            ),
+            Self::AccessAccountRequired => {
+                formatter.write_str("network mode requires a login account")
+            }
+            Self::AccessAccountEmpty => formatter
+                .write_str("the login user and password must not be empty (DOCTOR_ADMIN_USER, DOCTOR_ADMIN_PASSWORD)"),
             Self::EmptyNonce => formatter.write_str("CSRF nonce must not be empty"),
             Self::ZeroConcurrentRequests => {
                 formatter.write_str("concurrent request budget must be positive")
@@ -1146,10 +1145,14 @@ async fn health() -> Json<BTreeMap<&'static str, &'static str>> {
     Json(BTreeMap::from([("status", "ok")]))
 }
 
-/// Whether this server needs the access token, and whether this browser has a session.
+/// Whether this server asks for a login, and whether this browser has a session.
 async fn auth_status(State(state): State<ApiState>, request: Request) -> Response {
     let status = AccessSessionStatus {
         required: state.access.is_some(),
+        default_account: state
+            .access
+            .as_ref()
+            .is_some_and(|access| access.default_account()),
         authenticated: state
             .access
             .as_ref()
@@ -1166,7 +1169,7 @@ async fn auth_login(
         return Ok(StatusCode::NO_CONTENT.into_response());
     };
     let login: AccessLoginRequest = connector_json_request(&state, request).await?;
-    match access.login(&login.token) {
+    match access.login(&login.username, &login.password) {
         Ok(cookie) => {
             let mut response = StatusCode::NO_CONTENT.into_response();
             response.headers_mut().insert(
@@ -5962,35 +5965,33 @@ mod tests {
         ApiConfig {
             bind_addr: SocketAddr::from(([0, 0, 0, 0], 8000)),
             deployment_mode: DeploymentMode::Network,
-            access: Some(AccessConfig {
-                token: "correct-horse-battery-staple".into(),
-                secure_cookie: false,
-            }),
+            access: Some(AccessConfig::default_admin(false)),
             ..ApiConfig::default()
         }
     }
 
     #[test]
-    fn network_mode_refuses_to_start_without_a_long_enough_token() {
+    fn network_mode_refuses_to_start_without_an_account() {
         let mut missing = network_config();
         missing.access = None;
         assert!(matches!(
             ApiState::with_seams(missing, "fresh-nonce", Arc::new(TestClock::default())),
-            Err(ApiSetupError::AccessTokenRequired)
+            Err(ApiSetupError::AccessAccountRequired)
         ));
-        let mut short = network_config();
-        short.access = Some(AccessConfig {
-            token: "short".into(),
+        let mut empty = network_config();
+        empty.access = Some(AccessConfig {
+            username: "admin".into(),
+            password: String::new(),
             secure_cookie: false,
         });
         assert!(matches!(
-            ApiState::with_seams(short, "fresh-nonce", Arc::new(TestClock::default())),
-            Err(ApiSetupError::AccessTokenTooShort)
+            ApiState::with_seams(empty, "fresh-nonce", Arc::new(TestClock::default())),
+            Err(ApiSetupError::AccessAccountEmpty)
         ));
     }
 
     #[tokio::test]
-    async fn network_mode_serves_any_peer_only_after_the_token_login() {
+    async fn network_mode_serves_any_peer_only_after_the_account_login() {
         use axum::http::header::COOKIE;
         let app = router(state_with(network_config()));
         let remote_peer = SocketAddr::from(([203, 0, 113, 9], 41000));
@@ -6017,16 +6018,19 @@ mod tests {
             .await
             .unwrap();
         let body = to_bytes(status.into_body(), usize::MAX).await.unwrap();
-        assert_eq!(&body[..], br#"{"required":true,"authenticated":false}"#);
+        assert_eq!(
+            &body[..],
+            br#"{"required":true,"authenticated":false,"default_account":true}"#
+        );
 
-        // Login must come from this origin's page and carry the right token.
-        let login = |token: &str, origin: Option<&'static str>| {
+        // Login must come from this origin's page and carry the right account.
+        let login = |password: &str, origin: Option<&'static str>| {
             let mut login = json_request(
                 Method::POST,
                 AUTH_SESSION_PATH,
                 host,
                 remote_peer,
-                &format!(r#"{{"token":"{token}"}}"#),
+                &format!(r#"{{"username":"admin","password":"{password}"}}"#),
             );
             if let Some(origin) = origin {
                 login
@@ -6035,43 +6039,30 @@ mod tests {
             }
             login
         };
+        let response = app.clone().oneshot(login("123456", None)).await.unwrap();
+        assert_eq!(envelope(response).await.code, "origin_not_allowed");
         let response = app
             .clone()
-            .oneshot(login("correct-horse-battery-staple", None))
+            .oneshot(login("123456", Some("http://evil.example")))
             .await
             .unwrap();
         assert_eq!(envelope(response).await.code, "origin_not_allowed");
         let response = app
             .clone()
-            .oneshot(login(
-                "correct-horse-battery-staple",
-                Some("http://evil.example"),
-            ))
-            .await
-            .unwrap();
-        assert_eq!(envelope(response).await.code, "origin_not_allowed");
-        let response = app
-            .clone()
-            .oneshot(login(
-                "wrong-token-wrong-token",
-                Some("http://10.0.0.5:8000"),
-            ))
+            .oneshot(login("654321", Some("http://10.0.0.5:8000")))
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(envelope(response).await.code, "auth_invalid");
         let response = app
             .clone()
-            .oneshot(login(
-                "correct-horse-battery-staple",
-                Some("http://10.0.0.5:8000"),
-            ))
+            .oneshot(login("123456", Some("http://10.0.0.5:8000")))
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let set_cookie = response.headers()[SET_COOKIE].to_str().unwrap().to_owned();
         assert!(set_cookie.contains("HttpOnly") && set_cookie.contains("SameSite=Strict"));
-        assert!(!set_cookie.contains("correct-horse"));
+        assert!(!set_cookie.contains("123456"));
         let cookie = HeaderValue::from_str(set_cookie.split(';').next().unwrap()).unwrap();
 
         let mut capabilities = request(Method::GET, CAPABILITIES_PATH, host, remote_peer);

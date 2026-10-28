@@ -772,18 +772,15 @@ fn write_only_connection_and_explain_inputs_never_echo() {
     assert!(connection_json.get("username").is_none() && connection_json.get("password").is_none());
     assert!(explain_json.get("candidate_sql").is_none());
     let login = AccessLoginRequest {
-        token: "do-not-echo-token".to_owned(),
+        username: "admin".to_owned(),
+        password: "do-not-echo-password".to_owned(),
     };
     assert_eq!(
         format!("{login:?}"),
         "AccessLoginRequest { redacted: true }"
     );
-    assert!(
-        serde_json::to_value(login)
-            .expect("login request serializes safely")
-            .get("token")
-            .is_none()
-    );
+    let login_json = serde_json::to_value(login).expect("login request serializes safely");
+    assert!(login_json.get("username").is_none() && login_json.get("password").is_none());
 
     let connection_schema = serde_json::to_value(schema_for!(ConnectionCreateRequest))
         .expect("connection schema serializes");

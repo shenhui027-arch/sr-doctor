@@ -28,12 +28,10 @@ RUN apt-get update \
     && apt-get install --no-install-recommends --yes ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin --uid 10001 doctor
-# The history and access-token volumes of the server deployment (compose.yaml)
-# mount here; a new named volume copies this owner and mode, so the non-root
-# user can write to them and nobody else can read the token.
-RUN mkdir -p /var/lib/sr-doctor /etc/sr-doctor \
-    && chown doctor /var/lib/sr-doctor /etc/sr-doctor \
-    && chmod 700 /etc/sr-doctor
+# The history volume of the server deployment (compose.yaml) mounts here; a
+# new named volume copies this owner, so the non-root user can write to it.
+RUN mkdir -p /var/lib/sr-doctor \
+    && chown doctor /var/lib/sr-doctor
 WORKDIR /app
 COPY --from=api-build /src/target/release/doctor-api /app/doctor-api
 COPY --from=frontend-build /src/frontend/dist /app/frontend

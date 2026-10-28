@@ -1,7 +1,8 @@
 use std::{ffi::OsStr, path::PathBuf};
 
 use doctor_api::{
-    AccessConfig, ApiConfig, ApiState, DOCKER_LOOPBACK_PUBLISHED_BIND_ADDR, DeploymentMode, serve,
+    AccessConfig, ApiConfig, ApiState, DEFAULT_ADMIN_PASSWORD, DEFAULT_ADMIN_USER,
+    DOCKER_LOOPBACK_PUBLISHED_BIND_ADDR, DeploymentMode, serve,
 };
 
 #[tokio::main]
@@ -21,6 +22,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?
     };
     config.history = history_config_from_environment(|name| std::env::var(name).ok())?;
+    if config
+        .access
+        .as_ref()
+        .is_some_and(|access| access.password == DEFAULT_ADMIN_PASSWORD)
+    {
+        eprintln!("login_default_password: set DOCTOR_ADMIN_PASSWORD to change it");
+    }
     let state = ApiState::new(config)?;
     serve(state).await?;
     Ok(())
@@ -105,9 +113,10 @@ fn history_config_from_environment(
 
 /// `DOCTOR_DEPLOYMENT_MODE=network`: a server users open as
 /// `http://<host>:<port>` from their own browser. It listens on
-/// `DOCTOR_LISTEN` (default `0.0.0.0:<DOCTOR_PORT or 8000>`) and refuses to
-/// start without an access token from `DOCTOR_ACCESS_TOKEN_FILE` (preferred)
-/// or `DOCTOR_ACCESS_TOKEN`. `DOCTOR_COOKIE_SECURE=on` behind an HTTPS proxy.
+/// `DOCTOR_LISTEN` (default `0.0.0.0:<DOCTOR_PORT or 8000>`) and asks for the
+/// login `DOCTOR_ADMIN_USER` / `DOCTOR_ADMIN_PASSWORD` (default `admin` /
+/// `123456`; empty means the default). `DOCTOR_COOKIE_SECURE=on` behind an
+/// HTTPS proxy.
 fn network_config_from_environment(
     var: impl Fn(&str) -> Option<String>,
     frontend_dist: PathBuf,
@@ -121,24 +130,19 @@ fn network_config_from_environment(
             .map_err(|_| invalid("DOCTOR_LISTEN must be an address and port, e.g. 0.0.0.0:8000"))?,
         None => std::net::SocketAddr::from(([0, 0, 0, 0], port)),
     };
-    let token = match var("DOCTOR_ACCESS_TOKEN_FILE").filter(|path| !path.is_empty()) {
-        Some(path) => std::fs::read_to_string(&path).map_err(|error| {
-            std::io::Error::new(error.kind(), "cannot read DOCTOR_ACCESS_TOKEN_FILE")
-        })?,
-        None => var("DOCTOR_ACCESS_TOKEN").unwrap_or_default(),
+    let setting = |name: &str, default: &str| {
+        var(name)
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| default.to_owned())
     };
-    let token = token.trim().to_owned();
-    if token.is_empty() {
-        return Err(invalid(
-            "network mode requires DOCTOR_ACCESS_TOKEN_FILE or DOCTOR_ACCESS_TOKEN",
-        ));
-    }
     Ok(ApiConfig {
         bind_addr,
         deployment_mode: DeploymentMode::Network,
         frontend_dist: Some(frontend_dist),
         access: Some(AccessConfig {
-            token,
+            username: setting("DOCTOR_ADMIN_USER", DEFAULT_ADMIN_USER),
+            password: setting("DOCTOR_ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD),
             secure_cookie: var("DOCTOR_COOKIE_SECURE").as_deref() == Some("on"),
         }),
         ..ApiConfig::default()
@@ -258,7 +262,7 @@ mod tests {
         }
     }
     #[test]
-    fn network_mode_needs_a_token_and_listens_where_told() {
+    fn network_mode_defaults_to_admin_and_listens_where_told() {
         let env = |pairs: &'static [(&'static str, &'static str)]| {
             move |name: &str| {
                 pairs
@@ -267,12 +271,22 @@ mod tests {
                     .map(|(_, value)| (*value).to_owned())
             }
         };
-        let missing = network_config_from_environment(env(&[]), PathBuf::new());
-        assert!(missing.is_err());
+        let defaults = network_config_from_environment(env(&[]), PathBuf::new()).unwrap();
+        assert_eq!(defaults.access, Some(AccessConfig::default_admin(false)));
+        assert_eq!(defaults.bind_addr.to_string(), "0.0.0.0:8000");
+        assert!(format!("{defaults:?}").contains("<redacted>"));
+        assert!(!format!("{defaults:?}").contains("123456"));
+        let blank = network_config_from_environment(
+            env(&[("DOCTOR_ADMIN_USER", " "), ("DOCTOR_ADMIN_PASSWORD", "")]),
+            PathBuf::new(),
+        )
+        .unwrap();
+        assert_eq!(blank.access, Some(AccessConfig::default_admin(false)));
 
         let config = network_config_from_environment(
             env(&[
-                ("DOCTOR_ACCESS_TOKEN", "  correct-horse-battery-staple\n"),
+                ("DOCTOR_ADMIN_USER", "ops"),
+                ("DOCTOR_ADMIN_PASSWORD", "  changed-password\n"),
                 ("DOCTOR_PORT", "18080"),
             ]),
             PathBuf::new(),
@@ -281,14 +295,14 @@ mod tests {
         assert_eq!(config.deployment_mode, DeploymentMode::Network);
         assert_eq!(config.bind_addr.to_string(), "0.0.0.0:18080");
         let access = config.access.clone().unwrap();
-        assert_eq!(access.token, "correct-horse-battery-staple");
+        assert_eq!(access.username, "ops");
+        assert_eq!(access.password, "changed-password");
         assert!(!access.secure_cookie);
-        assert!(format!("{config:?}").contains("<redacted>"));
-        assert!(!format!("{config:?}").contains("correct-horse"));
+        assert!(!format!("{config:?}").contains("changed-password"));
+        assert!(ApiState::new(config).is_ok());
 
         let listen = network_config_from_environment(
             env(&[
-                ("DOCTOR_ACCESS_TOKEN", "correct-horse-battery-staple"),
                 ("DOCTOR_LISTEN", "10.0.0.5:9000"),
                 ("DOCTOR_COOKIE_SECURE", "on"),
             ]),
@@ -299,21 +313,11 @@ mod tests {
         assert!(listen.access.unwrap().secure_cookie);
         assert!(
             network_config_from_environment(
-                env(&[
-                    ("DOCTOR_ACCESS_TOKEN", "x"),
-                    ("DOCTOR_LISTEN", "not-an-address")
-                ]),
+                env(&[("DOCTOR_LISTEN", "not-an-address")]),
                 PathBuf::new()
             )
             .is_err()
         );
-        // A short token is refused when the server state is built.
-        let short = network_config_from_environment(
-            env(&[("DOCTOR_ACCESS_TOKEN", "short")]),
-            PathBuf::new(),
-        )
-        .unwrap();
-        assert!(ApiState::new(short).is_err());
     }
 
     #[test]

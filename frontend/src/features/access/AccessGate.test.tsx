@@ -14,27 +14,35 @@ function fakeApi(responses: Array<[number, unknown]>) {
   return { api, calls };
 }
 
-describe("access token sign-in (network deployments)", () => {
-  it("asks for the token without keeping it", () => {
+describe("account sign-in (network deployments)", () => {
+  it("asks for the user name and password, with admin filled in", () => {
     const { api } = fakeApi([]);
-    const html = renderToStaticMarkup(<LocaleProvider initialLocale="zh"><AccessForm api={api} onOpen={() => undefined} /></LocaleProvider>);
-    expect(html).toContain("访问令牌");
+    const html = renderToStaticMarkup(<LocaleProvider initialLocale="zh"><AccessForm api={api} defaultAccount onOpen={() => undefined} /></LocaleProvider>);
+    expect(html).toContain("用户名");
+    expect(html).toContain('value="admin"');
     expect(html).toContain('type="password"');
-    expect(html).toContain("本页面不会保存它");
+    expect(html).toContain("admin / 123456");
   });
 
-  it("reads the session status and posts the token as JSON once", async () => {
-    const { api, calls } = fakeApi([[200, { required: true, authenticated: false }], [204, null]]);
-    expect(await api.accessStatus()).toEqual({ required: true, authenticated: false });
-    await api.login("correct-horse-battery-staple");
+  it("shows the default account only while the server still uses it", () => {
+    const { api } = fakeApi([]);
+    const html = renderToStaticMarkup(<LocaleProvider initialLocale="zh"><AccessForm api={api} defaultAccount={false} onOpen={() => undefined} /></LocaleProvider>);
+    expect(html).not.toContain("123456");
+    expect(html).toContain("向部署这台服务器的人获取");
+  });
+
+  it("reads the session status and posts the account as JSON once", async () => {
+    const { api, calls } = fakeApi([[200, { required: true, authenticated: false, default_account: true }], [204, null]]);
+    expect(await api.accessStatus()).toEqual({ required: true, authenticated: false, default_account: true });
+    await api.login("admin", "123456");
     expect(calls[1].url).toBe("/api/v1/auth/session");
     expect(calls[1].init?.method).toBe("POST");
-    expect(calls[1].init?.body).toBe(JSON.stringify({ token: "correct-horse-battery-staple" }));
+    expect(calls[1].init?.body).toBe(JSON.stringify({ username: "admin", password: "123456" }));
     expect(new Headers(calls[1].init?.headers).get("Content-Type")).toBe("application/json");
   });
 
-  it("surfaces a wrong token as auth_invalid", async () => {
+  it("surfaces a wrong password as auth_invalid", async () => {
     const { api } = fakeApi([[401, { code: "auth_invalid", stage: "security", message_id: "auth_invalid", recoverability: "change_input", details: {} }]]);
-    await expect(api.login("wrong")).rejects.toMatchObject({ code: "auth_invalid" });
+    await expect(api.login("admin", "wrong")).rejects.toMatchObject({ code: "auth_invalid" });
   });
 });

@@ -2064,22 +2064,27 @@ pub struct ConnectionCreateRequest {
     pub tls_mode: TlsMode,
 }
 
-/// Whether this server asks for its access token before the API answers.
+/// Whether this server asks for a login before the API answers.
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(rename_all = "snake_case")]
 pub struct AccessSessionStatus {
     pub required: bool,
     pub authenticated: bool,
+    /// The login is still the public default `admin` / `123456`, so the
+    /// sign-in page may show it.
+    pub default_account: bool,
 }
 
-/// Input-only access token; like credentials, it is never echoed.
+/// Input-only login account; like credentials, it is never echoed.
 #[derive(Clone, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[ts(rename_all = "snake_case")]
 pub struct AccessLoginRequest {
     #[serde(skip_serializing)]
-    pub token: String,
+    pub username: String,
+    #[serde(skip_serializing)]
+    pub password: String,
 }
 
 impl std::fmt::Debug for AccessLoginRequest {

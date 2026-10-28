@@ -8,7 +8,7 @@ flowchart LR
         UI[React 前端<br>只渲染 DTO]
     end
     subgraph Server[doctor-api 进程]
-        TB[信任边界<br>Host / Origin / CSRF / 访问令牌]
+        TB[信任边界<br>Host / Origin / CSRF / 登录]
         API[HTTP 路由]
         CORE[doctor-core<br>IR · Typed Metric Parser · 执行结构 · 规则 · 对比 · 指纹 · 趋势]
         VP[VersionPack<br>3.5.14]
@@ -56,6 +56,6 @@ flowchart LR
 |---|---|---|---|
 | 回环 | `127.0.0.1` | 不需要 | `cargo run -p doctor-api` |
 | Docker 回环发布 | 容器内 `0.0.0.0`，宿主机只发布到 `127.0.0.1` | 不需要 | `deploy/local/compose.yaml` |
-| 网络 | 所有网卡或指定地址 | 访问令牌 | 根目录 `compose.yaml`、`deploy.sh` |
+| 网络 | 所有网卡或指定地址 | 账号密码（默认 `admin` / `123456`） | 根目录 `compose.yaml`、`deploy.sh` |
 
 见 [部署指南](../guide/deployment.md)。

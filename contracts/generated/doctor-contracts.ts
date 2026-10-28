@@ -317,8 +317,13 @@ export type CandidateProfileState = "awaiting_user_external_rerun" | "fetched_af
 export type ConnectedGoldenEvidence = "synthetic_contract_only_not_docker_e2e";
 export type ConnectedSchemaVersion = "0.1";
 export type ConnectionCreateRequest = { host: string, port: number, username: string, password: string, catalog: string | null, database: string | null, audit_table: string | null, tls_mode: TlsMode, };
-export type AccessSessionStatus = { required: boolean, authenticated: boolean, };
-export type AccessLoginRequest = { token: string, };
+export type AccessSessionStatus = { required: boolean, authenticated: boolean,
+/**
+ * The login is still the public default `admin` / `123456`, so the
+ * sign-in page may show it.
+ */
+default_account: boolean, };
+export type AccessLoginRequest = { username: string, password: string, };
 export type ConnectionCapabilityReport = { version_probe: ConnectionCapabilityState, time_zone: ConnectionCapabilityState, audit: ConnectionCapabilityState, audit_user_filter: ConnectionCapabilityState,
 /**
  * `isQuery` (TINYINT) and `stmt` were both probed in this session, so the

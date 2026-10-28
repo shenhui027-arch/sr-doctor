@@ -93,7 +93,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-/** Fired when a network deployment answers that the access-token session is missing or expired. */
+/** Fired when a network deployment answers that the login session is missing or expired. */
 export const AUTH_REQUIRED_EVENT = "doctor:auth-required";
 
 function asFailure(value: unknown): ApiFailure {
@@ -184,20 +184,20 @@ export class DoctorApi {
     return capabilities;
   }
 
-  /** Whether the server asks for its access token and whether this browser has a session. */
+  /** Whether the server asks for a login and whether this browser has a session. */
   async accessStatus(signal?: AbortSignal): Promise<AccessSessionStatus> {
     const response = await this.request(`${this.base}/auth/session`, { headers: { Accept: "application/json" }, signal });
     const body = await responseJson(response);
     if (!response.ok || !isRecord(body) || typeof body.required !== "boolean" || typeof body.authenticated !== "boolean") throw asFailure(body);
-    return { required: body.required, authenticated: body.authenticated };
+    return { required: body.required, authenticated: body.authenticated, default_account: body.default_account === true };
   }
 
-  /** Exchanges the access token for an HttpOnly session cookie; the token is not kept. */
-  async login(token: string): Promise<void> {
+  /** Exchanges the login for an HttpOnly session cookie; the password is not kept. */
+  async login(username: string, password: string): Promise<void> {
     const response = await this.request(`${this.base}/auth/session`, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ username, password }),
     });
     if (!response.ok) throw asFailure(await responseJson(response));
     this.nonce = null;

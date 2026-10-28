@@ -3,9 +3,10 @@
 ## 部署
 
 <details>
-<summary><b>打开页面后一直要求输入令牌 / 提示令牌不正确</b></summary>
+<summary><b>登录时提示用户名或密码不正确</b></summary>
 
-- 在服务器上用 `./deploy.sh token` 确认当前令牌。换过令牌（`rotate-token`）后，旧令牌立即失效。
+- 默认账号是 `admin` / `123456`。改过密码的话，看服务器上根目录 `.env` 里的 `DOCTOR_ADMIN_PASSWORD`；改完要运行 `docker compose up -d`（或 `./deploy.sh`）才生效。
+- 忘了密码：删掉 `.env` 里的 `DOCTOR_ADMIN_PASSWORD` 这一行后重新 `docker compose up -d`，即恢复为 `123456`。
 - 60 秒内累计输错 5 次后，所有登录都会被暂时拒绝，等一分钟再试。
 - 经 HTTPS 反向代理访问时，确认用 `./deploy.sh --https` 部署过，并且代理转发了 `Host` 头。
 

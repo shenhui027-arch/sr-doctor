@@ -42,12 +42,11 @@ StarRocks 的 Query Profile 資訊量很大：幾十個 Fragment、上百個運�
 git clone https://github.com/shenhui027-arch/sr-doctor.git
 cd sr-doctor
 docker compose up -d --build
-docker compose exec doctor cat /etc/sr-doctor/access-token   # 首次啟動自動產生的存取權杖
 ```
 
 然後：
 
-1. 瀏覽器開啟 `http://<伺服器位址>:8000`，輸入存取權杖；
+1. 瀏覽器開啟 `http://<伺服器位址>:8000`，用預設帳號 `admin` / `123456` 登入（改密碼：在 `.env` 寫 `DOCTOR_ADMIN_PASSWORD=新密碼` 後重新 `docker compose up -d`）；
 2. 點右上角 **連線**，填寫 StarRocks FE 的 IP、連接埠（預設 `9030`）、使用者名稱、密碼；
 3. 在 **查詢** 裡選一筆稽核記錄或 Profile，查看診斷。
 
@@ -110,7 +109,7 @@ docker compose exec doctor cat /etc/sr-doctor/access-token   # 首次啟動自�
 
 ```mermaid
 flowchart LR
-    B[瀏覽器] -->|存取權杖 → 工作階段 Cookie| API[doctor-api<br>Rust / Axum]
+    B[瀏覽器] -->|帳號密碼 → 工作階段 Cookie| API[doctor-api<br>Rust / Axum]
     API --> CORE[診斷核心<br>IR · 指標解析 · 規則 · 對比]
     CORE --> VP[VersionPack<br>3.5.14 基準 + 版本差異]
     API -->|唯讀 MySQL 協定| SR[(StarRocks FE)]
@@ -124,7 +123,7 @@ flowchart LR
 - **連線唯讀**：不執行 DDL/DML、多語句或 `EXPLAIN ANALYZE`，不自動修改 SQL 或參數。
 - **憑證不落地**：StarRocks 密碼只保存在服務程序記憶體的短期工作階段裡，不回傳前端，不寫入日誌。
 - **歷史庫去識別化**：只存去識別化範本、指紋與每小時彙總，預設保留 30 天；不存 SQL 常值、Profile 原文或密碼。
-- **存取控制**：伺服器部署必須設定存取權杖，否則拒絕啟動；寫入請求還要求同源與 CSRF 驗證。所有使用者共用一個權杖，沒有帳號與權限區分。
+- **存取控制**：伺服器部署要求登入，預設帳號 `admin` / `123456`，可在 `.env` 中修改；寫入請求還要求同源與 CSRF 驗證。所有使用者共用一個帳號，沒有權限區分。預設密碼人人都知道，服務暴露在不完全可信的網路時請先改密碼。
 - **傳輸**：預設明文，可連線任意可達主機，介面會明確標示；FE 開啟 SSL 時可選 TLS verify-full。
 
 完整的安全模型與漏洞回報方式見 [SECURITY.md](SECURITY.md)。

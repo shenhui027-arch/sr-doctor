@@ -40,12 +40,11 @@ StarRocks 的 Query Profile 信息量很大：几十个 Fragment、上百个算�
 git clone https://github.com/shenhui027-arch/sr-doctor.git
 cd sr-doctor
 docker compose up -d --build
-docker compose exec doctor cat /etc/sr-doctor/access-token   # 首次启动自动生成的访问令牌
 ```
 
 然后：
 
-1. 浏览器打开 `http://<服务器地址>:8000`，输入访问令牌；
+1. 浏览器打开 `http://<服务器地址>:8000`，用默认账号 `admin` / `123456` 登录（改密码：在 `.env` 写 `DOCTOR_ADMIN_PASSWORD=新密码` 后重新 `docker compose up -d`）；
 2. 点右上角 **连接**，填写 StarRocks FE 的 IP、端口（默认 `9030`）、用户名、口令；
 3. 在 **查询** 里选一条审计记录或 Profile，查看诊断。
 
@@ -108,7 +107,7 @@ docker compose exec doctor cat /etc/sr-doctor/access-token   # 首次启动自�
 
 ```mermaid
 flowchart LR
-    B[浏览器] -->|访问令牌 → 会话 Cookie| API[doctor-api<br>Rust / Axum]
+    B[浏览器] -->|账号密码 → 会话 Cookie| API[doctor-api<br>Rust / Axum]
     API --> CORE[诊断内核<br>IR · 指标解析 · 规则 · 对比]
     CORE --> VP[VersionPack<br>3.5.14 基线 + 版本差异]
     API -->|只读 MySQL 协议| SR[(StarRocks FE)]
@@ -122,7 +121,7 @@ flowchart LR
 - **连接只读**：不执行 DDL/DML、多语句或 `EXPLAIN ANALYZE`，不自动修改 SQL 或参数。
 - **凭据不落盘**：StarRocks 口令只保存在服务进程内存的短期会话里，不返回前端，不写日志。
 - **历史库脱敏**：只存脱敏模板、指纹与小时聚合，默认保留 30 天；不存 SQL 字面量、Profile 原文或口令。
-- **访问控制**：服务器部署必须配置访问令牌，否则拒绝启动；写请求还要求同源与 CSRF 校验。所有使用者共用一个令牌，没有账号与权限区分。
+- **访问控制**：服务器部署要求登录，默认账号 `admin` / `123456`，可在 `.env` 中修改；写请求还要求同源与 CSRF 校验。所有使用者共用一个账号，没有权限区分。默认密码人人都知道，服务暴露在不完全可信的网络时请先改密码。
 - **传输**：默认明文，可连接任意可达主机，界面会明确标注；FE 开启 SSL 时可选 TLS verify-full。
 
 完整的安全模型与漏洞报告方式见 [SECURITY.md](SECURITY.md)。

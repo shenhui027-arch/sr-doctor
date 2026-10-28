@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SR Doctor 一键部署与运维脚本（Linux 服务器，Docker Compose）。
 #
-#   ./deploy.sh                 # 安装或更新并启动，打印访问地址与令牌
+#   ./deploy.sh                 # 安装或更新并启动，打印访问地址与登录账号
 #   ./deploy.sh help            # 全部命令与选项
 #
 # 包装的是根目录的 compose.yaml；只想用 Compose 时，直接 docker compose up -d --build 即可。
@@ -10,16 +10,15 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$ROOT/.env"
-# 旧版本的部署目录：令牌、.env 与 compose.override.yaml 在首次安装时迁移过来。
+# 旧版本的部署目录：.env 与 compose.override.yaml 在首次安装时迁移过来。
 LEGACY_DIR="$ROOT/deploy/linux"
 IMAGE="sr-doctor:local"
 IMAGE_ARCHIVE="sr-doctor-image.tar.gz"
 SERVICE="doctor"
 VOLUME="sr-doctor_doctor-history"
-SECRETS_VOLUME="sr-doctor_doctor-secrets"
-TOKEN_PATH="/etc/sr-doctor/access-token"
+# 早期版本存访问令牌的卷；现在改用账号密码，只在 uninstall --purge 时顺带删除。
+OLD_SECRETS_VOLUME="sr-doctor_doctor-secrets"
 HEALTH_TIMEOUT="${DOCTOR_HEALTH_TIMEOUT:-180}"
-MIN_TOKEN_CHARS=16
 # docker 只收相对路径；Git Bash 下不要改写 `卷:/路径` 这类参数。
 export MSYS_NO_PATHCONV=1
 
@@ -36,42 +35,43 @@ SR Doctor 部署脚本
 用法：./deploy.sh [命令] [选项]
 
 命令：
-  install         安装或更新并启动（默认命令）。首次运行生成访问令牌
+  install         安装或更新并启动（默认命令）
   status          查看运行状态与访问地址
-  logs            跟随查看服务日志（日志里没有令牌、口令或 SQL 原文）
+  logs            跟随查看服务日志（日志里没有密码、口令或 SQL 原文）
   start | stop    启动 / 停止服务（停止不删除历史数据）
   restart         重启服务
   upgrade         拉取最新代码（git pull --ff-only）后重新构建并启动
-  token           显示访问令牌
-  rotate-token    生成新令牌并重启；已登录的浏览器都要重新输入
   backup [文件]   备份历史库（默认 ./sr-doctor-history-<时间>.tgz）
   restore 文件    用备份覆盖当前历史库
   package         构建镜像并打成离线安装包（服务器无法访问外网时用）
-  uninstall       删除容器；加 --purge 同时删除历史数据、令牌与配置
+  uninstall       删除容器；加 --purge 同时删除历史数据与配置
   help            显示本帮助
 
 选项：
-  --port 端口     对外端口（默认 8000）
-  --bind 地址     只在这个地址上监听（默认 0.0.0.0，即所有网卡）
-  --https         使用者经 HTTPS 反向代理访问时使用（会话 Cookie 加 Secure）
-  --http          取消 --https
-  --image 文件    从离线镜像包加载，不在本机构建
-  --output 文件   package 的输出路径
-  --purge         与 uninstall 一起用：同时删除历史数据、令牌与配置
-  -y, --yes       不询问，直接确认
+  --port 端口       对外端口（默认 8000）
+  --bind 地址       只在这个地址上监听（默认 0.0.0.0，即所有网卡）
+  --password 密码   登录密码（默认账号 admin / 123456）；可用字母、数字和 ._@%+=:,/~!*^-
+  --https           使用者经 HTTPS 反向代理访问时使用（会话 Cookie 加 Secure）
+  --http            取消 --https
+  --image 文件      从离线镜像包加载，不在本机构建
+  --output 文件     package 的输出路径
+  --purge           与 uninstall 一起用：同时删除历史数据与配置
+  -y, --yes         不询问，直接确认
 
---port、--bind、--https 会写入根目录的 .env，之后的命令（以及直接运行的 docker compose）沿用。
+--port、--bind、--password、--https 会写入根目录的 .env，之后的命令（以及直接运行的
+docker compose）沿用。改密码：./deploy.sh --password 新密码
 EOF
 }
 
 # ---- 参数 ----
 COMMAND=""
 ARGS=()
-OPT_PORT="" OPT_BIND="" OPT_COOKIE="" OPT_IMAGE="" OPT_OUTPUT="" OPT_PURGE=0 OPT_YES=0
+OPT_PORT="" OPT_BIND="" OPT_PASSWORD="" OPT_COOKIE="" OPT_IMAGE="" OPT_OUTPUT="" OPT_PURGE=0 OPT_YES=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --port) [ $# -ge 2 ] || die "--port 需要一个值"; OPT_PORT="$2"; shift 2 ;;
     --bind) [ $# -ge 2 ] || die "--bind 需要一个值"; OPT_BIND="$2"; shift 2 ;;
+    --password) [ $# -ge 2 ] || die "--password 需要一个值"; OPT_PASSWORD="$2"; shift 2 ;;
     --https) OPT_COOKIE="on"; shift ;;
     --http) OPT_COOKIE="off"; shift ;;
     --image) [ $# -ge 2 ] || die "--image 需要一个文件"; OPT_IMAGE="$2"; shift 2 ;;
@@ -91,6 +91,10 @@ if [ -n "$OPT_PORT" ]; then
 fi
 if [ -n "$OPT_BIND" ]; then
   case "$OPT_BIND" in *[!0-9A-Fa-f.:]*) die "--bind 必须是一个 IP 地址" ;; esac
+fi
+# 密码写进 .env，Compose 会解析其中的引号、空格、# 与 $，所以只收不需要转义的字符。
+if [ -n "$OPT_PASSWORD" ]; then
+  case "$OPT_PASSWORD" in *[!A-Za-z0-9._@%+=:,/~!*^-]*) die "--password 只能用字母、数字和 ._@%+=:,/~!*^-" ;; esac
 fi
 
 # ---- 工具 ----
@@ -139,49 +143,34 @@ env_set() {
 apply_options() {
   [ -n "$OPT_PORT" ] && env_set DOCTOR_PORT "$OPT_PORT"
   [ -n "$OPT_BIND" ] && env_set DOCTOR_BIND "$OPT_BIND"
+  [ -n "$OPT_PASSWORD" ] && env_set DOCTOR_ADMIN_PASSWORD "$OPT_PASSWORD"
   [ -n "$OPT_COOKIE" ] && env_set DOCTOR_COOKIE_SECURE "$OPT_COOKIE"
   return 0
-}
-
-# 令牌由 compose.yaml 里的 token-init 在首次启动时生成，存在独立的卷里
-# （属主为容器内的非 root 用户，权限 700/600），从不写进日志或备份。
-read_token() {
-  docker run --rm --network none -v "$SECRETS_VOLUME:/etc/sr-doctor:ro" --entrypoint cat "$IMAGE" "$TOKEN_PATH" 2>/dev/null | tr -d '[:space:]'
 }
 
 # 早期版本的 Compose 项目叫 starrocks-doctor。新卷还不存在而旧卷存在时，停掉旧项目的
 # 容器（数据都在卷里），把旧卷复制到新卷；旧卷保留，确认无误后可自行删除。
 LEGACY_PROJECT="starrocks-doctor"
 migrate_volumes() {
-  local old_containers name old new
-  for name in doctor-history doctor-secrets; do
-    old="${LEGACY_PROJECT}_$name"
-    new="sr-doctor_$name"
-    docker volume inspect "$old" >/dev/null 2>&1 || continue
-    docker volume inspect "$new" >/dev/null 2>&1 && continue
-    old_containers="$(docker ps -aq --filter "label=com.docker.compose.project=$LEGACY_PROJECT")"
-    if [ -n "$old_containers" ]; then
-      info "停止早期版本的容器…"
-      # shellcheck disable=SC2086
-      docker rm -f $old_containers >/dev/null
-    fi
-    info "把数据卷 $old 复制到 $new（旧卷保留）…"
-    docker volume create --label com.docker.compose.project=sr-doctor \
-      --label "com.docker.compose.volume=$name" "$new" >/dev/null
-    docker run --rm --network none --user 0 -v "$old:/from:ro" -v "$new:/to" --entrypoint bash "$IMAGE" \
-      -c 'cp -a /from/. /to/ && chown -R 10001 /to' \
-      || die "复制数据卷 $old 失败。"
-    if [ "$name" = doctor-secrets ]; then
-      docker run --rm --network none --user 0 -v "$new:/to" --entrypoint chmod "$IMAGE" 700 /to
-    fi
-  done
-  return 0
+  local old_containers old="${LEGACY_PROJECT}_doctor-history"
+  docker volume inspect "$old" >/dev/null 2>&1 || return 0
+  docker volume inspect "$VOLUME" >/dev/null 2>&1 && return 0
+  old_containers="$(docker ps -aq --filter "label=com.docker.compose.project=$LEGACY_PROJECT")"
+  if [ -n "$old_containers" ]; then
+    info "停止早期版本的容器…"
+    # shellcheck disable=SC2086
+    docker rm -f $old_containers >/dev/null
+  fi
+  info "把数据卷 $old 复制到 $VOLUME（旧卷保留）…"
+  docker volume create --label com.docker.compose.project=sr-doctor \
+    --label "com.docker.compose.volume=doctor-history" "$VOLUME" >/dev/null
+  docker run --rm --network none --user 0 -v "$old:/from:ro" -v "$VOLUME:/to" --entrypoint bash "$IMAGE" \
+    -c 'cp -a /from/. /to/ && chown -R 10001 /to' \
+    || die "复制数据卷 $old 失败。"
 }
 
-# 旧版本把令牌、.env 与 compose.override.yaml 放在 deploy/linux。首次安装时：
-# .env 复制到根目录；旧令牌只在新卷里还没有令牌时，交给 token-init 沿用一次，
-# 这样已发出去的令牌继续有效。旧文件不删除，确认无误后可自行删掉。
-NEW_TOKEN=0
+# 旧版本把 .env 与 compose.override.yaml 放在 deploy/linux。首次安装时把 .env 复制到
+# 根目录；旧文件不删除，确认无误后可自行删掉。
 migrate_legacy() {
   if [ -f "$LEGACY_DIR/.env" ] && [ ! -f "$ENV_FILE" ]; then
     cp -p "$LEGACY_DIR/.env" "$ENV_FILE"
@@ -190,16 +179,7 @@ migrate_legacy() {
   if [ -f "$LEGACY_DIR/compose.override.yaml" ] && [ ! -f "$ROOT/compose.override.yaml" ]; then
     warn "发现 deploy/linux/compose.override.yaml。请把它移到根目录并检查其中的相对路径，然后重新运行。"
   fi
-  if docker volume inspect "$SECRETS_VOLUME" >/dev/null 2>&1; then return 0; fi
-  if [ -s "$LEGACY_DIR/access-token" ]; then
-    local token
-    token="$(tr -d '[:space:]' < "$LEGACY_DIR/access-token")"
-    [ "${#token}" -ge "$MIN_TOKEN_CHARS" ] || die "deploy/linux/access-token 少于 $MIN_TOKEN_CHARS 个字符；删除它后重新运行即可自动生成。"
-    export DOCTOR_ACCESS_TOKEN="$token"
-    info "沿用 deploy/linux/access-token 中的访问令牌。"
-  else
-    NEW_TOKEN=1
-  fi
+  return 0
 }
 
 container_id() { compose ps -q "$SERVICE" 2>/dev/null | head -n 1; }
@@ -239,7 +219,7 @@ server_address() {
 }
 
 print_access() {
-  local port url
+  local port url user
   port="$(env_get DOCTOR_PORT 8000)"
   if [ "$(env_get DOCTOR_COOKIE_SECURE off)" = "on" ]; then
     url="https://<你的 HTTPS 域名>（反向代理到本机 $port 端口）"
@@ -251,13 +231,13 @@ print_access() {
   if [ "$(env_get DOCTOR_COOKIE_SECURE off)" != "on" ]; then
     case "$(env_get DOCTOR_BIND 0.0.0.0)" in 0.0.0.0|127.0.0.1) printf '  本机访问：http://127.0.0.1:%s\n' "$port" ;; esac
   fi
-  if [ "$NEW_TOKEN" = 1 ]; then
-    printf '  访问令牌：%s\n' "$(read_token)"
-    printf '            （只在首次生成时显示；之后用 ./deploy.sh token 查看）\n'
+  user="$(env_get DOCTOR_ADMIN_USER admin)"
+  if [ -z "$(env_get DOCTOR_ADMIN_PASSWORD "")" ]; then
+    printf '  登录账号：%s / 123456（默认密码；改密码：./deploy.sh --password 新密码）\n' "$user"
   else
-    printf '  访问令牌：./deploy.sh token 查看\n'
+    printf '  登录账号：%s（密码已在 .env 中设置）\n' "$user"
   fi
-  printf '\n  浏览器打开地址 → 输入令牌 → 点“连接”，填写 StarRocks FE 的 IP、端口（默认 9030）、用户名、口令。\n'
+  printf '\n  浏览器打开地址 → 登录 → 点“连接”，填写 StarRocks FE 的 IP、端口（默认 9030）、用户名、口令。\n'
   printf '  常用命令：./deploy.sh status | logs | upgrade | backup | stop\n\n'
 }
 
@@ -285,6 +265,7 @@ prepare_image() {
 }
 
 # ---- 命令 ----
+# --remove-orphans 顺带删掉早期版本生成令牌的 token-init 容器。
 cmd_install() {
   need_docker
   apply_options
@@ -292,9 +273,7 @@ cmd_install() {
   migrate_volumes
   migrate_legacy
   info "启动服务…"
-  compose up -d "${UP_ARGS[@]}"
-  # 沿用的旧令牌已写进卷；删掉已退出的 token-init 容器，不让令牌留在它的环境变量里。
-  [ -n "${DOCTOR_ACCESS_TOKEN:-}" ] && compose rm -f token-init >/dev/null 2>&1 || true
+  compose up -d --remove-orphans "${UP_ARGS[@]}"
   wait_ready
   print_access
 }
@@ -315,7 +294,7 @@ cmd_start() {
   docker image inspect "$IMAGE" >/dev/null 2>&1 || die "还没有镜像，请先运行 ./deploy.sh install。"
   migrate_volumes
   migrate_legacy
-  compose up -d --no-build
+  compose up -d --remove-orphans --no-build
   wait_ready
   print_access
 }
@@ -332,27 +311,6 @@ cmd_upgrade() {
     warn "这里不是 Git 仓库：使用当前文件升级。离线升级请用 --image 指定新的镜像包。"
   fi
   cmd_install
-}
-
-cmd_token() {
-  need_docker
-  local token
-  token="$(read_token)"
-  [ -n "$token" ] || die "还没有访问令牌，请先运行 ./deploy.sh install。"
-  printf '%s\n' "$token"
-}
-
-cmd_rotate_token() {
-  need_docker
-  docker image inspect "$IMAGE" >/dev/null 2>&1 || die "还没有镜像，请先运行 ./deploy.sh install。"
-  confirm "生成新令牌后，所有已登录的浏览器都要重新输入令牌。继续？"
-  compose run --rm -e DOCTOR_TOKEN_ROTATE=1 token-init >/dev/null
-  NEW_TOKEN=1
-  if [ -n "$(container_id)" ]; then
-    compose restart "$SERVICE"
-    wait_ready
-  fi
-  print_access
 }
 
 volume_exists() { docker volume inspect "$VOLUME" >/dev/null 2>&1; }
@@ -432,8 +390,9 @@ SR Doctor 离线安装包（$version，linux/$arch）
   ./deploy.sh
 
 服务器只需要 Docker Engine 与 Compose（docker compose 插件或 1.29 以上的
-docker-compose），不需要访问外网。
-常用命令：./deploy.sh status | logs | token | backup | stop
+docker-compose），不需要访问外网。默认登录账号 admin / 123456，
+改密码：./deploy.sh --password 新密码
+常用命令：./deploy.sh status | logs | backup | stop
 EOF
   tar czf "$output" -C "$stage" "$name"
   info "离线安装包：$output（$(du -h "$output" | cut -f1)）"
@@ -442,13 +401,14 @@ EOF
 cmd_uninstall() {
   need_docker
   if [ "$OPT_PURGE" = 1 ]; then
-    confirm "将删除容器、历史数据卷 $VOLUME、令牌卷 $SECRETS_VOLUME 与 .env 配置，不可恢复。继续？"
-    compose down -v
+    confirm "将删除容器、历史数据卷 $VOLUME 与 .env 配置，不可恢复。继续？"
+    compose down -v --remove-orphans
+    docker volume rm "$OLD_SECRETS_VOLUME" >/dev/null 2>&1 || true
     rm -f "$ENV_FILE"
     info "已全部删除。镜像 $IMAGE 保留，可用 docker image rm $IMAGE 删除。"
   else
-    compose down
-    info "已删除容器。历史数据、令牌与配置保留；加 --purge 可一并删除。"
+    compose down --remove-orphans
+    info "已删除容器。历史数据与配置保留；加 --purge 可一并删除。"
   fi
 }
 
@@ -460,8 +420,6 @@ case "$COMMAND" in
   stop) cmd_stop ;;
   restart) cmd_restart ;;
   upgrade) cmd_upgrade ;;
-  token) cmd_token ;;
-  rotate-token) cmd_rotate_token ;;
   backup) cmd_backup ;;
   restore) cmd_restore ;;
   package) cmd_package ;;
