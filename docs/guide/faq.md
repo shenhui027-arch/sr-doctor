@@ -7,7 +7,7 @@
 
 - 默认账号是 `admin` / `123456`。改过密码的话，看服务器上根目录 `.env` 里的 `DOCTOR_ADMIN_PASSWORD`；改完要运行 `docker compose up -d`（或 `./deploy.sh`）才生效。
 - 忘了密码：删掉 `.env` 里的 `DOCTOR_ADMIN_PASSWORD` 这一行后重新 `docker compose up -d`，即恢复为 `123456`。
-- 60 秒内累计输错 5 次后，所有登录都会被暂时拒绝，等一分钟再试。
+- 同一台电脑 60 秒内输错 5 次后，它的登录会被暂时拒绝，等一分钟再试。
 - 经 HTTPS 反向代理访问时，确认用 `./deploy.sh --https` 部署过，并且代理转发了 `Host` 头。
 
 </details>

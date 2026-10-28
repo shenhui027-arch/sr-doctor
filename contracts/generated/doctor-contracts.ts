@@ -805,8 +805,17 @@ export type AlertView = { alert_id: string, target: string, template_key: string
 /**
  * The newest current-window hour of the regression.
  */
-bucket_start_seconds: number, exemplar_query_id: string | null, comparability: TrendComparability, governance_item_id: string | null, };
-export type AlertCounts = { open: string, acknowledged: string, resolved: string, muted: string, };
+bucket_start_seconds: number, exemplar_query_id: string | null, comparability: TrendComparability,
+/**
+ * Raised under an older rule version: the current rules call its trend
+ * not comparable, so it will not resolve by itself.
+ */
+rule_changed: boolean, governance_item_id: string | null, };
+export type AlertCounts = { open: string, acknowledged: string, resolved: string, muted: string,
+/**
+ * Open, acknowledged or muted alerts with `rule_changed`.
+ */
+rule_changed: string, };
 export type AlertChannel = {
 /**
  * `in_app`, `webhook` or `email`.
@@ -824,6 +833,7 @@ export type HistoryAlertsResponse = { target: string | null,
  */
 alerts: Array<AlertView>, counts: AlertCounts, channels: Array<AlertChannel>, rule: AlertRule, limitations: Array<string>, };
 export type AlertActionRequest = { alert_id: string, action: AlertAction, };
+export type AlertsRuleChangedResolveResponse = { target: string | null, resolved: string, };
 export type GovernanceState = "new" | "triaged" | "in_progress" | "pending_verification" | "closed" | "wont_fix";
 export type GovernanceOrigin = "alert" | "trends" | "manual";
 export type GovernanceSnapshot = { pinned_seconds: number, template: string | null, window_start_seconds: number, window_end_seconds: number, comparability: TrendComparability, executions: string, valid_samples: string, query_time_median: AuditMetricFact | null, scan_bytes_median: AuditMetricFact | null, cpu_cost_median: AuditMetricFact | null, exemplar_query_id: string | null, verdict: TrendVerdict | null, };

@@ -1035,6 +1035,10 @@ pub fn router(state: ApiState) -> Router {
             options(preflight).post(governance::alert_action),
         )
         .route(
+            "/api/v1/history/alerts/resolve-rule-changed",
+            options(preflight).post(governance::alerts_resolve_rule_changed),
+        )
+        .route(
             "/api/v1/governance/list",
             options(preflight).post(governance::governance_list),
         )
@@ -1168,8 +1172,12 @@ async fn auth_login(
     let Some(access) = state.access.clone() else {
         return Ok(StatusCode::NO_CONTENT.into_response());
     };
+    let source = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED), |connect| connect.0.ip());
     let login: AccessLoginRequest = connector_json_request(&state, request).await?;
-    match access.login(&login.username, &login.password) {
+    match access.login(source, &login.username, &login.password) {
         Ok(cookie) => {
             let mut response = StatusCode::NO_CONTENT.into_response();
             response.headers_mut().insert(
@@ -10149,6 +10157,91 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(factory.family_detail_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn alerts_from_an_older_rule_version_are_flagged_and_resolve_on_request() {
+        let dir =
+            std::env::temp_dir().join(format!("doctor-api-rule-changed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("history.sqlite");
+        let now = history::unix_now();
+        seed_history(
+            &path,
+            now,
+            1..=3,
+            |_| "3.5.14",
+            |ago, start| {
+                vec![seeded_row(
+                    "SELECT s FROM t WHERE id = 1",
+                    format!("s-{ago}"),
+                    start + 60,
+                    100,
+                    1_000,
+                )]
+            },
+        );
+        {
+            let store = doctor_history::HistoryStore::open(&path).unwrap();
+            let facts = doctor_history::AlertFacts {
+                severity: "high".into(),
+                confidence: "high".into(),
+                evidence: "complete".into(),
+                workload: "increased".into(),
+                baseline_median: Some(100),
+                current_median: Some(300),
+                relative_permille: Some(2_000),
+                bucket_start: now.div_euclid(3600) * 3600 - 3600,
+                exemplar: None,
+                engine_version: "3.5.14".into(),
+                rule_version: "rules-before-upgrade".into(),
+            };
+            store
+                .upsert_alert("127.0.0.1:9030", "old-template", &facts, now - 600)
+                .unwrap();
+        }
+        let factory = Arc::new(ConnectorTestFactory::connected());
+        let app = router(history_state(factory, &path));
+        let post =
+            |path: &'static str, body: serde_json::Value| history_post(app.clone(), path, body);
+
+        let (_, alerts) = post(
+            "/api/v1/history/alerts",
+            serde_json::json!({ "target": null }),
+        )
+        .await;
+        let list = alerts["alerts"].as_array().unwrap();
+        assert_eq!(list.len(), 1, "{alerts}");
+        assert_eq!(
+            (list[0]["state"].clone(), list[0]["rule_changed"].clone()),
+            (serde_json::json!("open"), serde_json::json!(true))
+        );
+        assert_eq!(alerts["counts"]["rule_changed"], "1");
+
+        let (code, resolved) = post(
+            "/api/v1/history/alerts/resolve-rule-changed",
+            serde_json::json!({ "target": null }),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK, "{resolved}");
+        assert_eq!(
+            resolved,
+            serde_json::json!({ "target": "127.0.0.1:9030", "resolved": "1" })
+        );
+        let (_, after) = post(
+            "/api/v1/history/alerts",
+            serde_json::json!({ "target": null }),
+        )
+        .await;
+        assert_eq!(after["alerts"][0]["state"], "resolved");
+        assert_eq!(
+            (
+                after["counts"]["rule_changed"].clone(),
+                after["counts"]["open"].clone()
+            ),
+            (serde_json::json!("0"), serde_json::json!("0"))
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

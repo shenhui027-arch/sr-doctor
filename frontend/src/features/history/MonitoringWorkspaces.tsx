@@ -53,6 +53,7 @@ export function AlertsWorkspace({ target, targets = [], onTarget, store, generat
       alerts={alerts.data}
       busy={busy}
       onAction={(id, action) => run(() => doctorApi.alertAction({ alert_id: id, action }))}
+      onResolveRuleChanged={() => run(() => doctorApi.resolveRuleChangedAlerts(alerts.data?.target ?? null))}
       onAddToQueue={(alert: AlertView) => run(
         () => doctorApi.createGovernanceItem({ target: alert.target, template_key: alert.template_key, origin: "alert", alert_id: alert.alert_id, title: null }),
         (item) => onOpenItem((item as GovernanceItem).item_id),

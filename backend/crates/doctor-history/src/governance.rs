@@ -267,6 +267,21 @@ impl HistoryStore {
         )? as u64)
     }
 
+    /// Resolves the target's active alerts raised under another rule version.
+    /// The current rules call their trends not comparable, so these alerts
+    /// would otherwise never resolve; they can still be reopened by hand.
+    pub fn resolve_rule_changed_alerts(
+        &self,
+        target: &str,
+        current_rule_version: &str,
+        now: i64,
+    ) -> Result<u64> {
+        Ok(self.lock().execute(
+            &format!("UPDATE alerts SET state = 'resolved', resolved_at = ?3, muted_until = NULL WHERE target = ?1 AND rule_version <> ?2 AND state IN {ACTIVE}"),
+            params![target, current_rule_version, now],
+        )? as u64)
+    }
+
     pub fn alerts(&self, target: &str, limit: u32) -> Result<Vec<StoredAlert>> {
         let connection = self.lock();
         let mut statement = connection.prepare(&format!("SELECT {ALERT_COLUMNS} FROM alerts WHERE target = ?1 ORDER BY last_seen DESC, id DESC LIMIT ?2"))?;
@@ -600,6 +615,51 @@ mod tests {
         assert_eq!(
             store.alert_action(999, "mute", 1, 1).unwrap(),
             StoreChange::NotFound
+        );
+    }
+
+    #[test]
+    fn alerts_from_an_older_rule_version_resolve_together() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        store.upsert_alert("t", "old", &facts("high"), 100).unwrap();
+        store
+            .upsert_alert("t", "muted", &facts("high"), 100)
+            .unwrap();
+        let current = AlertFacts {
+            rule_version: "v2".into(),
+            ..facts("high")
+        };
+        store.upsert_alert("t", "new", &current, 100).unwrap();
+        store
+            .upsert_alert("u", "other", &facts("high"), 100)
+            .unwrap();
+        let muted = store
+            .alerts("t", 10)
+            .unwrap()
+            .into_iter()
+            .find(|alert| alert.template_key == "muted")
+            .unwrap()
+            .id;
+        store.alert_action(muted, "mute", 110, 86_400).unwrap();
+
+        assert_eq!(
+            store.resolve_rule_changed_alerts("t", "v2", 200).unwrap(),
+            2
+        );
+        let states: Vec<_> = store
+            .alerts("t", 10)
+            .unwrap()
+            .into_iter()
+            .map(|alert| (alert.template_key, alert.state, alert.resolved_at))
+            .collect();
+        assert!(states.contains(&("old".into(), "resolved".into(), Some(200))));
+        assert!(states.contains(&("muted".into(), "resolved".into(), Some(200))));
+        assert!(states.contains(&("new".into(), "open".into(), None)));
+        // Other targets are untouched; a second run finds nothing left.
+        assert_eq!(store.alerts("u", 10).unwrap()[0].state, "open");
+        assert_eq!(
+            store.resolve_rule_changed_alerts("t", "v2", 300).unwrap(),
+            0
         );
     }
 

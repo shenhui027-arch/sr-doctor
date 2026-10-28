@@ -938,6 +938,7 @@ fn main() {
     export_schema::<HistoryAlertsRequest>("HistoryAlertsRequest", check);
     export_schema::<HistoryAlertsResponse>("HistoryAlertsResponse", check);
     export_schema::<AlertActionRequest>("AlertActionRequest", check);
+    export_schema::<AlertsRuleChangedResolveResponse>("AlertsRuleChangedResolveResponse", check);
     export_schema::<GovernanceListRequest>("GovernanceListRequest", check);
     export_schema::<GovernanceListResponse>("GovernanceListResponse", check);
     export_schema::<GovernanceCreateRequest>("GovernanceCreateRequest", check);
@@ -1299,6 +1300,7 @@ fn main() {
     export_ts::<HistoryAlertsRequest>(&mut types);
     export_ts::<HistoryAlertsResponse>(&mut types);
     export_ts::<AlertActionRequest>(&mut types);
+    export_ts::<AlertsRuleChangedResolveResponse>(&mut types);
     export_ts::<GovernanceState>(&mut types);
     export_ts::<GovernanceOrigin>(&mut types);
     export_ts::<GovernanceSnapshot>(&mut types);

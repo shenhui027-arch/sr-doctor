@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use doctor_contracts::{
     AlertAction, AlertActionRequest, AlertChannel, AlertCounts, AlertRule, AlertState, AlertView,
-    AuditMetricId, EvidenceCompleteness, GovernanceChangeRequest, GovernanceCreateRequest,
-    GovernanceEvent, GovernanceItem, GovernanceItemRequest, GovernanceListRequest,
-    GovernanceListResponse, GovernanceOrigin, GovernanceSnapshot, GovernanceState,
-    GovernanceTransitionRequest, GovernanceVerification, HistoryAlertsRequest,
+    AlertsRuleChangedResolveResponse, AuditMetricId, EvidenceCompleteness, GovernanceChangeRequest,
+    GovernanceCreateRequest, GovernanceEvent, GovernanceItem, GovernanceItemRequest,
+    GovernanceListRequest, GovernanceListResponse, GovernanceOrigin, GovernanceSnapshot,
+    GovernanceState, GovernanceTransitionRequest, GovernanceVerification, HistoryAlertsRequest,
     HistoryAlertsResponse, TrendChange, TrendComparability, TrendConfidence, TrendDirection,
     TrendSeverity, TrendVerdict, VerificationMetric, VerificationOutcome, WorkloadSignal,
     governance_manual_transitions,
@@ -160,6 +160,7 @@ fn alert_view(
         ),
         bucket_start_seconds: seconds(f.bucket_start),
         exemplar_query_id: f.exemplar.clone(),
+        rule_changed: f.rule_version != doctor_core::history_rule_version(),
         comparability: TrendComparability {
             engine_version: f.engine_version.clone(),
             rule_version: f.rule_version.clone(),
@@ -217,6 +218,7 @@ pub(super) async fn alerts(
             let target = resolve_target(&store, request.target)?;
             let mut alerts = Vec::new();
             let mut counts = [0u64; 4];
+            let mut rule_changed = 0u64;
             if let Some(target) = target.as_deref() {
                 evaluate_alerts(&store, target, now)?;
                 let templates = store.templates(target)?;
@@ -226,6 +228,9 @@ pub(super) async fn alerts(
                         .find(|t| t.template.template_key == alert.template_key);
                     if let Some(view) = alert_view(alert, template) {
                         counts[view.state as usize] += 1;
+                        if view.rule_changed && view.state != AlertState::Resolved {
+                            rule_changed += 1;
+                        }
                         alerts.push(view);
                     }
                 }
@@ -238,6 +243,7 @@ pub(super) async fn alerts(
                     acknowledged: counts[AlertState::Acknowledged as usize].to_string(),
                     resolved: counts[AlertState::Resolved as usize].to_string(),
                     muted: counts[AlertState::Muted as usize].to_string(),
+                    rule_changed: rule_changed.to_string(),
                 },
                 channels: vec![
                     AlertChannel {
@@ -271,6 +277,45 @@ pub(super) async fn alerts(
                 .collect(),
             })
         });
+    let response = worker
+        .await
+        .map_err(|_| internal_failure(&state))?
+        .map_err(|_| internal_failure(&state))?;
+    Ok(no_store(response))
+}
+
+/// Resolves the target's active alerts raised under an older rule version
+/// (after an upgrade they are not comparable and never resolve by themselves).
+pub(super) async fn alerts_resolve_rule_changed(
+    State(state): State<ApiState>,
+    request: Request,
+) -> Result<Response, ApiFailure> {
+    let request: HistoryAlertsRequest = connector_json_request(&state, request).await?;
+    if !request.validate() {
+        return Err(failure(
+            &state,
+            StatusCode::BAD_REQUEST,
+            "invalid_history_alerts_request",
+        ));
+    }
+    let store = store_of(&state)?;
+    let worker = tokio::task::spawn_blocking(
+        move || -> doctor_history::Result<AlertsRuleChangedResolveResponse> {
+            let target = resolve_target(&store, request.target)?;
+            let resolved = match target.as_deref() {
+                Some(target) => store.resolve_rule_changed_alerts(
+                    target,
+                    &doctor_core::history_rule_version(),
+                    unix_now(),
+                )?,
+                None => 0,
+            };
+            Ok(AlertsRuleChangedResolveResponse {
+                target,
+                resolved: resolved.to_string(),
+            })
+        },
+    );
     let response = worker
         .await
         .map_err(|_| internal_failure(&state))?

@@ -97,6 +97,9 @@ pub struct AlertView {
     pub bucket_start_seconds: u32,
     pub exemplar_query_id: Option<String>,
     pub comparability: TrendComparability,
+    /// Raised under an older rule version: the current rules call its trend
+    /// not comparable, so it will not resolve by itself.
+    pub rule_changed: bool,
     pub governance_item_id: Option<String>,
 }
 
@@ -107,6 +110,17 @@ pub struct AlertCounts {
     pub acknowledged: String,
     pub resolved: String,
     pub muted: String,
+    /// Open, acknowledged or muted alerts with `rule_changed`.
+    pub rule_changed: String,
+}
+
+/// Result of resolving a target's active alerts raised under an older rule
+/// version (request: `HistoryAlertsRequest`).
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AlertsRuleChangedResolveResponse {
+    pub target: Option<String>,
+    pub resolved: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]

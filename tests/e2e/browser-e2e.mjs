@@ -245,9 +245,12 @@ async function keyboardLocaleAndWorkspaceCoverage() {
 async function connectionDialogAccessibilityCoverage() {
   await clickButton("Connect");
   await waitFor(() => has('[role="dialog"]'), "connection dialog");
+  // Hosts are typed freely (no preset address since the free connection
+  // form), so the first field, the host, starts focused and empty.
   const initialFocus = await activeSummary();
   assert(
-    initialFocus?.tag === "INPUT" && initialFocus?.value === "127.0.0.1",
+    initialFocus?.tag === "INPUT" && initialFocus?.value === "" &&
+      (await evaluate(`document.activeElement === document.querySelector('[role="dialog"] input')`)),
     "Connection dialog did not focus host input.",
   );
   await key("Escape");
@@ -614,7 +617,7 @@ async function auditWorkloadCoverage() {
       routes.length === sqlRoutesBeforeSelection + 1 &&
       routes.at(-1)?.method === "POST" &&
       routes.at(-1)?.status === 200 &&
-      (await has("pre.audit-sql"))
+      (await has(".audit-sql pre"))
     );
   }, "explicit Audit SQL read");
   assert(
@@ -627,7 +630,7 @@ async function auditWorkloadCoverage() {
     "Audit SQL view executed an Explain request.",
   );
   receipt.audit_sql = await evaluate(
-    `({ visible: Boolean(document.querySelector('pre.audit-sql')), character_count: document.querySelector('pre.audit-sql')?.textContent?.length ?? 0 })`,
+    `({ visible: Boolean(document.querySelector('.audit-sql pre')), character_count: document.querySelector('.audit-sql pre')?.textContent?.length ?? 0 })`,
   );
   assert(
     receipt.audit_sql.character_count > 0,
@@ -754,7 +757,7 @@ async function auditWorkloadCoverage() {
         const routes = await routeTelemetry("/audit/sql");
         return (
           routes.length === sqlBeforeDetail + 1 &&
-          ((routes.at(-1)?.status === 200 && (await has("pre.audit-sql"))) ||
+          ((routes.at(-1)?.status === 200 && (await has(".audit-sql pre"))) ||
             (project === "connected-readonly-docker" && routes.length === sqlBeforeDetail + 1 && routes.at(-1)?.status >= 400 && (await has(".audit-sql-error"))))
         );
       }, "explicit slowest representative SQL read");
@@ -858,7 +861,7 @@ async function auditWorkloadCoverage() {
     );
     await capture("audit-family-member-rankings-1440x1024");
     assert(
-      !(await has("pre.audit-sql")) && !(await has(".audit-profile-receipt")),
+      !(await has(".audit-sql pre")) && !(await has(".audit-profile-receipt")),
       "Changing discovery to member rankings retained representative evidence.",
     );
   }
@@ -3163,20 +3166,13 @@ async function clickButton(text) {
   // While a modal dialog is open only its own buttons are reachable, as for a
   // user: a same-named button behind it (e.g. a graph node's "Close") must
   // not be picked first just because it comes earlier in the document.
-  const find = `(() => { const dialog = document.querySelector('[role="dialog"][aria-modal="true"]'); return Array.from(document.querySelectorAll('button')).findIndex((item) => (!dialog || dialog.contains(item)) && (item.textContent.trim() === ${JSON.stringify(text)} || item.getAttribute('aria-label') === ${JSON.stringify(text)}) && !item.disabled); })()`;
-  // A button disabled by an in-flight read (e.g. the v1.0 fingerprint
-  // grouping after an Audit overview) becomes clickable when it settles; wait
-  // a bounded 10 s for that instead of failing on the first look.
-  const deadline = Date.now() + 10_000;
-  let index = await evaluate(find);
-  while (index < 0 && Date.now() < deadline) {
-    await wait(100);
-    index = await evaluate(find);
-  }
-  await clickElement(
-    index >= 0 ? `document.querySelectorAll('button')[${index}]` : "null",
-    `Button was unavailable: ${text}`,
-  );
+  // The button is found again by its text on every attempt: a position in the
+  // document goes stale while the page re-renders (after a multi-BE connect
+  // the background keeps adding buttons), and would then name another one.
+  // A button disabled by an in-flight read becomes clickable when it settles;
+  // clickElement waits a bounded 10 s for that.
+  const find = `(() => { const dialog = document.querySelector('[role="dialog"][aria-modal="true"]'); return Array.from(document.querySelectorAll('button')).find((item) => (!dialog || dialog.contains(item)) && (item.textContent.trim() === ${JSON.stringify(text)} || item.getAttribute('aria-label') === ${JSON.stringify(text)}) && !item.disabled) ?? null; })()`;
+  await clickElement(find, `Button was unavailable: ${text}`);
 }
 async function clickSelector(selector) {
   await clickElement(

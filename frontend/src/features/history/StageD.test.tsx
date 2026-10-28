@@ -13,18 +13,18 @@ const alert = (id: string, state: AlertView["state"], relative: string | null): 
   muted_until_seconds: state === "muted" ? 1_800_090_000 : null, first_seen_seconds: 1_800_000_000, last_seen_seconds: 1_800_003_600, resolved_seconds: state === "resolved" ? 1_800_007_200 : null,
   severity: "high", confidence: "medium", evidence: "complete", workload: "increased", baseline_median: ms(relative === null ? 0 : 100), current_median: ms(250),
   change: { direction: "up", magnitude: ms(relative === null ? 250 : 150), relative_percent: relative }, bucket_start_seconds: 1_800_000_000, exemplar_query_id: "3b7e19c2-8a10",
-  comparability: { engine_version: "3.5.14", rule_version: "sr-doctor-fingerprint.v1" }, governance_item_id: null,
+  comparability: { engine_version: "3.5.14", rule_version: "sr-doctor-fingerprint.v1" }, rule_changed: false, governance_item_id: null,
 });
 const alerts: HistoryAlertsResponse = {
   target: "127.0.0.1:9030",
   alerts: [alert("1", "open", "150.0"), alert("2", "resolved", null)],
-  counts: { open: "1", acknowledged: "0", resolved: "1", muted: "0" },
+  counts: { open: "1", acknowledged: "0", resolved: "1", muted: "0", rule_changed: "0" },
   channels: [{ name: "in_app", available: true }, { name: "webhook", available: false }, { name: "email", available: false }],
   rule: { min_severity: "medium", mute_hours: 24, current_hours: 3, baseline_hours: 168, calibrated: false },
   limitations: [],
 };
 const noop = () => undefined;
-const renderAlerts = (selected: string | null) => renderToStaticMarkup(<AlertsPanel alerts={alerts} busy={false} onAction={noop} onAddToQueue={noop} onOpenItem={noop} onOpenTrends={noop} onSelect={noop} selectedId={selected} text={english} />);
+const renderAlerts = (selected: string | null) => renderToStaticMarkup(<AlertsPanel alerts={alerts} busy={false} onAction={noop} onResolveRuleChanged={noop} onAddToQueue={noop} onOpenItem={noop} onOpenTrends={noop} onSelect={noop} selectedId={selected} text={english} />);
 
 const item = (state: GovernanceItem["state"], allowed: GovernanceItem["allowed_transitions"], pinned: boolean): GovernanceItem => ({
   item_id: "7", target: "127.0.0.1:9030", template_key: "kg", template: "SELECT g FROM t WHERE name = ?", kind: "official_digest", title: "Slow name lookup", origin: "trends", alert_id: null,
@@ -51,10 +51,20 @@ describe("alerts (design board D)", () => {
   });
 
   it("opens on all alerts when nothing is new", () => {
-    const quiet = { ...alerts, alerts: [alert("3", "acknowledged", "50.0")], counts: { open: "0", acknowledged: "1", resolved: "0", muted: "0" } };
-    const html = renderToStaticMarkup(<AlertsPanel alerts={quiet} busy={false} onAction={noop} onAddToQueue={noop} onOpenItem={noop} onOpenTrends={noop} onSelect={noop} selectedId={null} text={english} />);
+    const quiet = { ...alerts, alerts: [alert("3", "acknowledged", "50.0")], counts: { open: "0", acknowledged: "1", resolved: "0", muted: "0", rule_changed: "0" } };
+    const html = renderToStaticMarkup(<AlertsPanel alerts={quiet} busy={false} onAction={noop} onResolveRuleChanged={noop} onAddToQueue={noop} onOpenItem={noop} onOpenTrends={noop} onSelect={noop} selectedId={null} text={english} />);
     expect(html).toContain("aria-selected=\"true\" role=\"tab\" type=\"button\">All");
     expect(html).toContain(">Mute 24 hours<");
+  });
+
+  it("flags alerts from older rules and offers to resolve them only when there are some", () => {
+    expect(renderAlerts("1")).not.toContain("rule-changed");
+    const stale = { ...alerts, alerts: [{ ...alert("4", "open", "80.0"), rule_changed: true }], counts: { ...alerts.counts, rule_changed: "1" } };
+    const html = renderToStaticMarkup(<AlertsPanel alerts={stale} busy={false} onAction={noop} onResolveRuleChanged={noop} onAddToQueue={noop} onOpenItem={noop} onOpenTrends={noop} onSelect={noop} selectedId="4" text={chinese} />);
+    expect(html).toContain("有 1 条告警来自升级前的规则");
+    expect(html).toContain(">全部标为已解决<");
+    expect(html).toContain("<span class=\"rule-changed\">规则已变更</span>");
+    expect(html).toContain("规则已变更，无法比较");
   });
 
   it("never invents a percentage for a 0 baseline", () => {
@@ -116,7 +126,7 @@ describe("governance drafts and copy (audit V1-15, V1-18)", () => {
   });
 
   it("localizes the channels that are not available", () => {
-    const html = renderToStaticMarkup(<AlertsPanel alerts={alerts} busy={false} onAction={noop} onAddToQueue={noop} onOpenItem={noop} onOpenTrends={noop} onSelect={noop} selectedId="1" text={chinese} />);
+    const html = renderToStaticMarkup(<AlertsPanel alerts={alerts} busy={false} onAction={noop} onResolveRuleChanged={noop} onAddToQueue={noop} onOpenItem={noop} onOpenTrends={noop} onSelect={noop} selectedId="1" text={chinese} />);
     expect(html.match(/当前版本暂不支持/g)).toHaveLength(2);
     expect(html).not.toContain("Not available in this version");
   });

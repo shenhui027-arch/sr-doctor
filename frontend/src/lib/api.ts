@@ -356,6 +356,11 @@ export class DoctorApi {
     await this.postJson<unknown>("/history/alerts/action", request, signal);
   }
 
+  /** Resolves the target's active alerts raised under an older rule version. */
+  async resolveRuleChangedAlerts(target: string | null, signal?: AbortSignal): Promise<void> {
+    await this.postJson<unknown>("/history/alerts/resolve-rule-changed", { target }, signal);
+  }
+
   async readGovernance(target: string | null, signal?: AbortSignal): Promise<GovernanceListResponse> {
     const value = await this.postJson<unknown>("/governance/list", { target }, signal);
     if (!isRecord(value) || !Array.isArray(value.items)) {

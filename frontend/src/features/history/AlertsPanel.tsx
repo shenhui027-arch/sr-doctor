@@ -1,6 +1,7 @@
 // Design board D (告警): in-app alerts raised from stage C regressions. The
 // server decides every alert, its state and its evidence; this only renders
-// and sends the user's acknowledge / mute / reopen / add-to-queue choices.
+// and sends the user's acknowledge / mute / reopen / add-to-queue choices,
+// and the one-click resolve of alerts left over from an older rule version.
 import { useState } from "react";
 import type { JSX, ReactNode } from "react";
 import type { AlertState, AlertView, HistoryAlertsResponse } from "../../../../contracts/generated/doctor-contracts";
@@ -25,7 +26,7 @@ export function alertTitle(alert: AlertView, text: LocalizedText): string {
 const level = (value: "high" | "medium" | "low", text: LocalizedText) => ({ high: text("high", "高"), medium: text("medium", "中"), low: text("low", "低") }[value]);
 const evidenceText = (value: AlertView["evidence"], text: LocalizedText) => ({ complete: text("complete", "完整"), partial: text("partial", "部分"), unavailable: text("unavailable", "不可用") }[value]);
 
-export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onOpenTrends, onAddToQueue, onOpenItem, toolbar, text }: {
+export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onResolveRuleChanged, onOpenTrends, onAddToQueue, onOpenItem, toolbar, text }: {
   alerts: HistoryAlertsResponse;
   /** Target and refresh controls, shown next to the state tabs. */
   toolbar?: ReactNode;
@@ -33,6 +34,7 @@ export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onOp
   selectedId: string | null;
   onSelect(id: string): void;
   onAction(id: string, action: "acknowledge" | "mute" | "reopen"): void;
+  onResolveRuleChanged(): void;
   onOpenTrends(templateKey: string): void;
   onAddToQueue(alert: AlertView): void;
   onOpenItem(itemId: string): void;
@@ -40,7 +42,8 @@ export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onOp
 }): JSX.Element {
   // With nothing new, open on everything so acknowledged alerts stay in view.
   const [tab, setTab] = useState<AlertTab>(alerts.counts.open === "0" ? "all" : "open");
-  const counts: Record<AlertTab, string> = { ...alerts.counts, all: String(alerts.alerts.length) };
+  const { rule_changed: ruleChanged, ...stateCounts } = alerts.counts;
+  const counts: Record<AlertTab, string> = { ...stateCounts, all: String(alerts.alerts.length) };
   const visible = alerts.alerts.filter((alert) => tab === "all" || alert.state === tab);
   const selected = visible.find((alert) => alert.alert_id === selectedId) ?? visible[0] ?? null;
   return <div className="history-page">
@@ -51,6 +54,12 @@ export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onOp
       <span className="history-muted">{text("Only changes that can be judged raise an alert", "仅显示可判断的性能变化")}</span>
       {toolbar && <span className="trend-toolbar">{toolbar}</span>}
     </div>
+    {ruleChanged !== "0" && <p className="history-banner rule-changed-banner" role="status">
+      {text(ruleChanged === "1"
+        ? "1 alert was raised under the rules before an upgrade. The current rules cannot compare it, so it will not resolve by itself."
+        : `${ruleChanged} alerts were raised under the rules before an upgrade. The current rules cannot compare them, so they will not resolve by themselves.`, `有 ${ruleChanged} 条告警来自升级前的规则。当前规则无法与之比较，它们不会自动解决。`)}
+      <button className="button secondary" disabled={busy} onClick={onResolveRuleChanged} type="button">{text("Mark them resolved", "全部标为已解决")}</button>
+    </p>}
     <div className="history-row">
       <section aria-labelledby="alert-list" className="history-card wide">
         <h2 id="alert-list">{text("Alerts", "告警")}</h2>
@@ -58,7 +67,7 @@ export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onOp
           {visible.map((alert) => <li key={alert.alert_id}>
             <button aria-pressed={alert.alert_id === selected?.alert_id} className={alert.alert_id === selected?.alert_id ? "alert-row selected" : "alert-row"} onClick={() => onSelect(alert.alert_id)} type="button">
               <span className="history-muted mono">{clockText(alert.last_seen_seconds).slice(5, 16)}</span>
-              <strong>{alertTitle(alert, text)}</strong>
+              <strong>{alertTitle(alert, text)}{alert.rule_changed && <span className="rule-changed">{text("Rules changed", "规则已变更")}</span>}</strong>
               <span className={`alert-sev ${alert.severity}`}>{text("Severity", "严重度")} {level(alert.severity, text)}</span>
               <span className="history-muted">{text("Confidence", "置信度")} {level(alert.confidence, text)}</span>
               <code className="alert-template">{alert.template ?? alert.template_key}</code>
@@ -82,7 +91,7 @@ export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onOp
             <dt>{text("Template", "模板")}</dt><dd>{selected.template ?? "—"} · {selected.kind === "official_digest" ? text("official digest", "官方 digest") : text("unofficial fingerprint", "非官方指纹")}</dd>
             <dt>{text("Hour (UTC)", "时间桶（UTC）")}</dt><dd>{clockText(selected.bucket_start_seconds).slice(5, 16)}–{clockText(selected.bucket_start_seconds + 3600).slice(11, 16)} · {metricText(selected.baseline_median)} → {metricText(selected.current_median)}</dd>
             <dt>{text("Representative", "代表执行")}</dt><dd>{selected.exemplar_query_id ?? "—"}</dd>
-            <dt>{text("Comparability", "可比性")}</dt><dd>StarRocks {selected.comparability.engine_version} · {selected.comparability.rule_version}</dd>
+            <dt>{text("Comparability", "可比性")}</dt><dd>StarRocks {selected.comparability.engine_version} · {selected.comparability.rule_version}{selected.rule_changed && text(" · rules changed since; not comparable", " · 规则已变更，无法比较")}</dd>
             {selected.muted_until_seconds !== null && <><dt>{text("Muted until", "静默至")}</dt><dd>{clockText(selected.muted_until_seconds)}</dd></>}
           </dl>
           <div className="alert-actions">
