@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExplainSourceLocator",
+  "description": "A locator for Explain source material.  `row_line` ranges are byte offsets in the original MySQL cell, never in a reconstructed joined string.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "byte_length",
+        "kind",
+        "row_count",
+        "source_ref"
+      ],
+      "properties": {
+        "byte_length": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "result"
+          ]
+        },
+        "row_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "byte_end",
+        "byte_start",
+        "global_line_no",
+        "kind",
+        "row_line_no",
+        "row_no",
+        "source_ref"
+      ],
+      "properties": {
+        "byte_end": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "byte_start": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "global_line_no": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 1.0
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "row_line"
+          ]
+        },
+        "row_line_no": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 1.0
+        },
+        "row_no": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 1.0
+        },
+        "source_ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "availability",
+        "field",
+        "kind",
+        "source_ref"
+      ],
+      "properties": {
+        "availability": {
+          "$ref": "#/definitions/ExplainMetadataAvailability"
+        },
+        "evidence_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "field": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "connection_metadata"
+          ]
+        },
+        "source_ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "ExplainMetadataAvailability": {
+      "type": "string",
+      "enum": [
+        "available",
+        "unavailable"
+      ]
+    }
+  }
+}

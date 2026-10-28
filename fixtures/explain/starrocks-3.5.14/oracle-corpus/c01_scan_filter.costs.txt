@@ -1,0 +1,42 @@
+PLAN COST
+  CPU: 1440.07200360018
+  Memory: 0.0
+
+PLAN FRAGMENT 0(F01)
+  Output Exprs:1: s_id | 3: s_cust | 6: s_amount
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  2:EXCHANGE
+     cardinality: 60
+
+PLAN FRAGMENT 1(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 02
+
+  1:Project
+  |  output columns:
+  |  1 <-> [1: s_id, BIGINT, false]
+  |  3 <-> [3: s_cust, INT, false]
+  |  6 <-> [6: s_amount, DECIMAL64(12,2), false]
+  |  cardinality: 60
+  |  column statistics: 
+  |  * s_id-->[1.0, 200000.0, 0.0, 8.0, 60.0030001500075] ESTIMATE
+  |  * s_cust-->[100.0, 160.0, 0.0, 4.0, 60.0030001500075] ESTIMATE
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 60.0030001500075] ESTIMATE
+  |  
+  0:OlapScanNode
+     table: sales, rollup: sales
+     preAggregation: on
+     Predicates: [5: s_qty, INT, false] = 9, [3: s_cust, INT, false] >= 100, [3: s_cust, INT, false] <= 160
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10161,10163,10165,10167,10169,10171,10173,10175
+     actualRows=0, avgRowSize=24.0
+     cardinality: 60
+     column statistics: 
+     * s_id-->[1.0, 200000.0, 0.0, 8.0, 60.0030001500075] ESTIMATE
+     * s_cust-->[100.0, 160.0, 0.0, 4.0, 60.0030001500075] ESTIMATE
+     * s_qty-->[9.0, 9.0, 0.0, 4.0, 10.0] ESTIMATE
+     * s_amount-->[0.0, 99.99, 0.0, 8.0, 60.0030001500075] ESTIMATE

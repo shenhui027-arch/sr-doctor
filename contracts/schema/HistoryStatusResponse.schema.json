@@ -1,0 +1,437 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HistoryStatusResponse",
+  "type": "object",
+  "required": [
+    "budget",
+    "collection",
+    "coverage",
+    "limitations",
+    "remote_collection_enabled",
+    "runs",
+    "store"
+  ],
+  "properties": {
+    "budget": {
+      "$ref": "#/definitions/CollectionBudget"
+    },
+    "collection": {
+      "$ref": "#/definitions/CollectionState"
+    },
+    "coverage": {
+      "description": "Most recent last; the hour holding `now` is the last entry.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CoverageHour"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "open_alerts": {
+      "description": "Open (unacknowledged) in-app alerts of the shown target, for the badge.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "remote_collection_enabled": {
+      "description": "Remote clusters are collected only after the operator enables it post-G1.",
+      "type": "boolean"
+    },
+    "runs": {
+      "description": "Newest first.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CollectionRun"
+      }
+    },
+    "store": {
+      "$ref": "#/definitions/HistoryStoreState"
+    },
+    "target": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "watermark_seconds": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "minimum": 0.0
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "CollectionBudget": {
+      "type": "object",
+      "required": [
+        "catch_up_seconds",
+        "lag_seconds",
+        "period_seconds",
+        "production_budget_measured",
+        "query_timeout_seconds",
+        "slice_row_limit",
+        "slice_seconds"
+      ],
+      "properties": {
+        "catch_up_seconds": {
+          "description": "Older unread spans are skipped and recorded as gaps.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "lag_seconds": {
+          "description": "A slice is read only once this long has passed after its end.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "period_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "production_budget_measured": {
+          "description": "The production budget comes from the G1 pilot.",
+          "type": "boolean"
+        },
+        "query_timeout_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "slice_row_limit": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "slice_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "CollectionRun": {
+      "type": "object",
+      "required": [
+        "attributed",
+        "duration_ms",
+        "partial_statements",
+        "rows_read",
+        "slice_end_seconds",
+        "slice_start_seconds",
+        "started_seconds",
+        "state",
+        "unavailable_statements"
+      ],
+      "properties": {
+        "attributed": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": "string"
+        },
+        "partial_statements": {
+          "type": "string"
+        },
+        "reason": {
+          "description": "e.g. `row_limit`, `read_failed:<stage>`, `beyond_catch_up`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rows_read": {
+          "type": "string"
+        },
+        "slice_end_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "slice_start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "started_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "state": {
+          "$ref": "#/definitions/CollectionRunState"
+        },
+        "unavailable_statements": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "CollectionRunState": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "failed",
+        "gap"
+      ]
+    },
+    "CollectionState": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "next_run_seconds",
+            "state"
+          ],
+          "properties": {
+            "next_run_seconds": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "running"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "paused"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Failed reads back off exponentially; nothing is retried in a burst.",
+          "type": "object",
+          "required": [
+            "failures",
+            "next_run_seconds",
+            "state"
+          ],
+          "properties": {
+            "failures": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "next_run_seconds": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "backoff"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/CollectionStoppedReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "stopped"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "CollectionStoppedReason": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "history_disabled",
+            "audit_unavailable"
+          ]
+        },
+        {
+          "description": "No connected session: reconnect to continue from the watermark.",
+          "type": "string",
+          "enum": [
+            "not_connected"
+          ]
+        },
+        {
+          "description": "A remote (non-loopback) cluster: production collection waits for G1.",
+          "type": "string",
+          "enum": [
+            "production_gate"
+          ]
+        },
+        {
+          "description": "Only one collector runs per process; another session already collects.",
+          "type": "string",
+          "enum": [
+            "another_session_collecting"
+          ]
+        }
+      ]
+    },
+    "CoverageHour": {
+      "type": "object",
+      "required": [
+        "hour_start_seconds",
+        "state"
+      ],
+      "properties": {
+        "hour_start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "state": {
+          "$ref": "#/definitions/CoverageHourState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "CoverageHourState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        {
+          "description": "Not read (gap, failure, or never collected): not zero executions.",
+          "type": "string",
+          "enum": [
+            "not_collected"
+          ]
+        }
+      ]
+    },
+    "HistoryStoreState": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "buckets",
+            "retention_days",
+            "state",
+            "templates"
+          ],
+          "properties": {
+            "buckets": {
+              "type": "string"
+            },
+            "file_bytes": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "retention_days": {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            },
+            "templates": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "No history path configured, or the operator turned history off.",
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "disabled"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The configured file could not be opened; nothing is collected. Only a category and stable code are public, never paths or error text.",
+          "type": "object",
+          "required": [
+            "code",
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "reason": {
+              "description": "Always emitted by current backends; TypeScript readers also accept older history responses that contain only the state.",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/HistoryStoreUnavailableReason"
+                }
+              ]
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "HistoryStoreUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "migration_requires_manual_resolution",
+        "io_or_permission",
+        "other"
+      ]
+    }
+  }
+}

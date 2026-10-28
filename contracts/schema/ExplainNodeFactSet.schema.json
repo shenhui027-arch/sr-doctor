@@ -1,0 +1,401 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExplainNodeFactSet",
+  "type": "object",
+  "required": [
+    "card_slots",
+    "completeness",
+    "facts",
+    "node_ref",
+    "reason_codes",
+    "source_refs"
+  ],
+  "properties": {
+    "card_slots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ExplainCardFactSlot"
+      },
+      "maxItems": 3,
+      "minItems": 3
+    },
+    "completeness": {
+      "$ref": "#/definitions/CompletenessState"
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ExplainNodeFact"
+      }
+    },
+    "node_ref": {
+      "type": "string"
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "CompletenessState": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "ExplainAggregatePhase": {
+      "type": "string",
+      "enum": [
+        "update_serialize",
+        "update_finalize",
+        "merge_finalize"
+      ]
+    },
+    "ExplainCardFactSlot": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "expected_fact_kind",
+            "fact_ref",
+            "reason_codes",
+            "selection_recipe",
+            "slot_id",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "expected_fact_kind": {
+              "$ref": "#/definitions/ExplainFactKind"
+            },
+            "fact_ref": {
+              "type": "string"
+            },
+            "reason_codes": {
+              "type": "array",
+              "maxItems": 0
+            },
+            "selection_recipe": {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            "slot_id": {
+              "$ref": "#/definitions/ExplainCardSlotId"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "selected"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "expected_fact_kind",
+            "fact_ref",
+            "reason_codes",
+            "selection_recipe",
+            "slot_id",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "expected_fact_kind": {
+              "$ref": "#/definitions/ExplainFactKind"
+            },
+            "fact_ref": {
+              "type": "null"
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "selection_recipe": {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            "slot_id": {
+              "$ref": "#/definitions/ExplainCardSlotId"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "expected_fact_kind",
+            "fact_ref",
+            "reason_codes",
+            "selection_recipe",
+            "slot_id",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "expected_fact_kind": {
+              "type": "null"
+            },
+            "fact_ref": {
+              "type": "null"
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "selection_recipe": {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            "slot_id": {
+              "$ref": "#/definitions/ExplainCardSlotId"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_applicable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ExplainCardSlotId": {
+      "type": "string",
+      "enum": [
+        "primary",
+        "secondary",
+        "tertiary"
+      ]
+    },
+    "ExplainCardinalityEstimate": {
+      "type": "object",
+      "required": [
+        "kind",
+        "scale",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/ExplainCardinalityNumberKind"
+        },
+        "scale": {
+          "type": "null"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,38})$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainCardinalityNumberKind": {
+      "type": "string",
+      "enum": [
+        "integer"
+      ]
+    },
+    "ExplainDistribution": {
+      "type": "string",
+      "enum": [
+        "broadcast",
+        "gather",
+        "shuffle"
+      ]
+    },
+    "ExplainFactEvidenceKind": {
+      "type": "string",
+      "enum": [
+        "explicit",
+        "verified_derived"
+      ]
+    },
+    "ExplainFactKind": {
+      "description": "The small, version-pinned set of plan facts that an Explain-only card may render.  These are estimates or structural facts, never runtime metrics.",
+      "type": "string",
+      "enum": [
+        "cardinality_estimate",
+        "distribution",
+        "join_strategy",
+        "aggregate_phase",
+        "plan_child_count"
+      ]
+    },
+    "ExplainFactValue": {
+      "description": "The value arm remains type-safe while the outer fact tag always expresses availability.  This prevents a formatter fact kind from being mistaken for an availability state on the public wire.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ExplainCardinalityEstimate"
+        },
+        {
+          "$ref": "#/definitions/ExplainDistribution"
+        },
+        {
+          "$ref": "#/definitions/ExplainJoinStrategy"
+        },
+        {
+          "$ref": "#/definitions/ExplainAggregatePhase"
+        },
+        {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      ]
+    },
+    "ExplainJoinStrategy": {
+      "type": "string",
+      "enum": [
+        "inner_broadcast",
+        "inner_partitioned",
+        "right_outer_bucket_shuffle",
+        "right_outer_partitioned"
+      ]
+    },
+    "ExplainNodeFact": {
+      "description": "A fact is an exclusive `available`/`unavailable` wire arm.  The unavailable arm carries only a typed kind and stable reason codes, never raw formatter text.  Available facts keep `fact_kind` explicit for a renderer that does not know the source grammar.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "evidence_kind",
+            "fact_kind",
+            "fact_ref",
+            "node_ref",
+            "source_refs",
+            "state",
+            "value"
+          ],
+          "properties": {
+            "evidence_kind": {
+              "$ref": "#/definitions/ExplainFactEvidenceKind"
+            },
+            "fact_kind": {
+              "$ref": "#/definitions/ExplainFactKind"
+            },
+            "fact_ref": {
+              "type": "string"
+            },
+            "node_ref": {
+              "type": "string"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/ExplainFactValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "fact_kind",
+            "fact_ref",
+            "node_ref",
+            "reason_codes",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "fact_kind": {
+              "$ref": "#/definitions/ExplainFactKind"
+            },
+            "fact_ref": {
+              "type": "string"
+            },
+            "node_ref": {
+              "type": "string"
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "RecipeRef": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

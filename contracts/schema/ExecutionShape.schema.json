@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExecutionShape",
+  "type": "object",
+  "required": [
+    "fragments",
+    "reasons",
+    "recipe_id",
+    "state"
+  ],
+  "properties": {
+    "fragment_count": {
+      "description": "Distinct `Fragment N:` sections; `None` when they can not be counted.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "fragments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FragmentInstanceCount"
+      }
+    },
+    "instance_count": {
+      "description": "Sum of every fragment's `InstanceNum`; `None` unless all are exact.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recipe_id": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/definitions/ExecutionShapeState"
+    }
+  },
+  "definitions": {
+    "ExecutionShapeState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "unavailable"
+          ]
+        },
+        {
+          "description": "Fragment count and every fragment's `InstanceNum` are exact.",
+          "type": "string",
+          "enum": [
+            "complete"
+          ]
+        },
+        {
+          "description": "Fragments are known but at least one `InstanceNum` is missing or invalid.",
+          "type": "string",
+          "enum": [
+            "partial"
+          ]
+        }
+      ]
+    },
+    "FragmentInstanceCount": {
+      "type": "object",
+      "required": [
+        "fragment_id",
+        "reasons",
+        "source_refs"
+      ],
+      "properties": {
+        "fragment_id": {
+          "type": "string"
+        },
+        "instance_num": {
+          "description": "FE `InstanceNum`; `None` when missing, ambiguous or invalid (never 0).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

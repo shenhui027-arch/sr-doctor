@@ -1,0 +1,557 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GraphView",
+  "type": "object",
+  "required": [
+    "completeness",
+    "edges",
+    "nodes",
+    "root_node_ids",
+    "source_refs",
+    "state",
+    "topology_source",
+    "unconnected_node_ids",
+    "unresolved_relations"
+  ],
+  "properties": {
+    "completeness": {
+      "$ref": "#/definitions/DimensionCompleteness"
+    },
+    "edges": {
+      "description": "This remains source ordered; canonicalization never sorts these edges by ID.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/GraphEdge"
+      }
+    },
+    "nodes": {
+      "description": "This remains source ordered when the source relation is ordered.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/GraphNode"
+      }
+    },
+    "root_node_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "state": {
+      "$ref": "#/definitions/GraphState"
+    },
+    "topology_source": {
+      "$ref": "#/definitions/TopologySource"
+    },
+    "unconnected_node_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "unresolved_relations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/UnresolvedRelation"
+      }
+    }
+  },
+  "definitions": {
+    "CompletenessState": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "DimensionCompleteness": {
+      "type": "object",
+      "required": [
+        "present_count",
+        "reasons",
+        "state"
+      ],
+      "properties": {
+        "expected_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "present_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/CompletenessState"
+        }
+      }
+    },
+    "DirectionSemantics": {
+      "type": "string",
+      "enum": [
+        "upstream_to_downstream",
+        "parent_to_child",
+        "dependency_precedes"
+      ]
+    },
+    "EdgeSource": {
+      "type": "string",
+      "enum": [
+        "explicit",
+        "verified_derived"
+      ]
+    },
+    "GraphEdge": {
+      "type": "object",
+      "required": [
+        "direction_semantics",
+        "edge_id",
+        "evidence_refs",
+        "from",
+        "quality",
+        "relation",
+        "source",
+        "to"
+      ],
+      "properties": {
+        "derivation_recipe": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "direction_semantics": {
+          "$ref": "#/definitions/DirectionSemantics"
+        },
+        "edge_id": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "from": {
+          "type": "string"
+        },
+        "input_role": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/InputRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality": {
+          "$ref": "#/definitions/SourceQuality"
+        },
+        "relation": {
+          "$ref": "#/definitions/GraphRelation"
+        },
+        "restates_edge_id": {
+          "description": "Set on a `fragment_sink` edge whose relation an explicit `plan_child` edge (exchange -> sending fragment root) already states in the opposite direction. A renderer draws the referenced edge and skips this one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "$ref": "#/definitions/EdgeSource"
+        },
+        "source_ordinal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "to": {
+          "type": "string"
+        }
+      }
+    },
+    "GraphEntityKind": {
+      "type": "string",
+      "enum": [
+        "plan_node",
+        "operator_group",
+        "pipeline",
+        "fragment",
+        "sink"
+      ]
+    },
+    "GraphNode": {
+      "type": "object",
+      "required": [
+        "entity_kind",
+        "metric_observation_refs",
+        "native_operator_refs",
+        "node_id",
+        "source_quality",
+        "source_refs",
+        "subordinate_operator_refs"
+      ],
+      "properties": {
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entity_kind": {
+          "$ref": "#/definitions/GraphEntityKind"
+        },
+        "execution_state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fragment_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metric_observation_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "native_operator_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OrderedOperatorRef"
+          }
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "pipeline_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_node_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_node_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_ordinal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_quality": {
+          "$ref": "#/definitions/SourceQuality"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sql_facts": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/GraphSqlFact"
+          }
+        },
+        "sql_location": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GraphSqlLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subordinate_operator_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OrderedOperatorRef"
+          }
+        }
+      }
+    },
+    "GraphRelation": {
+      "type": "string",
+      "enum": [
+        "plan_child",
+        "fragment_sink",
+        "exchange_link",
+        "dependency",
+        "verified_data_flow"
+      ]
+    },
+    "GraphSqlFact": {
+      "type": "object",
+      "required": [
+        "kind",
+        "source_refs",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/GraphSqlFactKind"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "GraphSqlFactKind": {
+      "type": "string",
+      "enum": [
+        "table",
+        "fields",
+        "predicate",
+        "join_condition"
+      ]
+    },
+    "GraphSqlLocation": {
+      "description": "Request-local bounded source excerpt; never a reconstructed SQL expression.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "after",
+            "before",
+            "highlight",
+            "kind",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "after": {
+              "type": "string"
+            },
+            "before": {
+              "type": "string"
+            },
+            "highlight": {
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/definitions/GraphSqlFactKind"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "located"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "ambiguous"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "unsupported"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "GraphState": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "InputRole": {
+      "type": "string",
+      "enum": [
+        "probe",
+        "build",
+        "child",
+        "sink",
+        "source"
+      ]
+    },
+    "OrderedOperatorRef": {
+      "type": "object",
+      "required": [
+        "operator_ref",
+        "source_ordinal",
+        "source_refs",
+        "source_role"
+      ],
+      "properties": {
+        "operator_ref": {
+          "type": "string"
+        },
+        "source_ordinal": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_role": {
+          "$ref": "#/definitions/SourceRole"
+        }
+      }
+    },
+    "RecipeRef": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "SourceQuality": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "partial"
+      ]
+    },
+    "SourceRole": {
+      "type": "string",
+      "enum": [
+        "native",
+        "subordinate"
+      ]
+    },
+    "TopologySource": {
+      "type": "string",
+      "enum": [
+        "execution_topology",
+        "embedded_plan",
+        "verified_profile_relation",
+        "explain_costs",
+        "explain_logical",
+        "explain_verbose",
+        "none"
+      ]
+    },
+    "UnresolvedRelation": {
+      "type": "object",
+      "required": [
+        "reason",
+        "relation_ref",
+        "source_refs"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "relation_ref": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

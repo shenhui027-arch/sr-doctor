@@ -1,0 +1,159 @@
+PLAN COST
+  CPU: 6158383.280498799
+  Memory: 81400.107421875
+
+PLAN FRAGMENT 0(F04)
+  Output Exprs:9: c_region | 10: c_segment | 11: count | 12: sum
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  11:MERGING-EXCHANGE
+     distribution type: GATHER
+     cardinality: 71
+     column statistics: 
+     * c_region-->[0.0, 5.0, 0.0, 4.0, 25.0] ESTIMATE
+     * c_segment-->[-Infinity, Infinity, 0.0, 1.0, 4.0] ESTIMATE
+     * count-->[0.0, 125200.32051282052, 0.0, 8.0, 71.19140625] ESTIMATE
+     * sum-->[0.0, 99.99, 0.0, 8.0, 71.19140625] ESTIMATE
+     * GROUPING_ID-->[0.0, 3.0, 0.0, 8.0, 3.0] ESTIMATE
+
+PLAN FRAGMENT 1(F03)
+
+  Input Partition: HASH_PARTITIONED: 9: c_region, 10: c_segment, 13: GROUPING_ID
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 11
+
+  10:SORT
+  |  order by: [9, INT, true] ASC, [10, VARCHAR(8), true] ASC
+  |  offset: 0
+  |  hasNullableGenerateChild: true
+  |  cardinality: 71
+  |  column statistics: 
+  |  * c_region-->[0.0, 5.0, 0.0, 4.0, 25.0] ESTIMATE
+  |  * c_segment-->[-Infinity, Infinity, 0.0, 1.0, 4.0] ESTIMATE
+  |  * count-->[0.0, 125200.32051282052, 0.0, 8.0, 71.19140625] ESTIMATE
+  |  * sum-->[0.0, 99.99, 0.0, 8.0, 71.19140625] ESTIMATE
+  |  * GROUPING_ID-->[0.0, 3.0, 0.0, 8.0, 3.0] ESTIMATE
+  |  
+  9:Project
+  |  output columns:
+  |  9 <-> [9: c_region, INT, false]
+  |  10 <-> [10: c_segment, VARCHAR(8), false]
+  |  11 <-> [11: count, BIGINT, false]
+  |  12 <-> [12: sum, DECIMAL128(38,2), true]
+  |  hasNullableGenerateChild: true
+  |  cardinality: 71
+  |  column statistics: 
+  |  * c_region-->[0.0, 5.0, 0.0, 4.0, 25.0] ESTIMATE
+  |  * c_segment-->[-Infinity, Infinity, 0.0, 1.0, 4.0] ESTIMATE
+  |  * count-->[0.0, 125200.32051282052, 0.0, 8.0, 71.19140625] ESTIMATE
+  |  * sum-->[0.0, 99.99, 0.0, 8.0, 71.19140625] ESTIMATE
+  |  
+  8:AGGREGATE (merge finalize)
+  |  aggregate: count[([11: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false], sum[([12: sum, DECIMAL128(38,2), true]); args: DECIMAL64; result: DECIMAL128(38,2); args nullable: true; result nullable: true]
+  |  group by: [9: c_region, INT, false], [10: c_segment, VARCHAR(8), false], [13: GROUPING_ID, BIGINT, false]
+  |  hasNullableGenerateChild: true
+  |  cardinality: 71
+  |  column statistics: 
+  |  * c_region-->[0.0, 5.0, 0.0, 4.0, 25.0] ESTIMATE
+  |  * c_segment-->[-Infinity, Infinity, 0.0, 1.0, 4.0] ESTIMATE
+  |  * count-->[0.0, 125200.32051282052, 0.0, 8.0, 71.19140625] ESTIMATE
+  |  * sum-->[0.0, 99.99, 0.0, 8.0, 71.19140625] ESTIMATE
+  |  * GROUPING_ID-->[0.0, 3.0, 0.0, 8.0, 3.0] ESTIMATE
+  |  
+  7:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [9: c_region, INT, false], [10: c_segment, VARCHAR(8), false], [13: GROUPING_ID, BIGINT, false]
+     cardinality: 71
+
+PLAN FRAGMENT 2(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 9: c_region, 10: c_segment, 13: GROUPING_ID
+  OutPut Exchange Id: 07
+
+  6:AGGREGATE (update serialize)
+  |  STREAMING
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false], sum[([6: s_amount, DECIMAL64(12,2), false]); args: DECIMAL64; result: DECIMAL128(38,2); args nullable: false; result nullable: true]
+  |  group by: [9: c_region, INT, false], [10: c_segment, VARCHAR(8), false], [13: GROUPING_ID, BIGINT, false]
+  |  hasNullableGenerateChild: true
+  |  cardinality: 71
+  |  column statistics: 
+  |  * c_region-->[0.0, 5.0, 0.0, 4.0, 25.0] ESTIMATE
+  |  * c_segment-->[-Infinity, Infinity, 0.0, 1.0, 4.0] ESTIMATE
+  |  * count-->[0.0, 125200.32051282052, 0.0, 8.0, 71.19140625] ESTIMATE
+  |  * sum-->[0.0, 99.99, 0.0, 8.0, 71.19140625] ESTIMATE
+  |  * GROUPING_ID-->[0.0, 3.0, 0.0, 8.0, 3.0] ESTIMATE
+  |  
+  5:REPEAT_NODE
+  |  repeat: repeat 2 lines [[], [9], [9, 10]]
+  |  cardinality: 125200
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 4166.666666666667] ESTIMATE
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * c_id-->[1.0, 20000.0, 0.0, 4.0, 4166.666666666667] ESTIMATE
+  |  * c_region-->[0.0, 5.0, 0.0, 4.0, 25.0] ESTIMATE
+  |  * c_segment-->[-Infinity, Infinity, 0.0, 1.0, 4.0] ESTIMATE
+  |  * GROUPING_ID-->[0.0, 3.0, 0.0, 8.0, 3.0] ESTIMATE
+  |  
+  4:Project
+  |  output columns:
+  |  6 <-> [6: s_amount, DECIMAL64(12,2), false]
+  |  9 <-> [9: c_region, INT, false]
+  |  10 <-> [10: c_segment, VARCHAR(8), false]
+  |  cardinality: 41733
+  |  column statistics: 
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * c_region-->[0.0, 5.0, 0.0, 4.0, 25.0] ESTIMATE
+  |  * c_segment-->[-Infinity, Infinity, 0.0, 1.0, 4.0] ESTIMATE
+  |  
+  3:HASH JOIN
+  |  join op: INNER JOIN (BROADCAST)
+  |  equal join conjunct: [3: s_cust, INT, false] = [7: c_id, INT, false]
+  |  build runtime filters:
+  |  - filter_id = 0, build_expr = (7: c_id), remote = false
+  |  output columns: 6, 9, 10
+  |  can local shuffle: false
+  |  cardinality: 41733
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 4166.666666666667] ESTIMATE
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * c_id-->[1.0, 20000.0, 0.0, 4.0, 4166.666666666667] ESTIMATE
+  |  * c_region-->[0.0, 5.0, 0.0, 4.0, 25.0] ESTIMATE
+  |  * c_segment-->[-Infinity, Infinity, 0.0, 1.0, 4.0] ESTIMATE
+  |  
+  |----2:EXCHANGE
+  |       distribution type: BROADCAST
+  |       cardinality: 4167
+  |    
+  0:OlapScanNode
+     table: sales, rollup: sales
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10279,10281,10283,10285,10287,10289,10291,10293
+     actualRows=0, avgRowSize=12.0
+     cardinality: 200000
+     probe runtime filters:
+     - filter_id = 0, probe_expr = (3: s_cust)
+     column statistics: 
+     * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * s_amount-->[0.0, 99.99, 0.0, 8.0, 10063.0] ESTIMATE
+
+PLAN FRAGMENT 3(F01)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 02
+
+  1:OlapScanNode
+     table: customers, rollup: customers
+     preAggregation: on
+     Predicates: [9: c_region, INT, false] < 5
+     partitionsRatio=1/1, tabletsRatio=4/4
+     tabletList=10259,10261,10263,10265
+     actualRows=0, avgRowSize=9.0
+     cardinality: 4167
+     column statistics: 
+     * c_id-->[1.0, 20000.0, 0.0, 4.0, 4166.666666666667] ESTIMATE
+     * c_region-->[0.0, 5.0, 0.0, 4.0, 25.0] ESTIMATE
+     * c_segment-->[-Infinity, Infinity, 0.0, 1.0, 4.0] ESTIMATE

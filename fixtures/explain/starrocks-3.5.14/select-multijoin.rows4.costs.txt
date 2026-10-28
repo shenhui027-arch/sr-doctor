@@ -1,0 +1,233 @@
+PLAN COST
+  CPU: 1597.6000000000001
+  Memory: 234.4
+
+PLAN FRAGMENT 0(F10)
+  Output Exprs:2: bucket | 14: sum
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  18:MERGING-EXCHANGE
+     distribution type: GATHER
+     limit: 10
+     cardinality: 2
+     column statistics: 
+     * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+     * sum-->[3.0, 12.0, 0.0, 8.0, 2.0] ESTIMATE
+
+PLAN FRAGMENT 1(F09)
+
+  Input Partition: HASH_PARTITIONED: 2: bucket
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 18
+
+  17:TOP-N
+  |  order by: [14, BIGINT, true] DESC
+  |  offset: 0
+  |  limit: 10
+  |  cardinality: 2
+  |  column statistics: 
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  * sum-->[3.0, 12.0, 0.0, 8.0, 2.0] ESTIMATE
+  |  
+  16:AGGREGATE (merge finalize)
+  |  aggregate: sum[([14: sum, BIGINT, true]); args: BIGINT; result: BIGINT; args nullable: true; result nullable: true]
+  |  group by: [2: bucket, INT, false]
+  |  cardinality: 2
+  |  column statistics: 
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  * sum-->[3.0, 12.0, 0.0, 8.0, 2.0] ESTIMATE
+  |  
+  15:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [2: bucket, INT, false]
+     cardinality: 2
+
+PLAN FRAGMENT 2(F06)
+
+  Input Partition: HASH_PARTITIONED: 1: id
+  OutPut Partition: HASH_PARTITIONED: 2: bucket
+  OutPut Exchange Id: 15
+
+  14:AGGREGATE (update serialize)
+  |  STREAMING
+  |  aggregate: sum[([13: expr, BIGINT, false]); args: BIGINT; result: BIGINT; args nullable: false; result nullable: true]
+  |  group by: [2: bucket, INT, false]
+  |  cardinality: 2
+  |  column statistics: 
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  * sum-->[3.0, 12.0, 0.0, 8.0, 2.0] ESTIMATE
+  |  
+  13:Project
+  |  output columns:
+  |  2 <-> [2: bucket, INT, false]
+  |  13 <-> cast([4: id, INT, false] as BIGINT) + cast([7: id, INT, false] as BIGINT) + cast([10: id, INT, false] as BIGINT)
+  |  cardinality: 16
+  |  column statistics: 
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  * expr-->[3.0, 12.0, 0.0, 8.0, 4.0] ESTIMATE
+  |  
+  12:HASH JOIN
+  |  join op: INNER JOIN (BROADCAST)
+  |  equal join conjunct: [8: bucket, INT, false] = [11: bucket, INT, false]
+  |  build runtime filters:
+  |  - filter_id = 2, build_expr = (11: bucket), remote = true
+  |  output columns: 2, 4, 7, 10
+  |  can local shuffle: true
+  |  cardinality: 16
+  |  column statistics: 
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+  |  * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  * expr-->[3.0, 12.0, 0.0, 8.0, 4.0] ESTIMATE
+  |  
+  |----11:EXCHANGE
+  |       distribution type: BROADCAST
+  |       cardinality: 4
+  |    
+  9:Project
+  |  output columns:
+  |  2 <-> [2: bucket, INT, false]
+  |  4 <-> [4: id, INT, false]
+  |  7 <-> [7: id, INT, false]
+  |  8 <-> [8: bucket, INT, false]
+  |  cardinality: 8
+  |  column statistics: 
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+  |  * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  
+  8:HASH JOIN
+  |  join op: INNER JOIN (PARTITIONED)
+  |  equal join conjunct: [1: id, INT, false] = [7: id, INT, false]
+  |  build runtime filters:
+  |  - filter_id = 1, build_expr = (7: id), remote = true
+  |  output columns: 2, 4, 7, 8
+  |  can local shuffle: false
+  |  cardinality: 8
+  |  column statistics: 
+  |  * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+  |  * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  
+  |----7:EXCHANGE
+  |       distribution type: SHUFFLE
+  |       partition exprs: [7: id, INT, false]
+  |       cardinality: 4
+  |       probe runtime filters:
+  |       - filter_id = 2, probe_expr = (8: bucket)
+  |    
+  5:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [1: id, INT, false]
+     cardinality: 8
+
+PLAN FRAGMENT 3(F07)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 11
+
+  10:OlapScanNode
+     table: rows4, rollup: rows4
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=1/1
+     tabletList=10172
+     actualRows=4, avgRowSize=8.0
+     cardinality: 4
+     column statistics: 
+     * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+     * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+
+PLAN FRAGMENT 4(F04)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 7: id
+  OutPut Exchange Id: 07
+
+  6:OlapScanNode
+     table: rows4, rollup: rows4
+     preAggregation: on
+     Predicates: [7: id, INT, false] > 0
+     partitionsRatio=1/1, tabletsRatio=1/1
+     tabletList=10172
+     actualRows=4, avgRowSize=8.0
+     cardinality: 4
+     probe runtime filters:
+     - filter_id = 2, probe_expr = (8: bucket)
+     column statistics: 
+     * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+     * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+
+PLAN FRAGMENT 5(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 1: id
+  OutPut Exchange Id: 05
+
+  4:Project
+  |  output columns:
+  |  1 <-> [1: id, INT, false]
+  |  2 <-> [2: bucket, INT, false]
+  |  4 <-> [4: id, INT, false]
+  |  cardinality: 8
+  |  column statistics: 
+  |  * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+  |  
+  3:HASH JOIN
+  |  join op: INNER JOIN (BROADCAST)
+  |  equal join conjunct: [2: bucket, INT, false] = [5: bucket, INT, false]
+  |  build runtime filters:
+  |  - filter_id = 0, build_expr = (5: bucket), remote = false
+  |  output columns: 1, 2, 4
+  |  can local shuffle: true
+  |  cardinality: 8
+  |  column statistics: 
+  |  * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+  |  * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+  |  
+  |----2:EXCHANGE
+  |       distribution type: BROADCAST
+  |       cardinality: 4
+  |    
+  0:OlapScanNode
+     table: rows4, rollup: rows4
+     preAggregation: on
+     Predicates: [1: id, INT, false] > 0
+     partitionsRatio=1/1, tabletsRatio=1/1
+     tabletList=10172
+     actualRows=4, avgRowSize=8.0
+     cardinality: 4
+     probe runtime filters:
+     - filter_id = 0, probe_expr = (2: bucket)
+     - filter_id = 1, probe_expr = (1: id)
+     column statistics: 
+     * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+     * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE
+
+PLAN FRAGMENT 6(F01)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 02
+
+  1:OlapScanNode
+     table: rows4, rollup: rows4
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=1/1
+     tabletList=10172
+     actualRows=4, avgRowSize=8.0
+     cardinality: 4
+     column statistics: 
+     * id-->[1.0, 4.0, 0.0, 4.0, 4.0] ESTIMATE
+     * bucket-->[1.0, 2.0, 0.0, 4.0, 2.0] ESTIMATE

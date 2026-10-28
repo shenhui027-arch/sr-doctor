@@ -1,0 +1,78 @@
+PLAN COST
+  CPU: 88.4
+  Memory: 86.8
+
+PLAN FRAGMENT 0(F02)
+  Output Exprs:7: expr | 8: count | 9: sum
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  6:MERGING-EXCHANGE
+     distribution type: GATHER
+     cardinality: 1
+     column statistics: 
+     * expr-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+     * count-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+     * sum-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+
+PLAN FRAGMENT 1(F01)
+
+  Input Partition: HASH_PARTITIONED: 7: expr
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 06
+
+  5:SORT
+  |  order by: [7, INT, true] ASC
+  |  offset: 0
+  |  cardinality: 1
+  |  column statistics: 
+  |  * expr-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  4:AGGREGATE (merge finalize)
+  |  aggregate: count[([8: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false], sum[([9: sum, DECIMAL128(38,2), true]); args: DECIMAL64; result: DECIMAL128(38,2); args nullable: true; result nullable: true]
+  |  group by: [7: expr, INT, true]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * expr-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  3:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [7: expr, INT, true]
+     cardinality: 1
+
+PLAN FRAGMENT 2(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 7: expr
+  OutPut Exchange Id: 03
+
+  2:AGGREGATE (update serialize)
+  |  STREAMING
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false], sum[([6: s_amount, DECIMAL64(12,2), true]); args: DECIMAL64; result: DECIMAL128(38,2); args nullable: true; result nullable: true]
+  |  group by: [7: expr, INT, true]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * expr-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  1:Project
+  |  output columns:
+  |  6 <-> [6: s_amount, DECIMAL64(12,2), true]
+  |  7 <-> [3: s_cust, INT, true] % 10
+  |  cardinality: 1
+  |  column statistics: 
+  |  * s_amount-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * expr-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  0:FileScanNode
+     BROKER: 
+     cardinality: 1
+     column statistics: 
+     * s_cust-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+     * s_amount-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+     * expr-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN

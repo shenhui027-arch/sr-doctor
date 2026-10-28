@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuditErrorCodeFact",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "reason",
+        "state"
+      ],
+      "properties": {
+        "reason": {
+          "$ref": "#/definitions/AuditOptionalFactUnavailableReason"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "unavailable"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "sql_null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "state",
+        "value"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "text"
+          ]
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "AuditOptionalFactUnavailableReason": {
+      "description": "The existing fixed schema probe did not prove an optional AuditLoader source column. This is deliberately distinct from a present SQL NULL.",
+      "type": "string",
+      "enum": [
+        "source_column_absent",
+        "conflicting_source_rows"
+      ]
+    }
+  }
+}

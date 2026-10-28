@@ -1,0 +1,410 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OfficialProfileReadResponse",
+  "description": "A successful read only. Unavailable reads use the connected typed error envelope, not an empty artifact or an inferred replacement measurement.",
+  "type": "object",
+  "required": [
+    "display_hash",
+    "display_normalization",
+    "display_text",
+    "identity",
+    "kind",
+    "limitations",
+    "node_ids",
+    "query",
+    "read_at_utc",
+    "source_hash",
+    "source_refs",
+    "text"
+  ],
+  "properties": {
+    "detected_version": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/VersionEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "display_hash": {
+      "description": "SHA-256 of `display_text` UTF-8 bytes, distinct from `source_hash`.",
+      "type": "string"
+    },
+    "display_normalization": {
+      "description": "Fixed normalization version used to derive `display_text`.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/OfficialProfileDisplayNormalization"
+        }
+      ]
+    },
+    "display_text": {
+      "description": "Additive, non-executing readable projection of `text`; never a source replacement and never a metric, SQL or HTML interpretation.",
+      "type": "string"
+    },
+    "identity": {
+      "description": "Echoes the exact authority the server accepted for this fixed read.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/OfficialProfileIdentity"
+        }
+      ]
+    },
+    "kind": {
+      "$ref": "#/definitions/OfficialProfileArtifactKind"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "node_ids": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0.0
+      }
+    },
+    "profile_observed_at_utc": {
+      "description": "None unless the source itself provides a reliable observation time.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "query": {
+      "$ref": "#/definitions/ConnectedQueryRef"
+    },
+    "read_at_utc": {
+      "description": "Completion time of this read, not the query/snapshot observation time.",
+      "type": "string"
+    },
+    "source_hash": {
+      "description": "SHA-256 of the returned UTF-8 text, independent of analysis report keys.",
+      "type": "string"
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "text": {
+      "description": "Byte-for-byte source artifact; it may contain ANSI or other control sequences as well as SQL or table names. Default readable rendering uses the `display_text` field as a text node; this field remains available for explicit source inspection and is never HTML or terminal instruction input.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "ConnectedPlanCheckAction": {
+      "description": "The available arm must carry a session-owned capability reference. The unavailable arm cannot carry one, so invalid state/reference matrices are rejected by the wire contract rather than interpreted in the browser.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "plan_sql_ref",
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "plan_sql_ref": {
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/definitions/PlanCheckAvailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/PlanCheckUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ConnectedProfileFetchAction": {
+      "description": "A Profile action is never an availability claim about the remote cache: `available` means the bounded fetch may be attempted for this row.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/ProfileFetchAvailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/ProfileFetchUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ConnectedQueryRef": {
+      "type": "object",
+      "required": [
+        "connection_id",
+        "plan_check",
+        "profile_fetch",
+        "query_id",
+        "source_refs",
+        "status",
+        "timestamp_state"
+      ],
+      "properties": {
+        "connection_id": {
+          "type": "string"
+        },
+        "database": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "discovery_generation": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "discovery_source": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/QueryDiscoverySource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed_at_local": {
+          "description": "Original bounded wall-clock text returned by Audit/ProfileList.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed_at_utc": {
+          "description": "RFC 3339 text avoids a JavaScript-unsafe epoch-millisecond integer. `None` is required when a fetch response has only a query ID and no independently observed timestamp; the API must not invent UTC.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_check": {
+          "$ref": "#/definitions/ConnectedPlanCheckAction"
+        },
+        "profile_fetch": {
+          "$ref": "#/definitions/ConnectedProfileFetchAction"
+        },
+        "query_id": {
+          "type": "string"
+        },
+        "query_time_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "resource_group": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string"
+        },
+        "timestamp_state": {
+          "$ref": "#/definitions/ConnectedTimestampState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedTimestampState": {
+      "description": "Records what the timestamp can prove. AuditLoader emits a wall-clock DATETIME without an origin offset, so a reader-session conversion is an interpretation rather than evidence of the producer's original instant.",
+      "type": "string",
+      "enum": [
+        "reader_session_interpreted",
+        "raw_wall_time_only",
+        "unavailable"
+      ]
+    },
+    "OfficialProfileArtifactKind": {
+      "type": "string",
+      "enum": [
+        "analyze_profile_text"
+      ]
+    },
+    "OfficialProfileDisplayNormalization": {
+      "description": "The fixed display projection contract for [`OfficialProfileReadResponse`]. `ansi_sgr_strip_controls_escape_v1` omits only complete ANSI SGR sequences and renders remaining control characters (including CR) visibly, while retaining LF, TAB and all non-control Unicode text.",
+      "type": "string",
+      "enum": [
+        "ansi_sgr_strip_controls_escape_v1"
+      ]
+    },
+    "OfficialProfileIdentity": {
+      "description": "The sole server-verified authority for a fixed official Profile read. Discovery and standard execution are intentionally disjoint: an execution attempt never acquires a synthetic discovery generation or observed row.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "discovery_generation",
+            "kind"
+          ],
+          "properties": {
+            "discovery_generation": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "discovery"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "execution_attempt_id",
+            "kind"
+          ],
+          "properties": {
+            "execution_attempt_id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "verified_standard_attempt"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "PlanCheckAvailableReason": {
+      "type": "string",
+      "enum": [
+        "statement_retained"
+      ]
+    },
+    "PlanCheckUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "statement_missing_or_not_select",
+        "query_metadata_unavailable",
+        "query_id_invalid",
+        "query_id_duplicate"
+      ]
+    },
+    "ProfileFetchAvailableReason": {
+      "type": "string",
+      "enum": [
+        "can_be_attempted",
+        "profile_fetched"
+      ]
+    },
+    "ProfileFetchUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "query_id_invalid",
+        "query_id_duplicate",
+        "query_not_finished"
+      ]
+    },
+    "QueryDiscoverySource": {
+      "type": "string",
+      "enum": [
+        "audit",
+        "profile_list"
+      ]
+    },
+    "VersionEvidence": {
+      "type": "object",
+      "required": [
+        "source_ref",
+        "value"
+      ],
+      "properties": {
+        "source_ref": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

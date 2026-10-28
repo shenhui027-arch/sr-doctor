@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Capabilities",
+  "type": "object",
+  "required": [
+    "api_version",
+    "build",
+    "csrf",
+    "limits",
+    "rule_sets",
+    "schema_version",
+    "supported_inputs",
+    "version_packs"
+  ],
+  "properties": {
+    "api_version": {
+      "type": "string"
+    },
+    "build": {
+      "$ref": "#/definitions/BuildCapability"
+    },
+    "csrf": {
+      "$ref": "#/definitions/CsrfCapability"
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0.0
+      }
+    },
+    "rule_sets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "supported_inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SourceKind"
+      }
+    },
+    "version_packs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/VersionPackCapability"
+      }
+    }
+  },
+  "definitions": {
+    "BuildCapability": {
+      "type": "object",
+      "required": [
+        "candidate_label",
+        "git_commit"
+      ],
+      "properties": {
+        "candidate_label": {
+          "type": "string"
+        },
+        "git_commit": {
+          "type": "string"
+        }
+      }
+    },
+    "CsrfCapability": {
+      "type": "object",
+      "required": [
+        "nonce",
+        "required_when_origin_present"
+      ],
+      "properties": {
+        "nonce": {
+          "type": "string"
+        },
+        "required_when_origin_present": {
+          "type": "boolean"
+        }
+      }
+    },
+    "SourceKind": {
+      "type": "string",
+      "enum": [
+        "json_profile",
+        "text_profile"
+      ]
+    },
+    "VersionPackCapability": {
+      "type": "object",
+      "required": [
+        "manifest_hash",
+        "pack_id",
+        "product_pack_version",
+        "upstream_commit"
+      ],
+      "properties": {
+        "manifest_hash": {
+          "type": "string"
+        },
+        "pack_id": {
+          "type": "string"
+        },
+        "product_pack_version": {
+          "type": "string"
+        },
+        "upstream_commit": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

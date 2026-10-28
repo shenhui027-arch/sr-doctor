@@ -1,0 +1,446 @@
+{
+  "fixture_id": "audit-concurrency-v1",
+  "source_is_synthetic": true,
+  "description": "Mechanical golden oracle for audit concurrency interval semantics; not an official timestamp or database sample.",
+  "contract": {
+    "interval": "[T,T+D)",
+    "overlap": "T < window_end_ms && T+D > window_start_ms",
+    "active_at": "T <= point_ms && T+D > point_ms",
+    "zero_duration": "D=0 is explicitly excluded from overlap and active_at; it is not a one-point interval.",
+    "unknown_tail": "unfinished and not_ingested records remain unknown and must not be filled as real zero counts."
+  },
+  "groups": [
+    {
+      "group_id": "cross-window-endpoint-zero",
+      "source_is_synthetic": true,
+      "description": "A query starts before the window, two queries meet at one end/start millisecond, and a zero-duration record must stay empty.",
+      "window": {
+        "start_ms": "1000",
+        "end_ms": "5000"
+      },
+      "events": [
+        {
+          "id": "long-before-window",
+          "state": "available",
+          "recorded_start_ms": "500",
+          "duration_ms": "5000"
+        },
+        {
+          "id": "touches-window-left",
+          "state": "available",
+          "recorded_start_ms": "0",
+          "duration_ms": "1000"
+        },
+        {
+          "id": "ends-at-3500",
+          "state": "available",
+          "recorded_start_ms": "1500",
+          "duration_ms": "2000"
+        },
+        {
+          "id": "starts-at-3500",
+          "state": "available",
+          "recorded_start_ms": "3500",
+          "duration_ms": "1000"
+        },
+        {
+          "id": "query-time-zero",
+          "state": "available",
+          "recorded_start_ms": "2500",
+          "duration_ms": "0"
+        },
+        {
+          "id": "late-window-query",
+          "state": "available",
+          "recorded_start_ms": "4800",
+          "duration_ms": "200"
+        },
+        {
+          "id": "touches-window-right",
+          "state": "available",
+          "recorded_start_ms": "5000",
+          "duration_ms": "1000"
+        }
+      ],
+      "expected": {
+        "end_ms": {
+          "long-before-window": "5500",
+          "touches-window-left": "1000",
+          "ends-at-3500": "3500",
+          "starts-at-3500": "4500",
+          "query-time-zero": "2500",
+          "late-window-query": "5000",
+          "touches-window-right": "6000"
+        },
+        "overlap_ids": [
+          "long-before-window",
+          "ends-at-3500",
+          "starts-at-3500",
+          "late-window-query"
+        ],
+        "active_at": {
+          "1000": ["long-before-window"],
+          "2500": ["long-before-window", "ends-at-3500"],
+          "3500": ["long-before-window", "starts-at-3500"],
+          "4999": ["long-before-window", "late-window-query"],
+          "5000": ["long-before-window", "touches-window-right"]
+        },
+        "zero_duration_ids": ["query-time-zero"],
+        "counts": {
+          "observed_records": "7",
+          "available_records": "7",
+          "known_nonzero_intervals": "6",
+          "zero_duration_records": "1",
+          "overlap_records": "4",
+          "unknown_records": "0",
+          "typed_excluded_records": "0"
+        },
+        "coverage": {
+          "unknown_tail_ids": [],
+          "unknown_is_not_zero": false,
+          "typed_excluded_by_reason": {},
+          "unknown_by_reason": {}
+        }
+      }
+    },
+    {
+      "group_id": "latest-tail-unknown",
+      "source_is_synthetic": true,
+      "description": "The newest tail contains unfinished and not-ingested records; their active state is unknown, not a real zero.",
+      "window": {
+        "start_ms": "9000",
+        "end_ms": "10000"
+      },
+      "events": [
+        {
+          "id": "tail-crossing-window-start",
+          "state": "available",
+          "recorded_start_ms": "8999",
+          "duration_ms": "2"
+        },
+        {
+          "id": "latest-complete",
+          "state": "available",
+          "recorded_start_ms": "9500",
+          "duration_ms": "100"
+        },
+        {
+          "id": "latest-zero",
+          "state": "available",
+          "recorded_start_ms": "9999",
+          "duration_ms": "0"
+        },
+        {
+          "id": "latest-unfinished",
+          "state": "unfinished",
+          "recorded_start_ms": "9900",
+          "duration_ms": null,
+          "unknown_reason": "unfinished"
+        },
+        {
+          "id": "latest-not-ingested",
+          "state": "not_ingested",
+          "recorded_start_ms": null,
+          "duration_ms": null,
+          "unknown_reason": "not_ingested"
+        }
+      ],
+      "expected": {
+        "end_ms": {
+          "tail-crossing-window-start": "9001",
+          "latest-complete": "9600",
+          "latest-zero": "9999"
+        },
+        "overlap_ids": [
+          "tail-crossing-window-start",
+          "latest-complete"
+        ],
+        "active_at": {
+          "9000": ["tail-crossing-window-start"],
+          "9500": ["latest-complete"],
+          "9600": [],
+          "9900": [],
+          "9999": []
+        },
+        "zero_duration_ids": ["latest-zero"],
+        "counts": {
+          "observed_records": "5",
+          "available_records": "3",
+          "known_nonzero_intervals": "2",
+          "zero_duration_records": "1",
+          "overlap_records": "2",
+          "unknown_records": "2",
+          "typed_excluded_records": "0"
+        },
+        "coverage": {
+          "unknown_tail_ids": ["latest-unfinished", "latest-not-ingested"],
+          "unknown_is_not_zero": true,
+          "typed_excluded_by_reason": {},
+          "unknown_by_reason": {
+            "unfinished": "1",
+            "not_ingested": "1"
+          }
+        }
+      }
+    },
+    {
+      "group_id": "typed-exclusion-bigint",
+      "source_is_synthetic": true,
+      "description": "Typed exclusion states remain outside interval counts while valid endpoints and counts stay exact beyond the JavaScript safe integer range.",
+      "window": {
+        "start_ms": "9007199254740993",
+        "end_ms": "9007199254740997"
+      },
+      "events": [
+        {
+          "id": "valid-bigint",
+          "state": "available",
+          "recorded_start_ms": "9007199254740993",
+          "duration_ms": "3"
+        },
+        {
+          "id": "valid-bigint-next",
+          "state": "available",
+          "recorded_start_ms": "9007199254740996",
+          "duration_ms": "1"
+        },
+        {
+          "id": "zero-bigint",
+          "state": "available",
+          "recorded_start_ms": "9007199254740998",
+          "duration_ms": "0"
+        },
+        {
+          "id": "missing-duration",
+          "state": "missing",
+          "recorded_start_ms": "9007199254740993",
+          "duration_ms": null,
+          "exclusion_reason": "missing_duration"
+        },
+        {
+          "id": "negative-duration",
+          "state": "invalid",
+          "recorded_start_ms": "9007199254740993",
+          "duration_ms": "-1",
+          "exclusion_reason": "negative_duration"
+        },
+        {
+          "id": "invalid-start",
+          "state": "invalid",
+          "recorded_start_ms": "not-a-decimal",
+          "duration_ms": "2",
+          "exclusion_reason": "invalid_start"
+        },
+        {
+          "id": "overflow-duration",
+          "state": "overflow",
+          "recorded_start_ms": "9007199254740993",
+          "duration_ms": "9223372036854775808",
+          "exclusion_reason": "overflow_duration"
+        },
+        {
+          "id": "duplicate-record",
+          "state": "duplicate",
+          "recorded_start_ms": "9007199254740993",
+          "duration_ms": "3",
+          "exclusion_reason": "duplicate_record"
+        },
+        {
+          "id": "conflicting-record",
+          "state": "conflict",
+          "recorded_start_ms": "9007199254740993",
+          "duration_ms": "4",
+          "exclusion_reason": "conflicting_record"
+        }
+      ],
+      "expected": {
+        "end_ms": {
+          "valid-bigint": "9007199254740996",
+          "valid-bigint-next": "9007199254740997",
+          "zero-bigint": "9007199254740998"
+        },
+        "overlap_ids": ["valid-bigint", "valid-bigint-next"],
+        "active_at": {
+          "9007199254740993": ["valid-bigint"],
+          "9007199254740996": ["valid-bigint-next"],
+          "9007199254740997": []
+        },
+        "zero_duration_ids": ["zero-bigint"],
+        "counts": {
+          "observed_records": "9",
+          "available_records": "3",
+          "known_nonzero_intervals": "2",
+          "zero_duration_records": "1",
+          "overlap_records": "2",
+          "unknown_records": "0",
+          "typed_excluded_records": "6"
+        },
+        "coverage": {
+          "unknown_tail_ids": [],
+          "unknown_is_not_zero": false,
+          "typed_excluded_by_reason": {
+            "missing_duration": "1",
+            "negative_duration": "1",
+            "invalid_start": "1",
+            "overflow_duration": "1",
+            "duplicate_record": "1",
+            "conflicting_record": "1"
+          },
+          "unknown_by_reason": {}
+        }
+      }
+    },
+    {
+      "group_id": "figma-window-population-mock",
+      "source_is_synthetic": true,
+      "is_mock": true,
+      "metric_source": "Mock; synthetic-only; not real database data",
+      "description": "Figma-aligned mock population: window is 13:30-14:30 UTC relative to 13:00; started-in-window and overlapping populations are intentionally different.",
+      "time_reference": "synthetic minutes after 13:00 UTC; not an official timestamp precision claim",
+      "window": {
+        "start_ms": "1800000",
+        "end_ms": "5400000"
+      },
+      "events": [
+        {
+          "id": "A",
+          "state": "available",
+          "recorded_start_ms": "1500000",
+          "duration_ms": "2100000"
+        },
+        {
+          "id": "B",
+          "state": "available",
+          "recorded_start_ms": "2100000",
+          "duration_ms": "1200000",
+          "scan_bytes": "67108864",
+          "terminal_state": "EOF"
+        },
+        {
+          "id": "C",
+          "state": "available",
+          "recorded_start_ms": "2700000",
+          "duration_ms": "1200000",
+          "scan_bytes": "67108864",
+          "terminal_state": "EOF"
+        },
+        {
+          "id": "D",
+          "state": "available",
+          "recorded_start_ms": "3000000",
+          "duration_ms": "1200000",
+          "scan_bytes": "67108864",
+          "terminal_state": "EOF"
+        },
+        {
+          "id": "E",
+          "state": "available",
+          "recorded_start_ms": "3300000",
+          "duration_ms": "300000",
+          "scan_bytes": "67108864",
+          "terminal_state": "EOF"
+        },
+        {
+          "id": "F",
+          "state": "available",
+          "recorded_start_ms": "3600000",
+          "duration_ms": "1200000",
+          "scan_bytes": "67108864",
+          "terminal_state": "EOF"
+        },
+        {
+          "id": "G",
+          "state": "available",
+          "recorded_start_ms": "4200000",
+          "duration_ms": "300000",
+          "scan_bytes": "67108864",
+          "terminal_state": "EOF"
+        },
+        {
+          "id": "H",
+          "state": "available",
+          "recorded_start_ms": "4800000",
+          "duration_ms": "300000",
+          "scan_bytes": "67108864",
+          "terminal_state": "EOF"
+        },
+        {
+          "id": "I",
+          "state": "available",
+          "recorded_start_ms": "5220000",
+          "duration_ms": "180000",
+          "scan_bytes": "67108864",
+          "terminal_state": "ERR"
+        }
+      ],
+      "expected": {
+        "end_ms": {
+          "A": "3600000",
+          "B": "3300000",
+          "C": "3900000",
+          "D": "4200000",
+          "E": "3600000",
+          "F": "4800000",
+          "G": "4500000",
+          "H": "5100000",
+          "I": "5400000"
+        },
+        "overlap_ids": ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+        "active_at": {
+          "1800000": ["A"],
+          "3120000": ["A", "B", "C", "D"]
+        },
+        "zero_duration_ids": [],
+        "counts": {
+          "observed_records": "9",
+          "available_records": "9",
+          "known_nonzero_intervals": "9",
+          "zero_duration_records": "0",
+          "overlap_records": "9",
+          "unknown_records": "0",
+          "typed_excluded_records": "0"
+        },
+        "coverage": {
+          "unknown_tail_ids": [],
+          "unknown_is_not_zero": false,
+          "typed_excluded_by_reason": {},
+          "unknown_by_reason": {}
+        },
+        "window_started_ids": ["B", "C", "D", "E", "F", "G", "H", "I"],
+        "window_started_duration_ms": "5880000",
+        "window_started_scan_bytes": "536870912",
+        "window_started_record_count": "8",
+        "window_started_scan_bytes_valid_records": "8",
+        "window_started_error_records": "1",
+        "overlap_population_ids": ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+        "family_examples": [
+          {
+            "family_id": "B-C-D",
+            "member_ids": ["B", "C", "D"],
+            "execution_count": "3",
+            "cumulative_duration_ms": "3600000"
+          },
+          {
+            "family_id": "E-F",
+            "member_ids": ["E", "F"],
+            "execution_count": "2",
+            "cumulative_duration_ms": "1500000"
+          },
+          {
+            "family_id": "G-H",
+            "member_ids": ["G", "H"],
+            "execution_count": "2",
+            "cumulative_duration_ms": "600000"
+          },
+          {
+            "family_id": "I",
+            "member_ids": ["I"],
+            "execution_count": "1",
+            "cumulative_duration_ms": "180000"
+          }
+        ],
+        "outside_window_started_not_in_cards_or_family_top": ["A"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+SELECT cat, m, COUNT(*) AS cnt, GROUPING_ID(cat, m) AS gid FROM (SELECT p.p_category % 4 AS cat, month(s.s_date) AS m FROM sales s JOIN products p ON s.s_prod = p.p_id) t GROUP BY CUBE(cat, m) ORDER BY gid, cat, m;

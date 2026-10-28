@@ -1,0 +1,86 @@
+PLAN COST
+  CPU: 1.9368363618100905E8
+  Memory: 481628.8810040502
+
+PLAN FRAGMENT 0(F03)
+  Output Exprs:9: count
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  8:AGGREGATE (merge finalize)
+  |  aggregate: count[([9: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 1497574.8787439372, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  7:EXCHANGE
+     distribution type: GATHER
+     cardinality: 1
+
+PLAN FRAGMENT 1(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 07
+
+  6:AGGREGATE (update serialize)
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 1497574.8787439372, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  5:Project
+  |  output columns:
+  |  11 <-> 1
+  |  cardinality: 1497575
+  |  column statistics: 
+  |  * auto_fill_col-->[1.0, 1.0, 0.0, 1.0, 1.0] ESTIMATE
+  |  
+  4:NESTLOOP JOIN
+  |  join op: INNER JOIN
+  |  other join predicates: cast([4: p_price, DECIMAL64(10,2), false] as DECIMAL128(21,2)) > cast(cast([7: c_region, INT, false] as BIGINT) * 10 + 900 as DECIMAL128(21,2))
+  |  can local shuffle: false
+  |  cardinality: 1497575
+  |  column statistics: 
+  |  * p_price-->[0.99, 999.99, 0.0, 8.0, 1004.0] ESTIMATE
+  |  * c_region-->[0.0, 24.0, 0.0, 4.0, 25.0] ESTIMATE
+  |  * auto_fill_col-->[1.0, 1.0, 0.0, 1.0, 1.0] ESTIMATE
+  |  
+  |----3:EXCHANGE
+  |       distribution type: BROADCAST
+  |       cardinality: 599
+  |    
+  0:OlapScanNode
+     table: products, rollup: products
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=2/2
+     tabletList=10153,10155
+     actualRows=0, avgRowSize=8.0
+     cardinality: 5000
+     column statistics: 
+     * p_price-->[0.99, 999.99, 0.0, 8.0, 1004.0] ESTIMATE
+
+PLAN FRAGMENT 2(F01)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 03
+
+  2:Project
+  |  output columns:
+  |  7 <-> [7: c_region, INT, false]
+  |  cardinality: 599
+  |  column statistics: 
+  |  * c_region-->[0.0, 24.0, 0.0, 4.0, 25.0] ESTIMATE
+  |  
+  1:OlapScanNode
+     table: customers, rollup: customers
+     preAggregation: on
+     Predicates: [5: c_id, INT, false] < 600
+     partitionsRatio=1/1, tabletsRatio=4/4
+     tabletList=10140,10142,10144,10146
+     actualRows=0, avgRowSize=8.0
+     cardinality: 599
+     column statistics: 
+     * c_id-->[1.0, 600.0, 0.0, 4.0, 599.0299514975749] ESTIMATE
+     * c_region-->[0.0, 24.0, 0.0, 4.0, 25.0] ESTIMATE

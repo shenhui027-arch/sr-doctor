@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>模板趋势与回归</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Noto+Sans+SC:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F5F6F8;color:#151A22;font-family:Inter,"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#1F55E0;text-decoration:none}a:hover{color:#1743B8;text-decoration:underline}
+button,input,select{font:inherit}
+table{border-collapse:collapse}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #F5F6F8">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; min-height: 52px; padding: 8px 20px; background: #FFFFFF; border-bottom: 1px solid #DFE3E8">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1F55E0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 3 5-7"></path><circle cx="19.5" cy="5.5" r="1.8"></circle><path d="M3 21h18"></path></svg>
+<span style="font-weight: 600; font-size: 14px; letter-spacing: -0.01em">SR Doctor</span>
+<span style="font-size: 12px; color: #5D6675; padding-left: 10px; border-left: 1px solid #DFE3E8">Profile 诊断 · SQL 质量</span>
+</div>
+<nav aria-label="工作区" style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">1</span>查询</a>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">2</span>诊断</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">3</span>优化建议</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">4</span>对比</span>
+<span aria-hidden="true" style="width: 1px; height: 22px; margin: 0 8px; background: #DFE3E8"></span>
+<a href="Trends.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 6px; background: #EAF0FE; color: #1F55E0; font-weight: 600; text-decoration: none">趋势</a>
+<a href="Alerts.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none">告警<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #FDECEA; color: #B42318; font: 600 11px/1 'JetBrains Mono', monospace">3</span></a>
+<a href="Governance.dc.html" style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none">治理</a>
+</nav>
+<div style="margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<a href="Collection.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid #DFE3E8; border-radius: 17px; background: #FFFFFF; color: #151A22; font-size: 12px; text-decoration: none"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #1F55E0"></span>采集中<span style="font-family: 'JetBrains Mono', monospace; color: #5D6675">水位 14:05</span></a>
+<span style="display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid #DFE3E8; border-radius: 17px; background: #FFFFFF; font-size: 12px"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #18794E"></span>Demo / Mock cluster<span style="color: #5D6675">3.5.14 · 只读</span></span>
+</div>
+</header>
+
+<main style="width: 100%; max-width: 1440px; margin: 0 auto; padding: 16px 20px 28px; display: flex; flex-direction: column; gap: 12px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<div role="tablist" aria-label="监控视图" style="display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 2px; background: #EBEEF2; border-radius: 8px">
+<span role="tab" aria-selected="true" style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 6px; background: #FFFFFF; font-weight: 600; box-shadow: 0 1px 2px rgba(21,26,34,0.08)">模板趋势与回归</span>
+<a href="Collection.dc.html" role="tab" aria-selected="false" style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 6px; color: #3D4654; text-decoration: none">采集与历史</a>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px">
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #5D6675">基线窗口
+<select style="height: 34px; min-width: 140px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22"><option>前 7 天</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #5D6675">当前窗口
+<select style="height: 34px; min-width: 140px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22"><option>最近 24 小时</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #5D6675">指标
+<select style="height: 34px; min-width: 150px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22"><option>查询耗时 中位数</option></select></label>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start">
+
+<div style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+
+<section aria-labelledby="t-chart" style="padding: 14px 16px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px">
+<div style="min-width: 0">
+<h1 id="t-chart" style="margin: 0; font-size: 15px; font-weight: 600">查询耗时中位数 · 每小时</h1>
+<div style="margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/18px 'JetBrains Mono', monospace; color: #3D4654">{{sel.template}}</div>
+</div>
+<span style="font-size: 12px; color: #5D6675">最近 48 小时 · 服务端计算，界面只渲染</span>
+</div>
+<svg role="img" aria-label="{{chartLabel}}" viewBox="0 0 960 240" style="display: block; width: 100%; height: auto; margin-top: 12px">
+<rect x="40" y="{{band.y}}" width="910" height="{{band.h}}" fill="#EAF0FE"></rect>
+<line x1="40" x2="950" y1="{{band.mid}}" y2="{{band.mid}}" stroke="#1F55E0" stroke-width="1" stroke-dasharray="4 4"></line>
+<sc-for list="{{gaps}}" as="g" hint-placeholder-count="2">
+<rect x="{{g.x}}" y="16" width="{{g.w}}" height="190" fill="{{g.fill}}" stroke="{{g.stroke}}" stroke-dasharray="3 3"></rect>
+</sc-for>
+<polyline points="{{line1}}" fill="none" stroke="#151A22" stroke-width="2" stroke-linejoin="round"></polyline>
+<polyline points="{{line2}}" fill="none" stroke="#151A22" stroke-width="2" stroke-linejoin="round"></polyline>
+<sc-for list="{{thin}}" as="p" hint-placeholder-count="2">
+<circle cx="{{p.x}}" cy="{{p.y}}" r="4" fill="#FFFFFF" stroke="#151A22" stroke-width="1.5"></circle>
+</sc-for>
+<line x1="40" x2="950" y1="206" y2="206" stroke="#C9CFD7"></line>
+<text x="40" y="226" font-family="JetBrains Mono, monospace" font-size="11" fill="#5D6675">10-25 15:00</text>
+<text x="480" y="226" font-family="JetBrains Mono, monospace" font-size="11" fill="#5D6675" text-anchor="middle">10-26 15:00</text>
+<text x="950" y="226" font-family="JetBrains Mono, monospace" font-size="11" fill="#5D6675" text-anchor="end">10-27 14:00</text>
+<text x="34" y="{{band.midText}}" font-family="JetBrains Mono, monospace" font-size="11" fill="#1F55E0" text-anchor="end">{{sel.baseShort}}</text>
+</svg>
+<div style="display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 12px; color: #3D4654">
+<span style="display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 18px; height: 10px; background: #EAF0FE; border-top: 1px dashed #1F55E0"></span>基线中位数 ± MAD</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 18px; height: 2px; background: #151A22"></span>每小时中位数</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 10px; height: 10px; border: 1.5px solid #151A22; border-radius: 50%"></span>样本不足的小时（不判定）</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 10px; background: #FFF3E0; border: 1px dashed #F2A766"></span>部分采集</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 10px; background: #FFFFFF; border: 1px dashed #C9CFD7"></span>未采集 · 曲线断开</span>
+</div>
+</section>
+
+
+</div>
+
+<aside aria-label="回归证据" style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<div style="padding: 14px 16px 12px; border-bottom: 1px solid #DFE3E8">
+<div style="font-size: 12px; color: #5D6675">判定依据</div>
+<h2 style="margin: 2px 0 0; font-size: 16px; line-height: 22px; font-weight: 600">{{sel.verdict}}</h2>
+</div>
+<dl style="margin: 0; padding: 12px 16px; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 12px; font-size: 12px; border-bottom: 1px solid #DFE3E8">
+<dt style="color: #5D6675">基线</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace">{{sel.baseDetail}}</dd>
+<dt style="color: #5D6675">当前</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace">{{sel.curDetail}}</dd>
+<dt style="color: #5D6675">规则</dt><dd style="margin: 0; color: #3D4654">当前中位数超出基线中位数 ± k·MAD；k <span style="display: inline-block; padding: 0 6px; border: 1px dashed #F2A766; border-radius: 4px; font-size: 11px; line-height: 18px; color: #9A4D00">待 G2 校准</span></dd>
+<dt style="color: #5D6675">可比性</dt><dd style="margin: 0; color: #3D4654">{{sel.comparable}}</dd>
+<dt style="color: #5D6675">限制</dt><dd style="margin: 0; color: #3D4654">{{sel.limits}}</dd>
+</dl>
+<div style="padding: 12px 16px 6px; display: flex; justify-content: space-between; align-items: baseline">
+<h3 style="margin: 0; font-size: 13px; font-weight: 600">代表执行</h3>
+<span style="font-size: 12px; color: #5D6675">当前窗口 · 按耗时</span>
+</div>
+<ul style="list-style: none; margin: 0; padding: 0 8px">
+<sc-for list="{{reps}}" as="m" hint-placeholder-count="3">
+<li style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 9px 8px; border-radius: 6px">
+<span style="font: 500 12px/18px 'JetBrains Mono', monospace">{{m.id}}</span>
+<span style="font: 500 12px/18px 'JetBrains Mono', monospace; text-align: right">{{m.time}}</span>
+<span style="font-size: 12px; color: #5D6675">{{m.at}}</span>
+<span style="justify-self: end; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 10px; font-size: 11px; color: {{m.stColor}}; background: {{m.stBg}}">{{m.status}}</span>
+</li>
+</sc-for>
+</ul>
+<div style="margin-top: auto; padding: 14px 16px; border-top: 1px solid #DFE3E8; display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="flex: 1 1 auto; height: 36px; padding: 0 14px; border: 0; border-radius: 6px; background: #1F55E0; color: #FFFFFF; font-weight: 500">拉取 Profile 并诊断</button>
+<a href="Governance.dc.html" style="display: inline-flex; align-items: center; height: 36px; padding: 0 12px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22; text-decoration: none">加入治理队列</a>
+</div>
+</aside>
+
+</div>
+
+<section aria-labelledby="t-list" style="background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #DFE3E8">
+<h2 id="t-list" style="margin: 0; font-size: 15px; font-weight: 600">回归列表</h2>
+<span style="font-size: 12px; color: #5D6675">严重度、置信度、证据完整度分开展示，不合成分数</span>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 900px; font-size: 13px">
+<thead><tr style="text-align: left; color: #5D6675; font-size: 12px; white-space: nowrap">
+<th scope="col" style="padding: 9px 14px; font-weight: 500; border-bottom: 1px solid #DFE3E8">模板</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8">判定</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">基线 → 当前</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">变化</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">样本 基线 / 当前</th>
+<th scope="col" style="padding: 9px 14px; font-weight: 500; border-bottom: 1px solid #DFE3E8">严重度 · 置信度 · 证据</th>
+</tr></thead>
+<tbody>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<tr style="background: {{r.bg}}; box-shadow: {{r.ring}}">
+<td style="padding: 6px 8px; border-bottom: 1px solid #EEF0F3; max-width: 460px">
+<button type="button" onClick="{{r.pick}}" aria-pressed="{{r.pressed}}" style="display: block; width: 100%; padding: 4px 6px; border: 0; background: transparent; text-align: left; cursor: pointer; color: #151A22">
+<span style="display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/18px 'JetBrains Mono', monospace">{{r.template}}</span>
+<span style="display: inline-flex; align-items: center; height: 18px; margin-top: 2px; padding: 0 6px; border-radius: 9px; font-size: 11px; color: {{r.srcColor}}; background: {{r.srcBg}}; border: {{r.srcBorder}}">{{r.source}}</span>
+</button>
+</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; font-weight: 500; white-space: nowrap; color: {{r.vColor}}; background: {{r.vBg}}; border: {{r.vBorder}}">{{r.verdict}}</span></td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace; white-space: nowrap">{{r.base}} → {{r.cur}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace; white-space: nowrap">{{r.delta}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace; white-space: nowrap">{{r.samples}}</td>
+<td style="padding: 10px 14px; border-bottom: 1px solid #EEF0F3">
+<span style="display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; font-size: 12px">
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; font-weight: 600; color: {{r.sevColor}}; background: {{r.sevBg}}">{{r.sev}}</span>
+<span style="color: #3D4654">置信度 {{r.conf}}</span>
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; color: {{r.evColor}}; background: {{r.evBg}}; border: {{r.evBorder}}">{{r.ev}}</span>
+</span>
+</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<div style="padding: 10px 14px; font-size: 12px; color: #5D6675">5 个模板有判定 · 另有 212 个模板在基线带内 · 41 个样本不足</div>
+</section>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1140}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { picked: 0 }; }
+  renderVals() {
+    const off = { srcColor: '#18794E', srcBg: '#E7F5EE', srcBorder: '0', source: '官方 digest' };
+    const unoff = { srcColor: '#3D4654', srcBg: '#FFFFFF', srcBorder: '1px solid #DFE3E8', source: '非官方指纹' };
+    const v = {
+      up: { vColor: '#B42318', vBg: '#FDECEA', vBorder: '0' },
+      down: { vColor: '#18794E', vBg: '#E7F5EE', vBorder: '0' },
+      dash: { vColor: '#3D4654', vBg: '#FFFFFF', vBorder: '1px dashed #9AA2AE' }
+    };
+    const sev = { hi: { sev: '严重度 高', sevColor: '#B42318', sevBg: '#FDECEA' }, mid: { sev: '严重度 中', sevColor: '#9A4D00', sevBg: '#FFF3E0' }, low: { sev: '严重度 低', sevColor: '#3D4654', sevBg: '#F0F2F5' }, na: { sev: '严重度 —', sevColor: '#5D6675', sevBg: '#F0F2F5' } };
+    const ev = { full: { ev: '证据完整', evColor: '#18794E', evBg: '#E7F5EE', evBorder: '0' }, part: { ev: '证据部分', evColor: '#9A4D00', evBg: '#FFF3E0', evBorder: '0' }, none: { ev: '证据不可用', evColor: '#5D6675', evBg: '#FFFFFF', evBorder: '1px dashed #9AA2AE' } };
+    const data = [
+      { template: 'SELECT o.id, o.amount FROM orders o JOIN customers c ON o.cid = c.id WHERE c.region = ? AND o.dt >= ?', ...unoff, verdict: '↑ 回归', ...v.up, base: '6.1 s', cur: '10.3 s', delta: '+4.2 s · +69%', samples: '812 / 143', ...sev.hi, conf: '高', ...ev.full,
+        baseShort: '6.1 s', baseDetail: '中位数 6.1 s · MAD 0.9 s · 812 次', curDetail: '中位数 10.3 s · 143 次', comparable: '同一 StarRocks 版本、VersionPack 与指纹规则 v1', limits: '无', level: 0.62 },
+      { template: 'SELECT customer_id, SUM(amount) FROM orders GROUP BY customer_id', ...off, verdict: '↑ 回归', ...v.up, base: '8.4 s', cur: '9.9 s', delta: '+1.5 s · +18%', samples: '2,640 / 412', ...sev.mid, conf: '中', ...ev.part,
+        baseShort: '8.4 s', baseDetail: '中位数 8.4 s · MAD 1.1 s · 2,640 次', curDetail: '中位数 9.9 s · 412 次', comparable: '可比较', limits: '当前窗口 2 小时部分采集', level: 0.5 },
+      { template: 'SELECT region, AVG(price) FROM sales WHERE ts BETWEEN ? AND ? GROUP BY region', ...off, verdict: '↓ 改善', ...v.down, base: '7.2 s', cur: '4.0 s', delta: '−3.2 s · −44%', samples: '506 / 63', ...sev.na, conf: '高', ...ev.full,
+        baseShort: '7.2 s', baseDetail: '中位数 7.2 s · MAD 0.8 s · 506 次', curDetail: '中位数 4.0 s · 63 次', comparable: '可比较', limits: '无', level: 0.4 },
+      { template: 'SELECT count(*) FROM events WHERE uid IN (?) AND dt = ?', ...unoff, verdict: 'unscored · 样本不足', ...v.dash, base: '1.3 s', cur: '2.8 s', delta: '+1.5 s · +115%', samples: '9 / 4', ...sev.na, conf: '—', ...ev.part,
+        baseShort: '1.3 s', baseDetail: '中位数 1.3 s · 9 次', curDetail: '中位数 2.8 s · 4 次', comparable: '可比较', limits: '样本量不足以判定，变化仅供参考', level: 0.5 },
+      { template: 'INSERT INTO daily_summary SELECT dt, SUM(amount) FROM orders WHERE dt = ? GROUP BY dt', ...unoff, verdict: 'not_comparable', ...v.dash, base: '—', cur: '14.2 s', delta: '—', samples: '— / 24', ...sev.na, conf: '—', ...ev.none,
+        baseShort: '—', baseDetail: '基线窗口内指纹规则为 v0（规则集已变化）', curDetail: '中位数 14.2 s · 24 次', comparable: '规则集变化前后不比较', limits: '待基线窗口积累新规则下的样本', level: 0.5 }
+    ];
+    const picked = this.state.picked;
+    const rows = data.map((r, i) => ({ ...r, bg: i === picked ? '#F3F6FE' : '#FFFFFF', ring: i === picked ? 'inset 0 0 0 1.5px #1F55E0' : 'none', pressed: i === picked ? 'true' : 'false', pick: () => this.setState({ picked: i }) }));
+    const sel = data[picked];
+    const mid = 206 - sel.level * 190 * 0.6;
+    const band = { y: String(mid - 16), h: '32', mid: String(mid), midText: String(mid + 4) };
+    const xs = (i) => 40 + i * (910 / 47);
+    const vals = [];
+    for (let i = 0; i < 48; i++) {
+      const wobble = Math.sin(i * 1.7) * 10 + Math.cos(i * 0.9) * 6;
+      const rise = picked === 0 && i > 33 ? (i - 33) * 6 : picked === 2 && i > 30 ? -(i - 30) * 3 : 0;
+      vals.push(Math.max(30, Math.min(196, mid + wobble - rise)));
+    }
+    const seg = (a, b) => vals.slice(a, b).map((y, k) => xs(a + k).toFixed(1) + ',' + y.toFixed(1)).join(' ');
+    const line1 = seg(0, 18);
+    const line2 = seg(21, 48);
+    const gaps = [
+      { x: xs(18).toFixed(1), w: (xs(21) - xs(18)).toFixed(1), fill: '#FFFFFF', stroke: '#C9CFD7' },
+      { x: xs(40).toFixed(1), w: (xs(42) - xs(40)).toFixed(1), fill: 'rgba(255,243,224,0.7)', stroke: '#F2A766' }
+    ];
+    const thin = [{ x: xs(26).toFixed(1), y: vals[26].toFixed(1) }, { x: xs(9).toFixed(1), y: vals[9].toFixed(1) }];
+    const st = { try: { status: '可尝试拉取', stColor: '#1F55E0', stBg: '#EAF0FE' }, done: { status: 'Profile 已拉取', stColor: '#18794E', stBg: '#E7F5EE' } };
+    const reps = [
+      { id: '3b7e19c2…8a10', time: '19.6 s', at: '10-27 14:01:44', ...st.try },
+      { id: '5d20a6f1…2c47', time: '15.3 s', at: '10-27 13:48:09', ...st.done },
+      { id: '8e3f0b27…a4c1', time: '10.1 s', at: '10-27 12:15:33', ...st.try }
+    ];
+    return { rows, sel, band, line1, line2, gaps, thin, reps, chartLabel: '每小时查询耗时中位数与基线带；含 1 段未采集、1 段部分采集' };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+PLAN COST
+  CPU: 609370.4405220262
+  Memory: 200729.98049902497
+
+PLAN FRAGMENT 0(F02)
+  Output Exprs:3: s_cust | 1: s_id | 6: s_amount | 7: row_number()
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  7:MERGING-EXCHANGE
+     distribution type: GATHER
+     limit: 20
+     cardinality: 20
+     column statistics: 
+     * s_id-->[1.0, 200000.0, 0.0, 8.0, 4990.249512475624] ESTIMATE
+     * s_cust-->[1.0, 500.0, 0.0, 4.0, 4990.249512475624] ESTIMATE
+     * s_amount-->[0.0, 99.99, 0.0, 8.0, 4990.249512475624] ESTIMATE
+     * row_number()-->[-Infinity, 2.0, 0.0, 1.0, 1.0] UNKNOWN
+
+PLAN FRAGMENT 1(F01)
+
+  Input Partition: HASH_PARTITIONED: 3: s_cust
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 07
+
+  6:TOP-N
+  |  order by: [3, INT, false] ASC, [7, BIGINT, true] ASC
+  |  offset: 0
+  |  limit: 20
+  |  cardinality: 20
+  |  column statistics: 
+  |  * s_id-->[1.0, 200000.0, 0.0, 8.0, 4990.249512475624] ESTIMATE
+  |  * s_cust-->[1.0, 500.0, 0.0, 4.0, 4990.249512475624] ESTIMATE
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 4990.249512475624] ESTIMATE
+  |  * row_number()-->[-Infinity, 2.0, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  5:SELECT
+  |  predicates: 7: row_number() <= 2
+  |  cardinality: 2495
+  |  column statistics: 
+  |  * s_id-->[1.0, 200000.0, 0.0, 8.0, 4990.249512475624] ESTIMATE
+  |  * s_cust-->[1.0, 500.0, 0.0, 4.0, 4990.249512475624] ESTIMATE
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 4990.249512475624] ESTIMATE
+  |  * row_number()-->[-Infinity, 2.0, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  4:ANALYTIC
+  |  functions: [, row_number[(); args: ; result: BIGINT; args nullable: false; result nullable: true], ]
+  |  partition by: [3: s_cust, INT, false]
+  |  order by: [6: s_amount, DECIMAL64(12,2), false] DESC, [1: s_id, BIGINT, false] ASC
+  |  window: ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  |  cardinality: 4990
+  |  column statistics: 
+  |  * s_id-->[1.0, 200000.0, 0.0, 8.0, 4990.249512475624] ESTIMATE
+  |  * s_cust-->[1.0, 500.0, 0.0, 4.0, 4990.249512475624] ESTIMATE
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 4990.249512475624] ESTIMATE
+  |  * row_number()-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  3:SORT
+  |  order by: [3, INT, false] ASC, [6, DECIMAL64(12,2), false] DESC, [1, BIGINT, false] ASC
+  |  analytic partition by: [3: s_cust, INT, false]
+  |  offset: 0
+  |  cardinality: 4990
+  |  column statistics: 
+  |  * s_id-->[1.0, 200000.0, 0.0, 8.0, 4990.249512475624] ESTIMATE
+  |  * s_cust-->[1.0, 500.0, 0.0, 4.0, 4990.249512475624] ESTIMATE
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 4990.249512475624] ESTIMATE
+  |  
+  2:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [3: s_cust, INT, false]
+     cardinality: 4990
+
+PLAN FRAGMENT 2(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 3: s_cust
+  OutPut Exchange Id: 02
+
+  1:PARTITION-TOP-N
+  |  partition by: [3: s_cust, INT, false] 
+  |  partition limit: 2
+  |  order by: [3, INT, false] ASC, [6, DECIMAL64(12,2), false] DESC, [1, BIGINT, false] ASC
+  |  offset: 0
+  |  cardinality: 4990
+  |  column statistics: 
+  |  * s_id-->[1.0, 200000.0, 0.0, 8.0, 4990.249512475624] ESTIMATE
+  |  * s_cust-->[1.0, 500.0, 0.0, 4.0, 4990.249512475624] ESTIMATE
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 4990.249512475624] ESTIMATE
+  |  
+  0:OlapScanNode
+     table: sales, rollup: sales
+     preAggregation: on
+     Predicates: [3: s_cust, INT, false] <= 500
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10279,10281,10283,10285,10287,10289,10291,10293
+     actualRows=0, avgRowSize=20.0
+     cardinality: 4990
+     column statistics: 
+     * s_id-->[1.0, 200000.0, 0.0, 8.0, 4990.249512475624] ESTIMATE
+     * s_cust-->[1.0, 500.0, 0.0, 4.0, 4990.249512475624] ESTIMATE
+     * s_amount-->[0.0, 99.99, 0.0, 8.0, 4990.249512475624] ESTIMATE

@@ -1,0 +1,1 @@
+SELECT p.p_category, c.c_segment, COUNT(*) AS cnt FROM sales s JOIN [BROADCAST] products p ON s.s_prod = p.p_id JOIN [BROADCAST] customers c ON s.s_cust = c.c_id WHERE p.p_price > 100 AND c.c_region < 20 GROUP BY p.p_category, c.c_segment;

@@ -1,0 +1,714 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HistorySeriesResponse",
+  "type": "object",
+  "required": [
+    "exemplars",
+    "points",
+    "row",
+    "rule",
+    "target",
+    "window"
+  ],
+  "properties": {
+    "exemplars": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/TrendExemplar"
+      }
+    },
+    "points": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/TrendPoint"
+      }
+    },
+    "row": {
+      "$ref": "#/definitions/TrendRow"
+    },
+    "rule": {
+      "$ref": "#/definitions/TrendRule"
+    },
+    "target": {
+      "type": "string"
+    },
+    "window": {
+      "$ref": "#/definitions/TrendWindow"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AuditMetricFact": {
+      "type": "object",
+      "required": [
+        "input",
+        "metric_id",
+        "state"
+      ],
+      "properties": {
+        "canonical_number": {
+          "description": "Decimal text only; never encode audit counters as a JSON number.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "$ref": "#/definitions/AuditMetricInput"
+        },
+        "metric_id": {
+          "$ref": "#/definitions/AuditMetricId"
+        },
+        "parser_state": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ParseState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/AuditMetricState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditMetricId": {
+      "type": "string",
+      "enum": [
+        "query_time",
+        "pending_time",
+        "scan_bytes",
+        "scan_rows",
+        "cpu_cost",
+        "memory_cost",
+        "return_rows"
+      ]
+    },
+    "AuditMetricInput": {
+      "description": "Lossless transport input. `Text(\"0\")` is deliberately distinct from SQL NULL and remains decimal text so JavaScript never receives a lossy number.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "sql_null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditOptionalFactUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "AuditMetricState": {
+      "description": "This is a result state, not a second parser. The core AuditLoader adapter must map its one typed-parser outcome and audit-only negative policy here.",
+      "type": "string",
+      "enum": [
+        "exact",
+        "missing",
+        "invalid",
+        "negative_sentinel",
+        "overflow",
+        "precision_unsafe",
+        "unavailable"
+      ]
+    },
+    "AuditOptionalFactUnavailableReason": {
+      "description": "The existing fixed schema probe did not prove an optional AuditLoader source column. This is deliberately distinct from a present SQL NULL.",
+      "type": "string",
+      "enum": [
+        "source_column_absent",
+        "conflicting_source_rows"
+      ]
+    },
+    "CanonicalNumber": {
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/NumberKind"
+        },
+        "scale": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "value": {
+          "description": "Base-10 only: JSON numbers are never used for counters.",
+          "type": "string"
+        }
+      }
+    },
+    "CoverageHourState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        {
+          "description": "Not read (gap, failure, or never collected): not zero executions.",
+          "type": "string",
+          "enum": [
+            "not_collected"
+          ]
+        }
+      ]
+    },
+    "EvidenceCompleteness": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "NumberKind": {
+      "type": "string",
+      "enum": [
+        "integer",
+        "decimal"
+      ]
+    },
+    "ParseState": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "missing",
+        "invalid",
+        "partial",
+        "overflow"
+      ]
+    },
+    "TrendChange": {
+      "type": "object",
+      "required": [
+        "direction",
+        "magnitude"
+      ],
+      "properties": {
+        "direction": {
+          "$ref": "#/definitions/TrendDirection"
+        },
+        "magnitude": {
+          "$ref": "#/definitions/AuditMetricFact"
+        },
+        "relative_percent": {
+          "description": "Decimal text with one decimal; `None` when the baseline is 0.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "TrendComparability": {
+      "type": "object",
+      "required": [
+        "engine_version",
+        "rule_version"
+      ],
+      "properties": {
+        "engine_version": {
+          "type": "string"
+        },
+        "rule_version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TrendConfidence": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "TrendDirection": {
+      "type": "string",
+      "enum": [
+        "up",
+        "down",
+        "none"
+      ]
+    },
+    "TrendExemplar": {
+      "description": "A slow execution kept by query ID only, to pull its Profile on demand.",
+      "type": "object",
+      "required": [
+        "event_seconds",
+        "query_id",
+        "query_time"
+      ],
+      "properties": {
+        "event_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "query_id": {
+          "type": "string"
+        },
+        "query_time": {
+          "$ref": "#/definitions/AuditMetricFact"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TrendNotComparableReason": {
+      "type": "string",
+      "enum": [
+        "engine_version_changed",
+        "rule_version_changed"
+      ]
+    },
+    "TrendPoint": {
+      "type": "object",
+      "required": [
+        "comparable",
+        "coverage",
+        "hour_start_seconds",
+        "thin",
+        "valid_samples"
+      ],
+      "properties": {
+        "comparable": {
+          "description": "Same engine and rule version as the current window.",
+          "type": "boolean"
+        },
+        "coverage": {
+          "$ref": "#/definitions/CoverageHourState"
+        },
+        "executions": {
+          "description": "`None` when the hour was not collected; `\"0\"` only when it was.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hour_start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "median": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditMetricFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "thin": {
+          "description": "Too few samples to enter a statistic.",
+          "type": "boolean"
+        },
+        "valid_samples": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TrendRow": {
+      "type": "object",
+      "required": [
+        "baseline",
+        "catalog",
+        "comparability",
+        "current",
+        "database",
+        "evidence",
+        "kind",
+        "limitations",
+        "template_key",
+        "verdict"
+      ],
+      "properties": {
+        "baseline": {
+          "$ref": "#/definitions/TrendSide"
+        },
+        "catalog": {
+          "type": "string"
+        },
+        "change": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TrendChange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "comparability": {
+          "$ref": "#/definitions/TrendComparability"
+        },
+        "confidence": {
+          "description": "Only for a regression or an improvement.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TrendConfidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "current": {
+          "$ref": "#/definitions/TrendSide"
+        },
+        "database": {
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/definitions/EvidenceCompleteness"
+        },
+        "kind": {
+          "description": "`official_digest` or `product_fingerprint` (unofficial).",
+          "type": "string"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "template": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "template_key": {
+          "type": "string"
+        },
+        "verdict": {
+          "$ref": "#/definitions/TrendVerdict"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TrendRule": {
+      "description": "The rule in force; `calibrated` stays false until G2.",
+      "type": "object",
+      "required": [
+        "calibrated",
+        "k_mad",
+        "min_baseline_hours",
+        "min_current_samples",
+        "min_hour_samples",
+        "min_relative_percent"
+      ],
+      "properties": {
+        "calibrated": {
+          "type": "boolean"
+        },
+        "k_mad": {
+          "type": "string"
+        },
+        "min_baseline_hours": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "min_current_samples": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "min_hour_samples": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "min_relative_percent": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "TrendSeverity": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "TrendSide": {
+      "type": "object",
+      "required": [
+        "executions",
+        "hours",
+        "thin_hours",
+        "valid_samples"
+      ],
+      "properties": {
+        "executions": {
+          "type": "string"
+        },
+        "hours": {
+          "description": "Hours that entered the statistic.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "mad": {
+          "description": "Baseline only: median absolute deviation of hourly medians.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditMetricFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "median": {
+          "description": "Baseline: median of hourly medians; current: median of the window.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditMetricFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "thin_hours": {
+          "description": "Hours with too few samples to enter it.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "valid_samples": {
+          "description": "Executions with a valid query time; the rest are missing or invalid, never 0.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TrendUnscoredReason": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "insufficient_baseline",
+            "insufficient_current"
+          ]
+        },
+        {
+          "description": "Baseline median is 0: only the absolute change is shown.",
+          "type": "string",
+          "enum": [
+            "zero_baseline"
+          ]
+        },
+        {
+          "description": "Latency moved but neither scan bytes nor CPU are available.",
+          "type": "string",
+          "enum": [
+            "workload_signal_missing"
+          ]
+        }
+      ]
+    },
+    "TrendVerdict": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "severity",
+            "state",
+            "workload"
+          ],
+          "properties": {
+            "severity": {
+              "$ref": "#/definitions/TrendSeverity"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "regression"
+              ]
+            },
+            "workload": {
+              "$ref": "#/definitions/WorkloadSignal"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "improvement"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Inside the baseline band.",
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "stable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/TrendUnscoredReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unscored"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/TrendNotComparableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_comparable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TrendWindow": {
+      "type": "object",
+      "required": [
+        "baseline_start_seconds",
+        "current_start_seconds",
+        "end_seconds"
+      ],
+      "properties": {
+        "baseline_start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "current_start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "end_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "WorkloadSignal": {
+      "description": "Scan bytes or CPU per execution beside the latency change (AGENTS §3: latency alone never decides).",
+      "type": "string",
+      "enum": [
+        "increased",
+        "stable"
+      ]
+    }
+  }
+}

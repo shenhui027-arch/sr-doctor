@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OfficialProfileReadRequest",
+  "type": "object",
+  "required": [
+    "connection_id",
+    "identity",
+    "node_ids",
+    "query_id"
+  ],
+  "properties": {
+    "connection_id": {
+      "type": "string"
+    },
+    "identity": {
+      "$ref": "#/definitions/OfficialProfileIdentity"
+    },
+    "node_ids": {
+      "description": "Empty means the whole official tree. The connector validates count, signed-integer range and uniqueness before any remote operation.",
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0.0
+      }
+    },
+    "query_id": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "OfficialProfileIdentity": {
+      "description": "The sole server-verified authority for a fixed official Profile read. Discovery and standard execution are intentionally disjoint: an execution attempt never acquires a synthetic discovery generation or observed row.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "discovery_generation",
+            "kind"
+          ],
+          "properties": {
+            "discovery_generation": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "discovery"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "execution_attempt_id",
+            "kind"
+          ],
+          "properties": {
+            "execution_attempt_id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "verified_standard_attempt"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

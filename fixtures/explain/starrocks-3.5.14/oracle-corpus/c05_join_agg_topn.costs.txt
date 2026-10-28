@@ -1,0 +1,116 @@
+PLAN COST
+  CPU: 1.1943957533270512E7
+  Memory: 920672.99795
+
+PLAN FRAGMENT 0(F04)
+  Output Exprs:8: c_name | 11: sum
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  9:MERGING-EXCHANGE
+     distribution type: GATHER
+     limit: 10
+     cardinality: 10
+     column statistics: 
+     * c_name-->[-Infinity, Infinity, 0.0, 9.4447, 19935.0] ESTIMATE
+     * sum-->[0.0, 198.0821474709331, 0.0, 8.0, 10063.0] ESTIMATE
+
+PLAN FRAGMENT 1(F03)
+
+  Input Partition: HASH_PARTITIONED: 8: c_name
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 09
+
+  8:TOP-N
+  |  order by: [11, DECIMAL128(38,2), true] DESC, [8, VARCHAR(32), false] ASC
+  |  offset: 0
+  |  limit: 10
+  |  cardinality: 10
+  |  column statistics: 
+  |  * c_name-->[-Infinity, Infinity, 0.0, 9.4447, 19935.0] ESTIMATE
+  |  * sum-->[0.0, 198.0821474709331, 0.0, 8.0, 10063.0] ESTIMATE
+  |  
+  7:AGGREGATE (merge finalize)
+  |  aggregate: sum[([11: sum, DECIMAL128(38,2), true]); args: DECIMAL64; result: DECIMAL128(38,2); args nullable: true; result nullable: true]
+  |  group by: [8: c_name, VARCHAR(32), false]
+  |  cardinality: 19935
+  |  column statistics: 
+  |  * c_name-->[-Infinity, Infinity, 0.0, 9.4447, 19935.0] ESTIMATE
+  |  * sum-->[0.0, 198.0821474709331, 0.0, 8.0, 10063.0] ESTIMATE
+  |  
+  6:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [8: c_name, VARCHAR(32), false]
+     cardinality: 19935
+
+PLAN FRAGMENT 2(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 8: c_name
+  OutPut Exchange Id: 06
+
+  5:AGGREGATE (update serialize)
+  |  STREAMING
+  |  aggregate: sum[([6: s_amount, DECIMAL64(12,2), false]); args: DECIMAL64; result: DECIMAL128(38,2); args nullable: false; result nullable: true]
+  |  group by: [8: c_name, VARCHAR(32), false]
+  |  cardinality: 19935
+  |  column statistics: 
+  |  * c_name-->[-Infinity, Infinity, 0.0, 9.4447, 19935.0] ESTIMATE
+  |  * sum-->[0.0, 198.0821474709331, 0.0, 8.0, 10063.0] ESTIMATE
+  |  
+  4:Project
+  |  output columns:
+  |  6 <-> [6: s_amount, DECIMAL64(12,2), false]
+  |  8 <-> [8: c_name, VARCHAR(32), false]
+  |  cardinality: 200321
+  |  column statistics: 
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * c_name-->[-Infinity, Infinity, 0.0, 9.4447, 19935.0] ESTIMATE
+  |  
+  3:HASH JOIN
+  |  join op: INNER JOIN (BROADCAST)
+  |  equal join conjunct: [3: s_cust, INT, false] = [7: c_id, INT, false]
+  |  build runtime filters:
+  |  - filter_id = 0, build_expr = (7: c_id), remote = false
+  |  output columns: 6, 8
+  |  can local shuffle: true
+  |  cardinality: 200321
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * c_id-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * c_name-->[-Infinity, Infinity, 0.0, 9.4447, 19935.0] ESTIMATE
+  |  
+  |----2:EXCHANGE
+  |       distribution type: BROADCAST
+  |       cardinality: 20000
+  |    
+  0:OlapScanNode
+     table: sales, rollup: sales
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10161,10163,10165,10167,10169,10171,10173,10175
+     actualRows=0, avgRowSize=12.0
+     cardinality: 200000
+     probe runtime filters:
+     - filter_id = 0, probe_expr = (3: s_cust)
+     column statistics: 
+     * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * s_amount-->[0.0, 99.99, 0.0, 8.0, 10063.0] ESTIMATE
+
+PLAN FRAGMENT 3(F01)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 02
+
+  1:OlapScanNode
+     table: customers, rollup: customers
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=4/4
+     tabletList=10140,10142,10144,10146
+     actualRows=0, avgRowSize=13.4447
+     cardinality: 20000
+     column statistics: 
+     * c_id-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * c_name-->[-Infinity, Infinity, 0.0, 9.4447, 19935.0] ESTIMATE

@@ -1,0 +1,119 @@
+PLAN COST
+  CPU: 3.84000072E8
+  Memory: 2.6400024E7
+
+PLAN FRAGMENT 0(F06)
+  Output Exprs:5: d_attr | 7: count | 8: sum
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  9:EXCHANGE
+     cardinality: 1000000
+
+PLAN FRAGMENT 1(F05)
+
+  Input Partition: HASH_PARTITIONED: 5: d_attr
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 09
+
+  8:AGGREGATE (merge finalize)
+  |  aggregate: count[([7: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false], sum[([8: sum, BIGINT, true]); args: INT; result: BIGINT; args nullable: true; result nullable: true]
+  |  group by: [5: d_attr, INT, false]
+  |  cardinality: 1000000
+  |  column statistics: 
+  |  * d_attr-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[0.0, 2000000.0, 0.0, 8.0, 1000000.0] ESTIMATE
+  |  * sum-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  7:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [5: d_attr, INT, false]
+     cardinality: 2000000
+
+PLAN FRAGMENT 2(F04)
+
+  Input Partition: HASH_PARTITIONED: 2: f_key
+  OutPut Partition: HASH_PARTITIONED: 5: d_attr
+  OutPut Exchange Id: 07
+
+  6:AGGREGATE (update serialize)
+  |  STREAMING
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false], sum[([3: f_val, INT, false]); args: INT; result: BIGINT; args nullable: false; result nullable: true]
+  |  group by: [5: d_attr, INT, false]
+  |  cardinality: 2000000
+  |  column statistics: 
+  |  * d_attr-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  5:Project
+  |  output columns:
+  |  3 <-> [3: f_val, INT, false]
+  |  5 <-> [5: d_attr, INT, false]
+  |  cardinality: 4000000
+  |  column statistics: 
+  |  * f_val-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * d_attr-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  4:HASH JOIN
+  |  join op: INNER JOIN (PARTITIONED)
+  |  equal join conjunct: [2: f_key, INT, false] = [4: d_key, INT, false]
+  |  other join predicates: concat[([6: d_name, VARCHAR(16), false], '_', cast([3: f_val, INT, false] as VARCHAR)); args: VARCHAR; result: VARCHAR; args nullable: false; result nullable: true] != 'none'
+  |  build runtime filters:
+  |  - filter_id = 0, build_expr = (4: d_key), remote = true
+  |  output columns: 3, 5
+  |  can local shuffle: true
+  |  cardinality: 4000000
+  |  column statistics: 
+  |  * f_key-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * f_val-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * d_key-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * d_attr-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * d_name-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  |----3:EXCHANGE
+  |       distribution type: SHUFFLE
+  |       partition exprs: [4: d_key, INT, false]
+  |       cardinality: 100001
+  |    
+  1:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [2: f_key, INT, false]
+     cardinality: 8000000
+
+PLAN FRAGMENT 3(F02)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 4: d_key
+  OutPut Exchange Id: 03
+
+  2:OlapScanNode
+     table: skew_dim, rollup: skew_dim
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=4/4
+     tabletList=10043,10045,10047,10049
+     actualRows=0, avgRowSize=3.0
+     cardinality: 100001
+     column statistics: 
+     * d_key-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+     * d_attr-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+     * d_name-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+
+PLAN FRAGMENT 4(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 2: f_key
+  OutPut Exchange Id: 01
+
+  0:OlapScanNode
+     table: skew_fact, rollup: skew_fact
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10023,10025,10027,10029,10031,10033,10035,10037
+     actualRows=0, avgRowSize=2.0
+     cardinality: 8000000
+     probe runtime filters:
+     - filter_id = 0, probe_expr = (2: f_key)
+     column statistics: 
+     * f_key-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+     * f_val-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN

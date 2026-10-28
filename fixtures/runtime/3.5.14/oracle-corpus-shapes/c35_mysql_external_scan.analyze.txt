@@ -1,0 +1,69 @@
+[0mSummary[0m
+    [0mQueryId: 33ea9edc-cd5e-11f1-9afb-d69c1b33e236[0m
+    [0mVersion: 3.5.14-23a56ec[0m
+    [0mState: Finished[0m
+    [0mTotalTime: 148ms[0m
+        [0mExecutionTime: 77.296ms [Scan: 61.738ms (79.87%), Network: 1.629ms (2.11%), ResultDeliverTime: 0ns (0.00%), ScheduleTime: 72.479ms (93.77%)][0m
+        [0mCollectProfileTime: 9ms[0m
+        [0mFrontendProfileMergeTime: 26.534ms[0m
+    [0mQueryPeakMemoryUsage: ?, QueryAllocatedMemoryUsage: 596.608 KB[0m
+    [0mTop Most Time-consuming Nodes:[0m
+        [1m[31m1. MYSQL_SCAN (id=0) : 62.186ms (93.24%)[0m
+        [0m2. MERGE_EXCHANGE (id=3) [GATHER]: 2.360ms (3.54%)[0m
+        [0m3. AGGREGATION (id=1) [finalize, update]: 1.172ms (1.76%)[0m
+        [0m4. SORT (id=2) [ROW_NUMBER, SORT]: 702.128us (1.05%)[0m
+        [0m5. RESULT_SINK: 273.409us (0.41%)[0m
+    [0mTop Most Memory-consuming Nodes:[0m
+    [0mNonDefaultVariables:[0m
+        [0menable_adaptive_sink_dop: false -> true[0m
+        [0menable_profile: false -> true[0m
+[0mFragment 0[0m
+│   [0mBackendNum: 1[0m
+│   [0mInstancePeakMemoryUsage: 65.952 KB, InstanceAllocatedMemoryUsage: 74.827 KB[0m
+│   [0mPrepareTime: ?[0m
+└──[0mRESULT_SINK[0m
+   │   [0mTotalTime: 273.409us (0.41%) [CPUTime: 273.409us][0m
+   │   [0mOutputRows: 5[0m
+   │   [0mSinkType: MYSQL_PROTOCAL[0m
+   └──[0mMERGE_EXCHANGE (id=3) [GATHER][0m
+          [0mEstimates: [row: 2500, cpu: 30000.00, memory: 30000.00, network: 30000.00, cost: 310000.00][0m
+          [0mTotalTime: 2.360ms (3.54%) [CPUTime: 731.947us, NetworkTime: 1.629ms][0m
+          [0mOutputRows: 5[0m
+          [0mPeakMemory: ?, AllocatedMemory: ?[0m
+          [0mSubordinateOperators: [0m
+              [0mLOCAL_EXCHANGE [Passthrough][0m
+[0m
+[0mFragment 1[0m
+│   [0mBackendNum: 1[0m
+│   [0mInstancePeakMemoryUsage: 348.280 KB, InstanceAllocatedMemoryUsage: 521.780 KB[0m
+│   [0mPrepareTime: ?[0m
+└──[0mDATA_STREAM_SINK (id=3)[0m
+   │   [0mPartitionType: UNPARTITIONED[0m
+   └──[0mSORT (id=2) [ROW_NUMBER, SORT][0m
+      │   [0mEstimates: [row: 2500, cpu: 30000.00, memory: 30000.00, network: 30000.00, cost: 190000.00][0m
+      │   [0mTotalTime: 702.128us (1.05%) [CPUTime: 702.128us][0m
+      │   [0mOutputRows: 5[0m
+      │   [0mPeakMemory: ?, AllocatedMemory: ?[0m
+      │   [0mOrderByExprs: [<slot 3> 3: c_region][0m
+      │   [0mSubordinateOperators: [0m
+      │       [0mLOCAL_EXCHANGE [Passthrough][0m
+      └──[0mAGGREGATION (id=1) [finalize, update][0m
+         │   [0mEstimates: [row: 2500, cpu: 20000.00, memory: 30000.00, network: 0.00, cost: 70000.00][0m
+         │   [0mTotalTime: 1.172ms (1.76%) [CPUTime: 1.172ms][0m
+         │   [0mOutputRows: 5[0m
+         │   [0mPeakMemory: ?, AllocatedMemory: ?[0m
+         │   [0mAggExprs: [count(*)][0m
+         │   [0mGroupingExprs: [c_region][0m
+         │   [0mSubordinateOperators: [0m
+         │       [0mLOCAL_EXCHANGE [Partition(BUCKET_SHUFFLE_HASH_PARTITIONED)][0m
+         └──[1m[31mMYSQL_SCAN (id=0) [0m
+                [1m[31mEstimates: [row: 5000, cpu: ?, memory: ?, network: ?, cost: 0.0][0m
+                [1m[31mTotalTime: 62.186ms (93.24%) [CPUTime: 448.735us, ScanTime: 61.738ms][0m
+                [1m[31mOutputRows: 4.000K (4000)[0m
+                [1m[31mSubordinateOperators: [0m
+                    [1m[31mCHUNK_ACCUMULATE[0m
+                    [1m[31mLOCAL_EXCHANGE [Passthrough][0m
+                [1m[31mDetail Timers: [ScanTime = IOTaskExecTime + IOTaskWaitTime][0m
+                    [1m[31mIOTaskExecTime: 61.507ms[0m
+                    [1m[31mIOTaskWaitTime: 230.880us[0m
+[0m

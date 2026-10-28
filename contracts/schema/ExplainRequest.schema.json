@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExplainRequest",
+  "description": "Exactly one input is accepted: a write-only candidate SQL statement, or a short-lived server-side SQL reference emitted by query discovery.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "candidate_sql",
+        "connection_id",
+        "input_kind"
+      ],
+      "properties": {
+        "candidate_sql": {
+          "writeOnly": true,
+          "type": "string"
+        },
+        "connection_id": {
+          "type": "string"
+        },
+        "input_kind": {
+          "type": "string",
+          "enum": [
+            "user_sql"
+          ]
+        },
+        "mode": {
+          "default": "costs",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ExplainMode"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "connection_id",
+        "discovery_generation",
+        "input_kind",
+        "plan_sql_ref",
+        "query_id"
+      ],
+      "properties": {
+        "connection_id": {
+          "type": "string"
+        },
+        "discovery_generation": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "input_kind": {
+          "type": "string",
+          "enum": [
+            "plan_sql_reference"
+          ]
+        },
+        "mode": {
+          "default": "costs",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ExplainMode"
+            }
+          ]
+        },
+        "plan_sql_ref": {
+          "type": "string"
+        },
+        "query_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "ExplainMode": {
+      "description": "Closed request grammar for ordinary EXPLAIN, not an execution method or a claim that every mode already has a structured snapshot parser.",
+      "type": "string",
+      "enum": [
+        "logical",
+        "verbose",
+        "costs"
+      ]
+    }
+  }
+}

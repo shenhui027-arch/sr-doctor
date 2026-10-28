@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SubjectHashes",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "analysis_key",
+        "facts_hash",
+        "kind"
+      ],
+      "properties": {
+        "analysis_key": {
+          "type": "string"
+        },
+        "facts_hash": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "analysis"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "baseline",
+        "candidate",
+        "comparison_key",
+        "kind"
+      ],
+      "properties": {
+        "baseline": {
+          "$ref": "#/definitions/SubjectHashAttempt"
+        },
+        "candidate": {
+          "$ref": "#/definitions/SubjectHashAttempt"
+        },
+        "comparison_key": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "comparison"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "SubjectHashAttempt": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "analysis_key",
+            "facts_hash",
+            "state"
+          ],
+          "properties": {
+            "analysis_key": {
+              "type": "string"
+            },
+            "facts_hash": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "success"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error_state",
+            "state"
+          ],
+          "properties": {
+            "error_state": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "failed"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

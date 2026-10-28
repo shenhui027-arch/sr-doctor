@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExplainVersionContext",
+  "description": "The narrow, same-connection version envelope for a COSTS plan.  It is intentionally not a `ProfileContext`: an Explain has no runtime profile.",
+  "type": "object",
+  "required": [
+    "limitations",
+    "pack_match",
+    "source_refs"
+  ],
+  "properties": {
+    "detected_release": {
+      "description": "A registered release only.  Unknown server text is never reflected.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "pack_match": {
+      "$ref": "#/definitions/PackMatch"
+    },
+    "selected_pack": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SelectedVersionPack"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "PackMatch": {
+      "type": "string",
+      "enum": [
+        "exact_pack",
+        "baseline_with_deltas",
+        "no_pack"
+      ]
+    },
+    "ReleaseDeltas": {
+      "type": "object",
+      "required": [
+        "delta_ids",
+        "deltas_hash",
+        "line",
+        "release"
+      ],
+      "properties": {
+        "delta_ids": {
+          "description": "Delta ids from `version-deltas.json` that apply, in file order.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deltas_hash": {
+          "type": "string"
+        },
+        "line": {
+          "description": "Its minor line, `x.y`.",
+          "type": "string"
+        },
+        "release": {
+          "description": "The reported release, `x.y.z`.",
+          "type": "string"
+        }
+      }
+    },
+    "SelectedVersionPack": {
+      "type": "object",
+      "required": [
+        "manifest_hash",
+        "pack_id",
+        "product_pack_version",
+        "upstream_commit",
+        "upstream_release"
+      ],
+      "properties": {
+        "manifest_hash": {
+          "type": "string"
+        },
+        "pack_id": {
+          "type": "string"
+        },
+        "product_pack_version": {
+          "type": "string"
+        },
+        "release_deltas": {
+          "description": "A release other than the pack's own: the pack read with the audited deltas of that release (multi-version source audit). Absent for the pack's own release.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReleaseDeltas"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "upstream_commit": {
+          "type": "string"
+        },
+        "upstream_release": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

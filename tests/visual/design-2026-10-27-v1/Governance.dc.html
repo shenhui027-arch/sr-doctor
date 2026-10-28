@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>治理队列与前后验证</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Noto+Sans+SC:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F5F6F8;color:#151A22;font-family:Inter,"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#1F55E0;text-decoration:none}a:hover{color:#1743B8;text-decoration:underline}
+button,input,select,textarea{font:inherit}
+table{border-collapse:collapse}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #F5F6F8">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; min-height: 52px; padding: 8px 20px; background: #FFFFFF; border-bottom: 1px solid #DFE3E8">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1F55E0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 3 5-7"></path><circle cx="19.5" cy="5.5" r="1.8"></circle><path d="M3 21h18"></path></svg>
+<span style="font-weight: 600; font-size: 14px; letter-spacing: -0.01em">SR Doctor</span>
+<span style="font-size: 12px; color: #5D6675; padding-left: 10px; border-left: 1px solid #DFE3E8">Profile 诊断 · SQL 质量</span>
+</div>
+<nav aria-label="工作区" style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">1</span>查询</a>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">2</span>诊断</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">3</span>优化建议</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">4</span>对比</span>
+<span aria-hidden="true" style="width: 1px; height: 22px; margin: 0 8px; background: #DFE3E8"></span>
+<a href="Trends.dc.html" style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none">趋势</a>
+<a href="Alerts.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none">告警<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #FDECEA; color: #B42318; font: 600 11px/1 'JetBrains Mono', monospace">3</span></a>
+<a href="Governance.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 6px; background: #EAF0FE; color: #1F55E0; font-weight: 600; text-decoration: none">治理</a>
+</nav>
+<div style="margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<a href="Collection.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid #DFE3E8; border-radius: 17px; background: #FFFFFF; color: #151A22; font-size: 12px; text-decoration: none"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #1F55E0"></span>采集中<span style="font-family: 'JetBrains Mono', monospace; color: #5D6675">水位 14:05</span></a>
+<span style="display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid #DFE3E8; border-radius: 17px; background: #FFFFFF; font-size: 12px"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #18794E"></span>Demo / Mock cluster<span style="color: #5D6675">3.5.14 · 只读</span></span>
+</div>
+</header>
+
+<main style="width: 100%; max-width: 1440px; margin: 0 auto; padding: 16px 20px 28px; display: flex; flex-direction: column; gap: 12px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<div role="tablist" aria-label="治理状态" style="display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 2px; background: #EBEEF2; border-radius: 8px">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+<button type="button" role="tab" aria-selected="{{t.selected}}" onClick="{{t.pick}}" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: {{t.bg}}; color: #151A22; font-weight: {{t.weight}}; box-shadow: {{t.shadow}}">{{t.label}} <span style="font-family: 'JetBrains Mono', monospace; color: #5D6675">{{t.count}}</span></button>
+</sc-for>
+</div>
+<span style="font-size: 12px; color: #5D6675">单用户本机记录 · 不修改 StarRocks 中的 SQL 或参数</span>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start">
+
+<section aria-labelledby="g-list" style="flex: 999 1 600px; min-width: 0; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<h1 id="g-list" style="margin: 0; padding: 12px 14px; font-size: 15px; font-weight: 600; border-bottom: 1px solid #DFE3E8">治理队列</h1>
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 680px; font-size: 13px">
+<thead><tr style="text-align: left; color: #5D6675; font-size: 12px">
+<th scope="col" style="padding: 9px 14px; font-weight: 500; border-bottom: 1px solid #DFE3E8">治理项</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8">来源</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8">基线快照</th>
+<th scope="col" style="padding: 9px 14px; font-weight: 500; border-bottom: 1px solid #DFE3E8">状态</th>
+</tr></thead>
+<tbody>
+<sc-for list="{{items}}" as="it" hint-placeholder-count="5">
+<tr style="background: {{it.bg}}; box-shadow: {{it.ring}}">
+<td style="padding: 6px 8px; border-bottom: 1px solid #EEF0F3; max-width: 360px">
+<button type="button" onClick="{{it.pick}}" aria-pressed="{{it.pressed}}" style="display: block; width: 100%; padding: 4px 6px; border: 0; background: transparent; text-align: left; color: #151A22; cursor: pointer">
+<span style="display: block; font-weight: 600">{{it.title}}</span>
+<span style="display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/18px 'JetBrains Mono', monospace; color: #3D4654">{{it.template}}</span>
+</button>
+</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; font-size: 12px; color: #3D4654">{{it.origin}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; font-size: 12px; color: #3D4654">{{it.snapshot}}</td>
+<td style="padding: 10px 14px; border-bottom: 1px solid #EEF0F3"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; white-space: nowrap; color: {{it.stColor}}; background: {{it.stBg}}; border: {{it.stBorder}}">{{it.status}}</span></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+</section>
+
+<aside aria-label="治理项详情" style="flex: 1 1 480px; min-width: 0; display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<div style="padding: 14px 16px 12px; border-bottom: 1px solid #DFE3E8">
+<div style="font-size: 12px; color: #5D6675">治理项</div>
+<h2 style="margin: 2px 0 0; font-size: 16px; line-height: 22px; font-weight: 600">{{sel.title}}</h2>
+<ol aria-label="进度" style="list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+<li style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12px; color: {{s.color}}; background: {{s.bg}}; font-weight: {{s.weight}}">{{s.label}}</li>
+</sc-for>
+</ol>
+</div>
+
+<div style="padding: 12px 16px; border-bottom: 1px solid #DFE3E8">
+<h3 style="margin: 0 0 6px; font-size: 13px; font-weight: 600">钉住的基线快照</h3>
+<p style="margin: 0; font-size: 12px; color: #3D4654">{{sel.snapshotDetail}}</p>
+<p style="margin: 4px 0 0; font-size: 12px; color: #5D6675">快照只含脱敏模板与分析结论，字面量已替换；原始 Profile 文本不保存。</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px">
+<button type="button" style="height: 32px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22">打开快照诊断</button>
+<button type="button" style="height: 32px; padding: 0 10px; border: 0; background: transparent; color: #1F55E0">更换基线</button>
+</div>
+</div>
+
+<div style="padding: 12px 16px; border-bottom: 1px solid #DFE3E8">
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600">处理记录
+<textarea rows="2" style="width: 100%; padding: 8px 10px; border: 1px solid #C9CFD7; border-radius: 6px; color: #151A22; font-size: 12px; font-weight: 400; resize: vertical">{{sel.note}}</textarea></label>
+<p style="margin: 4px 0 0; font-size: 12px; color: #5D6675">由你在集群外完成改动后记录；本工具不执行任何修改。</p>
+</div>
+
+<div style="padding: 12px 16px">
+<h3 style="margin: 0; font-size: 13px; font-weight: 600">前后对比验证</h3>
+<p style="margin: 2px 0 0; font: 400 12px/18px 'JetBrains Mono', monospace; color: #5D6675">{{sel.windows}}</p>
+<table style="width: 100%; margin-top: 8px; font-size: 12px">
+<thead><tr style="text-align: left; color: #5D6675"><th scope="col" style="padding: 6px 0; font-weight: 500; border-bottom: 1px solid #DFE3E8">指标</th><th scope="col" style="padding: 6px 0; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">治理前</th><th scope="col" style="padding: 6px 0; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">治理后</th><th scope="col" style="padding: 6px 0; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">变化</th></tr></thead>
+<tbody>
+<sc-for list="{{sel.metrics}}" as="m" hint-placeholder-count="4">
+<tr><td style="padding: 7px 0; border-bottom: 1px solid #EEF0F3">{{m.name}}</td><td style="padding: 7px 0; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace">{{m.before}}</td><td style="padding: 7px 0; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace">{{m.after}}</td><td style="padding: 7px 0; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace; color: {{m.color}}">{{m.delta}}</td></tr>
+</sc-for>
+</tbody>
+</table>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px">
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12px; font-weight: 500; color: {{sel.vColor}}; background: {{sel.vBg}}; border: {{sel.vBorder}}">{{sel.verdict}}</span>
+<span style="font-size: 12px; color: #3D4654">置信度 {{sel.conf}}</span>
+<span style="font-size: 12px; color: #3D4654">证据 {{sel.ev}}</span>
+</div>
+<p style="margin: 6px 0 0; font-size: 12px; color: #5D6675">{{sel.verifyNote}}</p>
+</div>
+
+<div style="margin-top: auto; padding: 14px 16px; border-top: 1px solid #DFE3E8; display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="flex: 1 1 auto; height: 36px; padding: 0 14px; border: 0; border-radius: 6px; background: #151A22; color: #FFFFFF; font-weight: 500">{{sel.primary}}</button>
+<button type="button" style="height: 36px; padding: 0 12px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22">打开 Profile 对比</button>
+<button type="button" style="height: 36px; padding: 0 12px; border: 0; background: transparent; color: #5D6675">放弃</button>
+</div>
+</aside>
+
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { tab: 0, picked: 0 }; }
+  renderVals() {
+    const st = {
+      todo: { status: '待处理', stColor: '#3D4654', stBg: '#F0F2F5', stBorder: '0' },
+      doing: { status: '处理中', stColor: '#1F55E0', stBg: '#EAF0FE', stBorder: '0' },
+      verify: { status: '待验证', stColor: '#9A4D00', stBg: '#FFF3E0', stBorder: '0' },
+      good: { status: '已验证 · 改善', stColor: '#18794E', stBg: '#E7F5EE', stBorder: '0' },
+      nc: { status: '不可比较', stColor: '#3D4654', stBg: '#FFFFFF', stBorder: '1px dashed #9AA2AE' }
+    };
+    const green = '#18794E', red = '#B42318', ink = '#151A22';
+    const data = [
+      { title: 'orders ⋈ customers 地区筛选变慢', template: 'SELECT o.id, o.amount FROM orders o JOIN customers c ON o.cid = c.id WHERE c.region = ? AND o.dt >= ?', origin: '告警 · 10-27 14:00', snapshot: '已钉住 · 10-27 14:01', state: 'verify', stage: 2,
+        snapshotDetail: '10-27 14:01 · 代表执行 3b7e19c2…8a10 · 诊断：customers 全表扫描，Join 右表未裁剪', note: '已为 customers 增加 region 分区并刷新统计信息（10-27 15:20）',
+        windows: '前 10-26 14:00–10-27 14:00 · 后 10-27 15:30–至今',
+        metrics: [
+          { name: '查询耗时中位数', before: '10.3 s', after: '5.8 s', delta: '−4.5 s · −44%', color: green },
+          { name: '扫描数据量中位数', before: '820 GB', after: '310 GB', delta: '−510 GB · −62%', color: green },
+          { name: 'CPU 中位数', before: '41.2 s', after: '18.9 s', delta: '−22.3 s · −54%', color: green },
+          { name: '执行次数', before: '143', after: '38', delta: '样本仍在积累', color: '#5D6675' }
+        ],
+        verdict: '待验证 · 样本积累中', vColor: '#9A4D00', vBg: '#FFF3E0', vBorder: '0', conf: '中', ev: '部分', verifyNote: '治理后样本 38 次，达到判定所需样本前只显示变化，不下结论。', primary: '标记为已验证' },
+      { title: 'orders 按客户聚合耗时上升', template: 'SELECT customer_id, SUM(amount) FROM orders GROUP BY customer_id', origin: '告警 · 10-27 13:00', snapshot: '已钉住 · 10-27 13:04', state: 'doing', stage: 1,
+        snapshotDetail: '10-27 13:04 · 代表执行 7e8c3a91…4d73 · 诊断：聚合阶段数据倾斜', note: '', windows: '前 10-26 13:00–10-27 13:00 · 后 尚未开始',
+        metrics: [
+          { name: '查询耗时中位数', before: '9.9 s', after: '—', delta: '—', color: ink },
+          { name: '扫描数据量中位数', before: '3.1 TB', after: '—', delta: '—', color: ink }
+        ],
+        verdict: '尚无治理后窗口', vColor: '#3D4654', vBg: '#FFFFFF', vBorder: '1px dashed #9AA2AE', conf: '—', ev: '—', verifyNote: '记录改动时间后，系统从该时间起累计治理后窗口。', primary: '记录改动并进入待验证' },
+      { title: 'dim_store 点查扫描量从 0 增长', template: 'SELECT * FROM dim_store WHERE store_id = ?', origin: '告警 · 10-27 09:00', snapshot: '未钉住', state: 'todo', stage: 0,
+        snapshotDetail: '尚未钉住基线快照。可从代表执行拉取 Profile 后钉住。', note: '', windows: '—',
+        metrics: [
+          { name: '扫描数据量中位数', before: '0 B', after: '120 MB', delta: '+120 MB · —', color: red }
+        ],
+        verdict: '未开始', vColor: '#3D4654', vBg: '#F0F2F5', vBorder: '0', conf: '—', ev: '—', verifyNote: '基线为 0：只给绝对变化，百分比不定义。', primary: '开始处理' },
+      { title: 'sales 地区均价回归已修复', template: 'SELECT region, AVG(price) FROM sales WHERE ts BETWEEN ? AND ? GROUP BY region', origin: '手动', snapshot: '已钉住 · 10-26 08:10', state: 'good', stage: 3,
+        snapshotDetail: '10-26 08:10 · 代表执行 6c2d8f14…0a95 · 诊断：ts 谓词未下推到分区', note: '改写为分区列 dt 过滤（10-26 10:00）', windows: '前 10-25 08:00–10-26 08:00 · 后 10-26 10:00–10-27 10:00',
+        metrics: [
+          { name: '查询耗时中位数', before: '7.2 s', after: '4.0 s', delta: '−3.2 s · −44%', color: green },
+          { name: '扫描数据量中位数', before: '210 GB', after: '64 GB', delta: '−146 GB · −70%', color: green }
+        ],
+        verdict: '已验证 · 改善', vColor: '#18794E', vBg: '#E7F5EE', vBorder: '0', conf: '高', ev: '完整', verifyNote: '前后窗口同一版本、VersionPack 与规则集，可比较。', primary: '重新验证' },
+      { title: 'daily_summary 写入耗时', template: 'INSERT INTO daily_summary SELECT dt, SUM(amount) FROM orders WHERE dt = ? GROUP BY dt', origin: '回归列表', snapshot: '已钉住 · 10-25 22:30', state: 'nc', stage: 3,
+        snapshotDetail: '10-25 22:30 · 基线快照在指纹规则 v0 下生成', note: '调整导入批大小（10-26 02:00）', windows: '前 规则 v0 · 后 规则 v1',
+        metrics: [
+          { name: '查询耗时中位数', before: '—', after: '14.2 s', delta: 'not_comparable', color: '#5D6675' }
+        ],
+        verdict: '不可比较', vColor: '#3D4654', vBg: '#FFFFFF', vBorder: '1px dashed #9AA2AE', conf: '—', ev: '不可用', verifyNote: '前后跨越指纹规则集变化，不给改善或未改善结论；可更换基线后重新验证。', primary: '更换基线后重新验证' }
+    ];
+    const keys = ['all', 'todo', 'doing', 'verify', 'closed'];
+    const labels = ['全部', '待处理', '处理中', '待验证', '已收口'];
+    const inTab = (k, s) => k === 'all' || (k === 'closed' ? (s === 'good' || s === 'nc') : s === k);
+    const tab = this.state.tab;
+    const tabs = keys.map((k, i) => ({ label: labels[i], count: String(data.filter((d) => inTab(k, d.state)).length), selected: i === tab ? 'true' : 'false', bg: i === tab ? '#FFFFFF' : 'transparent', weight: i === tab ? '600' : '400', shadow: i === tab ? '0 1px 2px rgba(21,26,34,0.08)' : 'none', pick: () => this.setState({ tab: i }) }));
+    const visible = data.map((d, i) => i).filter((i) => inTab(keys[tab], data[i].state));
+    const picked = visible.includes(this.state.picked) ? this.state.picked : (visible[0] ?? 0);
+    const items = visible.map((i) => ({ ...data[i], ...st[data[i].state], bg: i === picked ? '#F3F6FE' : '#FFFFFF', ring: i === picked ? 'inset 0 0 0 1.5px #1F55E0' : 'none', pressed: i === picked ? 'true' : 'false', pick: () => this.setState({ picked: i }) }));
+    const sel = data[picked];
+    const steps = ['待处理', '处理中', '待验证', '已收口'].map((label, i) => ({ label: (i < sel.stage ? '✓ ' : '') + label, color: i === sel.stage ? '#1F55E0' : i < sel.stage ? '#18794E' : '#5D6675', bg: i === sel.stage ? '#EAF0FE' : i < sel.stage ? '#E7F5EE' : '#F0F2F5', weight: i === sel.stage ? '600' : '400' }));
+    return { tabs, items, sel, steps };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>同类 SQL 与非官方指纹</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Noto+Sans+SC:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F5F6F8;color:#151A22;font-family:Inter,"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#1F55E0;text-decoration:none}a:hover{color:#1743B8;text-decoration:underline}
+button,input,select{font:inherit}
+table{border-collapse:collapse}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #F5F6F8">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; min-height: 52px; padding: 8px 20px; background: #FFFFFF; border-bottom: 1px solid #DFE3E8">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1F55E0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 3 5-7"></path><circle cx="19.5" cy="5.5" r="1.8"></circle><path d="M3 21h18"></path></svg>
+<span style="font-weight: 600; font-size: 14px; letter-spacing: -0.01em">SR Doctor</span>
+<span style="font-size: 12px; color: #5D6675; padding-left: 10px; border-left: 1px solid #DFE3E8">Profile 诊断 · SQL 质量</span>
+</div>
+<nav aria-label="工作区" style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px">
+<a href="Main.dc.html" aria-current="page" style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; background: #EAF0FE; color: #1F55E0; font-weight: 600; text-decoration: none"><span style="font: 500 11px/1 'JetBrains Mono', monospace">1</span>查询</a>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">2</span>诊断</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">3</span>优化建议</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">4</span>对比</span>
+<span aria-hidden="true" style="width: 1px; height: 22px; margin: 0 8px; background: #DFE3E8"></span>
+<a href="Trends.dc.html" style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none">趋势</a>
+<a href="Alerts.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none">告警<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #FDECEA; color: #B42318; font: 600 11px/1 'JetBrains Mono', monospace">3</span></a>
+<a href="Governance.dc.html" style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none">治理</a>
+</nav>
+<div style="margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<a href="Collection.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid #DFE3E8; border-radius: 17px; background: #FFFFFF; color: #151A22; font-size: 12px; text-decoration: none"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #1F55E0"></span>采集中<span style="font-family: 'JetBrains Mono', monospace; color: #5D6675">水位 14:05</span></a>
+<span style="display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid #DFE3E8; border-radius: 17px; background: #FFFFFF; font-size: 12px"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #18794E"></span>Demo / Mock cluster<span style="color: #5D6675">3.5.14 · 只读</span></span>
+<div role="group" aria-label="语言" style="display: flex; height: 34px; padding: 2px; border: 1px solid #DFE3E8; border-radius: 6px; background: #FFFFFF">
+<button type="button" aria-pressed="true" style="width: 32px; border: 0; border-radius: 4px; background: #F0F2F5; color: #151A22; font-size: 12px; font-weight: 600">中</button>
+<button type="button" aria-pressed="false" style="width: 32px; border: 0; border-radius: 4px; background: transparent; color: #5D6675; font-size: 12px">EN</button>
+</div>
+</div>
+</header>
+
+<main style="width: 100%; max-width: 1440px; margin: 0 auto; padding: 16px 20px 28px; display: flex; flex-direction: column; gap: 12px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<div role="tablist" aria-label="选择查询的方式" style="display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 2px; background: #EBEEF2; border-radius: 8px">
+<button type="button" role="tab" aria-selected="true" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: #FFFFFF; color: #151A22; font-weight: 600; box-shadow: 0 1px 2px rgba(21,26,34,0.08)">审计历史</button>
+<button type="button" role="tab" aria-selected="false" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: transparent; color: #3D4654">Profile 列表</button>
+<button type="button" role="tab" aria-selected="false" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: transparent; color: #3D4654">运行中</button>
+<button type="button" role="tab" aria-selected="false" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: transparent; color: #3D4654">SQL 工作区</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px">
+<span style="color: #5D6675">连接能力</span>
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 12px; background: #E7F5EE; color: #18794E">AuditLoader 可用</span>
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 12px; background: #FFF3E0; color: #9A4D00">enable_sql_digest 部分开启</span>
+</div>
+</div>
+
+<section aria-label="筛选" style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #5D6675">时间范围（UTC）
+<select style="height: 34px; min-width: 168px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22"><option>最近 1 小时</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #5D6675">数据库
+<select style="height: 34px; min-width: 120px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22"><option>demo</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #5D6675">同类 SQL：优先看什么
+<select style="height: 34px; min-width: 150px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22"><option>累计查询耗时</option></select></label>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 8px">
+<span style="font-size: 12px; color: #5D6675">手动刷新 · 最多最近 30 天</span>
+<button type="button" style="height: 34px; padding: 0 12px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22">刷新</button>
+<button type="button" style="height: 34px; padding: 0 14px; border: 0; border-radius: 6px; background: #151A22; color: #FFFFFF; font-weight: 500">应用筛选</button>
+</div>
+</section>
+
+<p role="note" style="margin: 0; padding: 10px 14px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px; font-size: 12px; color: #3D4654">部分查询缺少原生 SQL digest，已在下方按<b style="font-weight: 600">非官方指纹</b>单独归组；两类结果不混排、不合计。</p>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start">
+
+<section aria-label="同类 SQL" style="flex: 999 1 640px; min-width: 0; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #DFE3E8">
+<div>
+<h1 style="margin: 0; font-size: 15px; font-weight: 600">同类 SQL · 频次与累计消耗</h1>
+<p style="margin: 2px 0 0; font-size: 12px; color: #5D6675">按精确原生 digest 归组 · 已隐藏本工具与非查询语句</p>
+</div>
+<div role="group" aria-label="视图" style="display: inline-flex; border: 1px solid #C9CFD7; border-radius: 6px; overflow: hidden">
+<button type="button" aria-pressed="true" style="height: 30px; padding: 0 12px; border: 0; background: #151A22; color: #FFFFFF; font-size: 12px">同类 SQL</button>
+<a href="Similar.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-left: 1px solid #C9CFD7; background: #FFFFFF; color: #3D4654; font-size: 12px; text-decoration: none">相似 SQL</a>
+<button type="button" aria-pressed="false" style="height: 30px; padding: 0 12px; border: 0; border-left: 1px solid #C9CFD7; background: #FFFFFF; color: #3D4654; font-size: 12px">单次执行</button>
+</div>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 760px; font-size: 13px">
+<thead>
+<tr style="text-align: left; color: #5D6675; font-size: 12px">
+<th scope="col" style="padding: 9px 14px; font-weight: 500; border-bottom: 1px solid #DFE3E8">SQL 摘要</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">执行次数</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">累计查询耗时 ↓</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">最大查询耗时</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">累计扫描数据量</th>
+<th scope="col" style="padding: 9px 14px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">失败</th>
+</tr>
+</thead>
+<tbody>
+<sc-for list="{{families}}" as="f" hint-placeholder-count="4">
+<tr>
+<td style="padding: 10px 14px; border-bottom: 1px solid #EEF0F3; max-width: 380px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="font: 500 11px/18px 'JetBrains Mono', monospace; color: #5D6675">{{f.digest}}</span>
+<span style="display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 9px; background: #E7F5EE; color: #18794E; font-size: 11px">官方 digest</span>
+</div>
+<div style="margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/18px 'JetBrains Mono', monospace">{{f.sql}}</div>
+</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace">{{f.count}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 500">{{f.total}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace">{{f.max}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace">{{f.scan}}</td>
+<td style="padding: 10px 14px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace; color: {{f.failColor}}">{{f.fail}}</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 10px 14px; font-size: 12px; color: #5D6675; border-bottom: 1px solid #DFE3E8">
+<span>4 个精确查询族 · 896 次执行带原生 digest</span>
+<span>审计记录可能延迟入库</span>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 14px 4px">
+<h2 style="margin: 0; font-size: 14px; font-weight: 600">无原生 digest 的执行 · 按模板归组</h2>
+<span title="由本工具根据审计语句生成，不是 StarRocks digest" style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border: 1px solid #DFE3E8; border-radius: 10px; color: #3D4654; font-size: 11px; font-weight: 500">非官方指纹</span>
+<span style="font: 400 11px/1 'JetBrains Mono', monospace; color: #5D6675">sr-doctor-fingerprint.v1</span>
+</div>
+<p style="margin: 0; padding: 0 14px 8px; font-size: 12px; color: #5D6675">读取了 388 次中最近的 388 次执行 · 371 次归入 5 个模板 · 截断 9 · 未归组：AND/OR 条件过多 6、非 SELECT/INSERT/UPDATE/DELETE 2</p>
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 760px; font-size: 13px">
+<thead>
+<tr style="text-align: left; color: #5D6675; font-size: 12px">
+<th scope="col" style="padding: 9px 14px; font-weight: 500; border-bottom: 1px solid #DFE3E8">模板（字面量为 ?）</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">执行次数</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">累计查询耗时 ↓</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">最大查询耗时</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">累计扫描数据量</th>
+<th scope="col" style="padding: 9px 14px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">失败</th>
+</tr>
+</thead>
+<tbody>
+<sc-for list="{{templates}}" as="t" hint-placeholder-count="5">
+<tr style="background: {{t.bg}}; box-shadow: {{t.ring}}">
+<td style="padding: 6px 8px; border-bottom: 1px solid #EEF0F3; max-width: 380px">
+<button type="button" onClick="{{t.pick}}" aria-pressed="{{t.pressed}}" style="display: block; width: 100%; min-height: 32px; padding: 4px 6px; border: 0; border-radius: 4px; background: transparent; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/18px 'JetBrains Mono', monospace; color: #151A22; cursor: pointer">{{t.template}}</button>
+</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace">{{t.count}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 500">{{t.total}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace">{{t.max}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace">
+<sc-if value="{{t.scanPresent}}" hint-placeholder-val="{{ true }}">{{t.scan}}</sc-if>
+<sc-if value="{{t.scanMissing}}" hint-placeholder-val="{{ false }}"><span title="该组没有执行提供此字段，不按 0 计" style="display: inline-block; padding: 0 6px; border: 1px dashed #9AA2AE; border-radius: 4px; font: 400 11px/18px Inter, 'Noto Sans SC', sans-serif; color: #5D6675">缺失</span></sc-if>
+</td>
+<td style="padding: 10px 14px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace; color: {{t.failColor}}">{{t.fail}}</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 10px 14px; font-size: 12px; color: #5D6675">
+<span>非官方指纹组单独计数，不计入上方查询族</span>
+<span>截断与无法规范化的语句不参与排序</span>
+</div>
+</section>
+
+<aside aria-label="已选非官方指纹组" style="flex: 1 1 400px; min-width: 0; display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<div style="padding: 14px 16px 12px; border-bottom: 1px solid #DFE3E8">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<span style="display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #5D6675">已选模板<span style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border: 1px solid #DFE3E8; border-radius: 10px; color: #3D4654; font-size: 11px">非官方指纹</span></span>
+<button type="button" aria-label="关闭详情" style="width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: #5D6675"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+<pre style="margin: 8px 0 0; padding: 10px 12px; background: #F5F6F8; border: 1px solid #EEF0F3; border-radius: 6px; font: 400 12px/19px 'JetBrains Mono', monospace; color: #151A22; white-space: pre-wrap">{{selected.template}}</pre>
+<div style="display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 12px; color: #5D6675"><span>default_catalog / demo</span><span>指纹 <span style="font-family: 'JetBrains Mono', monospace; color: #151A22">{{selected.fp}}</span></span></div>
+</div>
+<div style="padding: 12px 16px; border-bottom: 1px solid #DFE3E8">
+<h2 style="margin: 0 0 6px; font-size: 13px; font-weight: 600">归组依据</h2>
+<ul style="margin: 0; padding-left: 18px; font-size: 12px; color: #3D4654; display: flex; flex-direction: column; gap: 3px">
+<li>字面量、注释、空白与关键字大小写不区分</li>
+<li>常量 IN 列表、LIMIT 偏移 0、会话库限定名按官方 3.5.14 语义折叠</li>
+<li>列名、表名、别名大小写原样保留</li>
+</ul>
+<p style="margin: 8px 0 0; font-size: 12px; color: #5D6675">不是官方 digest：开启 enable_sql_digest 后，新记录改按官方 digest 归组。</p>
+</div>
+<div style="padding: 12px 16px 6px; display: flex; justify-content: space-between; align-items: baseline">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600">成员执行 · 按耗时</h2>
+<span style="font-size: 12px; color: #5D6675">{{selected.count}} 次中前 4</span>
+</div>
+<ul style="list-style: none; margin: 0; padding: 0 8px">
+<sc-for list="{{members}}" as="m" hint-placeholder-count="4">
+<li style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 9px 8px; border-radius: 6px; background: {{m.bg}}">
+<span style="font: 500 12px/18px 'JetBrains Mono', monospace">{{m.id}}</span>
+<span style="font: 500 12px/18px 'JetBrains Mono', monospace; text-align: right">{{m.time}}</span>
+<span style="font-size: 12px; color: #5D6675">{{m.start}} · 扫描 {{m.rows}}</span>
+<span style="justify-self: end; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 10px; font-size: 11px; color: {{m.stColor}}; background: {{m.stBg}}">{{m.status}}</span>
+</li>
+</sc-for>
+</ul>
+<div style="margin-top: auto; padding: 14px 16px; border-top: 1px solid #DFE3E8; display: flex; flex-direction: column; gap: 10px">
+<p style="margin: 0; font-size: 12px; color: #5D6675">只读取既有 Profile，不会重新执行 SQL。</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="flex: 1 1 auto; height: 36px; padding: 0 14px; border: 0; border-radius: 6px; background: #1F55E0; color: #FFFFFF; font-weight: 500">拉取 Profile 并诊断</button>
+<button type="button" style="height: 36px; padding: 0 12px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22">设为基线</button>
+<a href="Governance.dc.html" style="display: inline-flex; align-items: center; height: 36px; padding: 0 12px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22; text-decoration: none">加入治理队列</a>
+</div>
+</div>
+</aside>
+
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { picked: 0 }; }
+  renderVals() {
+    const red = '#B42318', muted = '#5D6675';
+    const families = [
+      { digest: '0f1e2d3c', sql: 'SELECT customer_id, SUM(amount) FROM orders GROUP BY customer_id', count: '412', total: '1h 08m', max: '27.8 s', scan: '3.1 TB', fail: '0' },
+      { digest: '9a1b2c3d', sql: 'SELECT o.*, c.region FROM orders o JOIN customers c ON o.cid = c.id WHERE …', count: '188', total: '41m 12s', max: '12.4 s', scan: '1.2 TB', fail: '2' },
+      { digest: 'c4d5e6f7', sql: 'SELECT dt, COUNT(DISTINCT uid) FROM events WHERE dt >= ? GROUP BY dt', count: '96', total: '18m 40s', max: '9.2 s', scan: '640 GB', fail: '0' },
+      { digest: 'f1e2d3c4', sql: 'SELECT * FROM dim_store WHERE store_id = ?', count: '200', total: '2m 16s', max: '0.8 s', scan: '12 GB', fail: '0' }
+    ].map((f) => ({ ...f, failColor: f.fail === '0' ? muted : red }));
+    const raw = [
+      { template: 'SELECT o.id, o.amount FROM orders o JOIN customers c ON o.cid = c.id WHERE c.region = ? AND o.dt >= ?', fp: '7c41e0a9…d2', count: '143', total: '36m 02s', max: '19.6 s', scan: '820 GB', fail: '1' },
+      { template: 'SELECT region, AVG(price) FROM sales WHERE ts BETWEEN ? AND ? GROUP BY region', fp: '2be8f31c…07', count: '97', total: '12m 18s', max: '8.1 s', scan: '210 GB', fail: '0' },
+      { template: 'SELECT count(*) FROM events WHERE uid IN (?) AND dt = ?', fp: '91d04c6e…5a', count: '64', total: '4m 51s', max: '6.0 s', scan: null, fail: '0' },
+      { template: 'INSERT INTO daily_summary SELECT dt, SUM(amount) FROM orders WHERE dt = ? GROUP BY dt', fp: 'e05a7b13…c9', count: '24', total: '3m 40s', max: '14.2 s', scan: '96 GB', fail: '3' },
+      { template: 'SELECT * FROM dim_product WHERE sku = ? LIMIT ?', fp: '4fa2d988…31', count: '43', total: '38 s', max: '1.2 s', scan: '4 GB', fail: '0' }
+    ];
+    const picked = this.state.picked;
+    const templates = raw.map((t, i) => ({ ...t, scanPresent: t.scan !== null, scanMissing: t.scan === null, failColor: t.fail === '0' ? muted : red, bg: i === picked ? '#F3F6FE' : '#FFFFFF', ring: i === picked ? 'inset 0 0 0 1.5px #1F55E0' : 'none', pressed: i === picked ? 'true' : 'false', pick: () => this.setState({ picked: i }) }));
+    const selected = raw[picked];
+    const st = {
+      try: { status: '可尝试拉取', stColor: '#1F55E0', stBg: '#EAF0FE' },
+      done: { status: 'Profile 已拉取', stColor: '#18794E', stBg: '#E7F5EE' },
+      no: { status: '暂不可拉取', stColor: '#5D6675', stBg: '#F0F2F5' }
+    };
+    const members = [
+      { id: '3b7e19c2…8a10', time: '19.6 s', start: '14:01:44', rows: '612.4 M 行', ...st.try, bg: '#F3F6FE' },
+      { id: '5d20a6f1…2c47', time: '15.3 s', start: '13:48:09', rows: '488.0 M 行', ...st.done, bg: 'transparent' },
+      { id: 'a91c03e8…f5d6', time: '11.9 s', start: '13:31:27', rows: '402.7 M 行', ...st.no, bg: 'transparent' },
+      { id: 'c2f8d4b0…7e19', time: '10.4 s', start: '13:12:50', rows: '— 缺失', ...st.try, bg: 'transparent' }
+    ];
+    return { families, templates, selected, members };
+  }
+}
+</script>
+</body>
+</html>

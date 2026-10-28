@@ -1,0 +1,210 @@
+{
+  "analysis_schema_range": "2.0",
+  "attempt_policy": {
+    "error_arm": "error_summary_only",
+    "outcome_arm": "analysis_outcome_only",
+    "state_derivation": "outcome.report.analysis_state_or_error",
+    "xor": true
+  },
+  "comparison_schema_range": "2.0",
+  "deterministic_order_policy": {
+    "finding_deltas": "stable_rule_id_then_subject_ref",
+    "metric_deltas": "stable_metric_id_then_subject_match_then_order_rank",
+    "structure_deltas": "stable_id_or_exact_recipe_source_order"
+  },
+  "evidence": [
+    "docs/02-unified-ir-and-diagnosis.md",
+    "docs/09-http-api-contract.md",
+    "fixtures/expected/3.5.14/sr3514_compare_contract_cases.json"
+  ],
+  "finding_policy": {
+    "absence_requires": "one_complete_or_partial_not_triggered_evaluation_same_rule_version_subject_engine_version_pack_and_compatible_registry_no_missing_prerequisites",
+    "absence_unproven": "incomparable_in_both_directions",
+    "partial_evidence": "resolved_or_added_entries_where_finding_or_unique_negative_evaluation_is_partial",
+    "algorithm_changed": "rule_id_evaluator_version_or_stable_subject_mismatch",
+    "evaluator_version_policy": {
+      "identity_fields": [
+        "rule_id",
+        "evaluator_version",
+        "stable_subject_ref"
+      ],
+      "match": "exact",
+      "mismatch": "algorithm_changed"
+    },
+    "stable_subject_required": true
+  },
+  "golden_case_ids": [
+    "attempts_both_complete",
+    "attempts_complete_partial",
+    "attempts_both_partial",
+    "compare_equivalent",
+    "compare_zero_baseline",
+    "compare_interval_baseline_contains_zero",
+    "compare_interval_baseline_excludes_zero",
+    "compare_missing_not_zero",
+    "compare_invalid_not_zero",
+    "compare_registry_semantic_mismatch",
+    "compare_registry_explicit_equivalent",
+    "compare_algorithm_changed",
+    "compare_baseline_failed",
+    "compare_candidate_failed"
+  ],
+  "hash_contract": {
+    "manifest_hash": "canonical object excluding manifest_hash",
+    "semantic_manifest_hash": "canonical object excluding evidence, status, golden_case_ids, manifest_hash and semantic_manifest_hash"
+  },
+  "id": "doctor-comparator-v0.1",
+  "manifest_hash": "ce32aa3e6c476bac7579a048f4778247d5329eccbe944b62ba54022d43e67c86",
+  "metric_policy": {
+    "absolute_delta": {
+      "exact_formula": "candidate_minus_baseline",
+      "interval": {
+        "lower_formula": "candidate.lower_minus_baseline.upper",
+        "lower_inclusive": "candidate.lower_inclusive_and_baseline.upper_inclusive",
+        "upper_formula": "candidate.upper_minus_baseline.lower",
+        "upper_inclusive": "candidate.upper_inclusive_and_baseline.lower_inclusive"
+      }
+    },
+    "duplicate_match": "not_comparable_with_limitation",
+    "group_refinement": "pair_by_cell_match_key_when_every_cell_on_both_sides_has_a_unique_key",
+    "match_key": [
+      "metric_id",
+      "subject_match"
+    ],
+    "percentage": {
+      "arithmetic": "checked_i128_rational_no_f64",
+      "baseline_closure_contains_zero": "undefined_baseline_interval_contains_zero",
+      "endpoint_inclusivity": {
+        "exact": "corresponding_input_endpoint_conjunction",
+        "outward_rounding": "conservative_inclusive"
+      },
+      "exact_formula": "absolute_delta_divided_by_baseline",
+      "fixed_decimal_scale": 9,
+      "interval_lower_rounding": "floor",
+      "interval_requires": "baseline_closure_strictly_positive",
+      "interval_upper_rounding": "ceil",
+      "lower_endpoint": "candidate.lower_div_baseline.upper_minus_one",
+      "upper_endpoint": "candidate.upper_div_baseline.lower_minus_one"
+    },
+    "typed_state_mapping": {
+      "missing_invalid_unavailable_incompatible_or_semantic_mismatch": "not_comparable",
+      "numeric_exact_or_bounded": "comparable",
+      "zero_baseline": "absolute_delta_preserved_percentage_undefined"
+    }
+  },
+  "parallelism_policy": {
+    "basis": "AnalysisSnapshotReport.execution_shape: fragment_count and instance_count (sum of fragment InstanceNum), state complete on both sides",
+    "different_counts": "not_comparable:parallelism_shape_mismatch",
+    "gated_metrics": [
+      {
+        "metric_id": "QueryCumulativeCpuTime",
+        "subject_match": "query"
+      },
+      {
+        "metric_id": "QuerySpillBytes",
+        "subject_match": "query"
+      }
+    ],
+    "official_semantics": "StarRocks 3.5.14 QueryRuntimeProfile.buildQueryProfile sums the instance-reported BE QueryContext counter over every fragment instance",
+    "unavailable_counts": "not_comparable:parallelism_shape_unavailable"
+  },
+  "reason_policy": {
+    "duplicates": "removed",
+    "order": "first_occurrence"
+  },
+  "registry_equivalence": {
+    "accepted_receipt_pair": {
+      "baseline": {
+        "id": "sr3514-metric-registry",
+        "manifest_hash": "af257364f97f03bca0f0b9b6e4901dd9df871b133e58e623811f0ba210c104a9",
+        "version": "0.1.0"
+      },
+      "candidate": {
+        "id": "sr3514-metric-registry",
+        "manifest_hash": "850fa6244f1235dbc370b92f8ecf2f53a28789a9214b89f1e41485c7c4098d62",
+        "version": "0.1.1"
+      }
+    },
+    "eligible_metrics": [
+      {
+        "canonical_unit": "ns",
+        "dimension": "duration",
+        "metric_id": "QueryCumulativeOperatorTime"
+      },
+      {
+        "canonical_unit": "ns",
+        "dimension": "duration",
+        "metric_id": "QueryCumulativeScanTime"
+      },
+      {
+        "canonical_unit": "ns",
+        "dimension": "duration",
+        "metric_id": "QueryCumulativeNetworkTime"
+      },
+      {
+        "canonical_unit": "byte",
+        "dimension": "bytes",
+        "metric_id": "QuerySpillBytes"
+      },
+      {
+        "canonical_unit": "ns",
+        "dimension": "duration",
+        "metric_id": "OperatorTotalTime"
+      },
+      {
+        "canonical_unit": "ns",
+        "dimension": "duration",
+        "metric_id": "NetworkTime"
+      },
+      {
+        "canonical_unit": "ns",
+        "dimension": "duration",
+        "metric_id": "ScanTime"
+      },
+      {
+        "canonical_unit": "item",
+        "dimension": "count",
+        "metric_id": "PushRowNum"
+      },
+      {
+        "canonical_unit": "item",
+        "dimension": "count",
+        "metric_id": "PullRowNum"
+      },
+      {
+        "canonical_unit": "item",
+        "dimension": "count",
+        "metric_id": "InstanceNum"
+      }
+    ],
+    "recipe_id": "sr3514.registry.same_metric",
+    "recipe_version": "1",
+    "requires": [
+      "same_canonical_metric_id",
+      "same_dimension_and_unit",
+      "explicit_versioned_recipe"
+    ],
+    "symmetric": true
+  },
+  "semantic_manifest_hash": "aff0559dc605f985de214353451d2ebe8bc8d610bae549f796bbe005498e6e5b",
+  "status": "contract_only_not_ready",
+  "structure_policy": {
+    "changed": "stable_id_match_with_different_entity_kind_plan_node_type_or_printed_plan_facts_order_free",
+    "edge_signature": [
+      "edge_id",
+      "from",
+      "to",
+      "relation",
+      "direction_semantics",
+      "source",
+      "quality",
+      "source_ordinal",
+      "input_role",
+      "derivation_recipe",
+      "restates_edge_id"
+    ],
+    "fuzzy_matching": false,
+    "match_basis": "stable_id_or_explicit_versioned_recipe"
+  },
+  "version": "0.6.0"
+}

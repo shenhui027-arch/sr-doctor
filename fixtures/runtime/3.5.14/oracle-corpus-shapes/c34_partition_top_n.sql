@@ -1,0 +1,1 @@
+SELECT s_cust, s_id, s_amount, rn FROM (SELECT s_cust, s_id, s_amount, row_number() OVER (PARTITION BY s_cust ORDER BY s_amount DESC, s_id) AS rn FROM sales WHERE s_cust <= 500) t WHERE rn <= 2 ORDER BY s_cust, rn LIMIT 20;

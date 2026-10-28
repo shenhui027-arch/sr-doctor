@@ -1,0 +1,44 @@
+PLAN COST
+  CPU: 80000.0
+  Memory: 90000.0
+
+PLAN FRAGMENT 0(F01)
+  Output Exprs:3: c_region | 5: count
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  3:MERGING-EXCHANGE
+     distribution type: GATHER
+     cardinality: 2500
+     column statistics: 
+     * c_region-->[-Infinity, 5.0, 0.0, 1.0, 1.0] UNKNOWN
+     * count-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+
+PLAN FRAGMENT 1(F00)
+
+  Input Partition: UNPARTITIONED
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 03
+
+  2:SORT
+  |  order by: [3, INT, true] ASC
+  |  offset: 0
+  |  cardinality: 2500
+  |  column statistics: 
+  |  * c_region-->[-Infinity, 5.0, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  1:AGGREGATE (update finalize)
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false]
+  |  group by: [c_region, INT, true]
+  |  cardinality: 2500
+  |  column statistics: 
+  |  * c_region-->[-Infinity, 5.0, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  0:SCAN MYSQL
+     TABLE: `customers`
+     Query: SELECT `c_region` FROM `customers` WHERE (c_region < 5)
+     cardinality: 5000
+     column statistics: 
+     * c_region-->[-Infinity, 5.0, 0.0, 1.0, 1.0] UNKNOWN

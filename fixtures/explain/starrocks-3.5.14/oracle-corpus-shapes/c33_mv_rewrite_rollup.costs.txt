@@ -1,0 +1,76 @@
+PLAN COST
+  CPU: 223451.14455722785
+  Memory: 112565.57227861392
+
+PLAN FRAGMENT 0(F01)
+  Output Exprs:3: s_cust | 7: sum | 8: sum
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  4:MERGING-EXCHANGE
+     distribution type: GATHER
+     limit: 10
+     cardinality: 10
+     column statistics: 
+     * s_cust-->[1.0, 200.0, 0.0, 4.0, 1990.0995049752487] ESTIMATE
+     * sum-->[0.0, 99.99, 0.0, 16.0, 1990.0995049752487] ESTIMATE
+     * sum-->[1.0, 1990.0995049752487, 0.0, 8.0, 10.0] ESTIMATE
+     * s_cust-->[1.0, 200.0, 0.0, 4.0, 1990.0995049752487] ESTIMATE
+     * sum-->[0.0, 99.99, 0.0, 16.0, 1990.0995049752487] ESTIMATE
+     * sum-->[1.0, 1990.0995049752487, 0.0, 8.0, 10.0] ESTIMATE
+
+PLAN FRAGMENT 1(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 04
+
+  3:TOP-N
+  |  order by: [7, DECIMAL128(38,2), true] DESC, [3, INT, false] ASC
+  |  offset: 0
+  |  limit: 10
+  |  cardinality: 10
+  |  column statistics: 
+  |  * s_cust-->[1.0, 200.0, 0.0, 4.0, 1990.0995049752487] ESTIMATE
+  |  * sum-->[0.0, 99.99, 0.0, 16.0, 1990.0995049752487] ESTIMATE
+  |  * sum-->[1.0, 1990.0995049752487, 0.0, 8.0, 10.0] ESTIMATE
+  |  * s_cust-->[1.0, 200.0, 0.0, 4.0, 1990.0995049752487] ESTIMATE
+  |  * sum-->[0.0, 99.99, 0.0, 16.0, 1990.0995049752487] ESTIMATE
+  |  * sum-->[1.0, 1990.0995049752487, 0.0, 8.0, 10.0] ESTIMATE
+  |  
+  2:Project
+  |  output columns:
+  |  3 <-> [9: s_cust, INT, false]
+  |  7 <-> [14: sum, DECIMAL128(38,2), true]
+  |  8 <-> [15: sum, BIGINT, true]
+  |  cardinality: 1990
+  |  column statistics: 
+  |  * s_cust-->[1.0, 200.0, 0.0, 4.0, 1990.0995049752487] ESTIMATE
+  |  * sum-->[0.0, 99.99, 0.0, 16.0, 1990.0995049752487] ESTIMATE
+  |  * sum-->[1.0, 1990.0995049752487, 0.0, 8.0, 10.0] ESTIMATE
+  |  
+  1:AGGREGATE (update finalize)
+  |  aggregate: sum[([11: amount, DECIMAL128(38,2), true]); args: DECIMAL128; result: DECIMAL128(38,2); args nullable: true; result nullable: true], sum[([12: qty, BIGINT, true]); args: BIGINT; result: BIGINT; args nullable: true; result nullable: true]
+  |  group by: [9: s_cust, INT, false]
+  |  cardinality: 1990
+  |  column statistics: 
+  |  * s_cust-->[1.0, 200.0, 0.0, 4.0, 1990.0995049752487] ESTIMATE
+  |  * sum-->[0.0, 99.99, 0.0, 16.0, 1990.0995049752487] ESTIMATE
+  |  * sum-->[1.0, 1990.0995049752487, 0.0, 8.0, 10.0] ESTIMATE
+  |  * s_cust-->[1.0, 200.0, 0.0, 4.0, 1990.0995049752487] ESTIMATE
+  |  * sum-->[0.0, 99.99, 0.0, 16.0, 1990.0995049752487] ESTIMATE
+  |  * sum-->[1.0, 1990.0995049752487, 0.0, 8.0, 10.0] ESTIMATE
+  |  
+  0:OlapScanNode
+     table: mv_sales_cust_day, rollup: mv_sales_cust_day
+     preAggregation: on
+     Predicates: [9: s_cust, INT, false] <= 200
+     partitionsRatio=1/1, tabletsRatio=2/2
+     tabletList=10361,10363
+     actualRows=0, avgRowSize=28.0
+     MaterializedView: true
+     cardinality: 1990
+     column statistics: 
+     * s_cust-->[1.0, 200.0, 0.0, 4.0, 1990.0995049752487] ESTIMATE
+     * amount-->[0.0, 99.99, 0.0, 16.0, 1990.0995049752487] ESTIMATE
+     * qty-->[1.0, 10.0, 0.0, 8.0, 10.0] ESTIMATE

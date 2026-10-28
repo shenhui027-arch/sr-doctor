@@ -1,0 +1,200 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuditSimilarSqlReadRequest",
+  "type": "object",
+  "required": [
+    "connection_id",
+    "request"
+  ],
+  "properties": {
+    "connection_id": {
+      "type": "string"
+    },
+    "request": {
+      "$ref": "#/definitions/AuditSimilarSqlRequest"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AuditFamilySort": {
+      "type": "string",
+      "enum": [
+        "cumulative_query_time_desc",
+        "cumulative_scan_bytes_desc",
+        "cumulative_cpu_cost_desc",
+        "execution_count_desc",
+        "error_count_desc",
+        "error_proportion_desc",
+        "max_query_time_desc",
+        "max_memory_cost_desc"
+      ]
+    },
+    "AuditScope": {
+      "type": "object",
+      "required": [
+        "statement_filter",
+        "window"
+      ],
+      "properties": {
+        "catalog": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "database": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "native_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resource_group": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditTerminalState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "statement_filter": {
+          "description": "Explicit, user-visible statement-class filter. It is part of the scope so every Audit read (window cards, Top tables, families, concurrency, SQL lookup) uses the same population; hidden rows stay countable.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditStatementFilter"
+            }
+          ]
+        },
+        "user": {
+          "description": "Optional exact AuditLoader source-user filter. The source column is capability-probed; a requested value never falls back to an unfiltered read when that column is absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "window": {
+          "$ref": "#/definitions/AuditWindow"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditSimilarSqlRequest": {
+      "type": "object",
+      "required": [
+        "detached_member_keys",
+        "dimensions",
+        "limit",
+        "refined_cluster_keys",
+        "scope",
+        "sort"
+      ],
+      "properties": {
+        "detached_member_keys": {
+          "description": "Member keys kept out of every cluster for this request only.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dimensions": {
+          "$ref": "#/definitions/SimilarSqlDimensions"
+        },
+        "limit": {
+          "description": "The most exact families read, as for the family list.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "refined_cluster_keys": {
+          "description": "Clusters additionally split by predicate columns (when that dimension is off).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scope": {
+          "$ref": "#/definitions/AuditScope"
+        },
+        "sort": {
+          "description": "Ranks clusters, and selects which exact families are read.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditFamilySort"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditStatementFilter": {
+      "description": "Product-owned statement-class filter over AuditLoader rows.\n\n`ExcludeDoctorAndNonQuery` keeps only rows whose FE-reported `isQuery` is exactly 1 (official 3.5.14 `ConnectContext.isQueryStmt`: a `QueryStatement` or EXECUTE of a prepared query; statements that fail to parse keep the initial `true`) and whose `stmt` does not start with this product's fixed statement marker. SET/SHOW/DDL/DML rows, rows with a NULL `isQuery`, and this tool's own statements are hidden but counted.",
+      "type": "string",
+      "enum": [
+        "all",
+        "exclude_doctor_and_non_query"
+      ]
+    },
+    "AuditTerminalState": {
+      "type": "string",
+      "enum": [
+        "finished",
+        "error"
+      ]
+    },
+    "AuditWindow": {
+      "type": "object",
+      "required": [
+        "end_seconds",
+        "start_seconds"
+      ],
+      "properties": {
+        "end_seconds": {
+          "description": "Exclusive Unix second. Adjacent windows therefore cannot overlap.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "start_seconds": {
+          "description": "Inclusive Unix second. This is a `u32`, never a lossy JavaScript `u64`.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "SimilarSqlDimensions": {
+      "type": "object",
+      "required": [
+        "join",
+        "predicates",
+        "tables"
+      ],
+      "properties": {
+        "join": {
+          "type": "boolean"
+        },
+        "predicates": {
+          "type": "boolean"
+        },
+        "tables": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuditStatementSample",
+  "oneOf": [
+    {
+      "description": "`truncated` is true when the source text is longer than the prefix.",
+      "type": "object",
+      "required": [
+        "state",
+        "truncated",
+        "value"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "text"
+          ]
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "sql_null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "reason",
+        "state"
+      ],
+      "properties": {
+        "reason": {
+          "$ref": "#/definitions/AuditStatementSampleUnavailableReason"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "unavailable"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "AuditStatementSampleUnavailableReason": {
+      "oneOf": [
+        {
+          "description": "The probed audit schema has no `stmt` column.",
+          "type": "string",
+          "enum": [
+            "source_column_absent"
+          ]
+        },
+        {
+          "description": "This response did not read samples (Top chart rows, legacy fixtures).",
+          "type": "string",
+          "enum": [
+            "not_read"
+          ]
+        },
+        {
+          "description": "Duplicate audit rows of one execution disagree on `stmt`.",
+          "type": "string",
+          "enum": [
+            "conflicting_source_rows"
+          ]
+        }
+      ]
+    }
+  }
+}

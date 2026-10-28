@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>相似 SQL 聚类</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Noto+Sans+SC:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F5F6F8;color:#151A22;font-family:Inter,"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#1F55E0;text-decoration:none}a:hover{color:#1743B8;text-decoration:underline}
+button,input,select{font:inherit}
+table{border-collapse:collapse}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #F5F6F8">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; min-height: 52px; padding: 8px 20px; background: #FFFFFF; border-bottom: 1px solid #DFE3E8">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1F55E0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 3 5-7"></path><circle cx="19.5" cy="5.5" r="1.8"></circle><path d="M3 21h18"></path></svg>
+<span style="font-weight: 600; font-size: 14px; letter-spacing: -0.01em">SR Doctor</span>
+<span style="font-size: 12px; color: #5D6675; padding-left: 10px; border-left: 1px solid #DFE3E8">Profile 诊断 · SQL 质量</span>
+</div>
+<nav aria-label="工作区" style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px">
+<a href="Main.dc.html" aria-current="page" style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; background: #EAF0FE; color: #1F55E0; font-weight: 600; text-decoration: none"><span style="font: 500 11px/1 'JetBrains Mono', monospace">1</span>查询</a>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">2</span>诊断</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">3</span>优化建议</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">4</span>对比</span>
+<span aria-hidden="true" style="width: 1px; height: 22px; margin: 0 8px; background: #DFE3E8"></span>
+<a href="Trends.dc.html" style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none">趋势</a>
+<a href="Alerts.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none">告警<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #FDECEA; color: #B42318; font: 600 11px/1 'JetBrains Mono', monospace">3</span></a>
+<a href="Governance.dc.html" style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none">治理</a>
+</nav>
+<div style="margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<a href="Collection.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid #DFE3E8; border-radius: 17px; background: #FFFFFF; color: #151A22; font-size: 12px; text-decoration: none"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #1F55E0"></span>采集中<span style="font-family: 'JetBrains Mono', monospace; color: #5D6675">水位 14:05</span></a>
+<span style="display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid #DFE3E8; border-radius: 17px; background: #FFFFFF; font-size: 12px"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #18794E"></span>Demo / Mock cluster<span style="color: #5D6675">3.5.14 · 只读</span></span>
+</div>
+</header>
+
+<main style="width: 100%; max-width: 1440px; margin: 0 auto; padding: 16px 20px 28px; display: flex; flex-direction: column; gap: 12px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<div role="tablist" aria-label="选择查询的方式" style="display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 2px; background: #EBEEF2; border-radius: 8px">
+<button type="button" role="tab" aria-selected="true" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: #FFFFFF; color: #151A22; font-weight: 600; box-shadow: 0 1px 2px rgba(21,26,34,0.08)">审计历史</button>
+<button type="button" role="tab" aria-selected="false" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: transparent; color: #3D4654">Profile 列表</button>
+<button type="button" role="tab" aria-selected="false" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: transparent; color: #3D4654">运行中</button>
+<button type="button" role="tab" aria-selected="false" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: transparent; color: #3D4654">SQL 工作区</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px">
+<span style="color: #5D6675">连接能力</span>
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 12px; background: #E7F5EE; color: #18794E">AuditLoader 可用</span>
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 12px; background: #FFF3E0; color: #9A4D00">enable_sql_digest 部分开启</span>
+</div>
+</div>
+
+<section aria-label="筛选" style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #5D6675">时间范围（UTC）
+<select style="height: 34px; min-width: 168px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22"><option>最近 1 小时</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #5D6675">数据库
+<select style="height: 34px; min-width: 120px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22"><option>demo</option></select></label>
+<fieldset style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0; padding: 0; border: 0; font-size: 12px; color: #5D6675">
+<legend style="padding: 0 0 4px">归并依据</legend>
+<label style="display: inline-flex; align-items: center; gap: 6px; height: 34px; color: #151A22"><input type="checkbox" checked="checked">表集合</label>
+<label style="display: inline-flex; align-items: center; gap: 6px; height: 34px; color: #151A22"><input type="checkbox" checked="checked">Join 形态</label>
+<label style="display: inline-flex; align-items: center; gap: 6px; height: 34px; color: #151A22"><input type="checkbox" checked="checked">谓词列集合</label>
+</fieldset>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 8px">
+<button type="button" style="height: 34px; padding: 0 12px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22">刷新</button>
+<button type="button" style="height: 34px; padding: 0 14px; border: 0; border-radius: 6px; background: #151A22; color: #FFFFFF; font-weight: 500">应用筛选</button>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start">
+
+<section aria-label="相似 SQL" style="flex: 999 1 640px; min-width: 0; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #DFE3E8">
+<div>
+<h1 style="margin: 0; font-size: 15px; font-weight: 600">相似 SQL · 按结构归并的模板</h1>
+<p style="margin: 2px 0 0; font-size: 12px; color: #5D6675">在精确模板之上归并 · 每个聚类显示归并依据，可拆分 · 本窗口内存计算</p>
+</div>
+<div role="group" aria-label="视图" style="display: inline-flex; border: 1px solid #C9CFD7; border-radius: 6px; overflow: hidden">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; background: #FFFFFF; color: #3D4654; font-size: 12px; text-decoration: none">同类 SQL</a>
+<button type="button" aria-pressed="true" style="height: 30px; padding: 0 12px; border: 0; border-left: 1px solid #C9CFD7; background: #151A22; color: #FFFFFF; font-size: 12px">相似 SQL</button>
+<button type="button" aria-pressed="false" style="height: 30px; padding: 0 12px; border: 0; border-left: 1px solid #C9CFD7; background: #FFFFFF; color: #3D4654; font-size: 12px">单次执行</button>
+</div>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 820px; font-size: 13px">
+<thead>
+<tr style="text-align: left; color: #5D6675; font-size: 12px">
+<th scope="col" style="padding: 9px 14px; font-weight: 500; border-bottom: 1px solid #DFE3E8">聚类 · 归并依据</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">成员模板</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">执行次数</th>
+<th scope="col" style="padding: 9px 10px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">累计查询耗时 ↓</th>
+<th scope="col" style="padding: 9px 14px; font-weight: 500; border-bottom: 1px solid #DFE3E8; text-align: right">最大查询耗时</th>
+</tr>
+</thead>
+<tbody>
+<sc-for list="{{clusters}}" as="c" hint-placeholder-count="4">
+<tr style="background: {{c.bg}}; box-shadow: {{c.ring}}">
+<td style="padding: 8px 10px; border-bottom: 1px solid #EEF0F3">
+<button type="button" onClick="{{c.pick}}" aria-pressed="{{c.pressed}}" style="display: block; width: 100%; padding: 2px 4px; border: 0; background: transparent; text-align: left; color: #151A22; cursor: pointer">
+<span style="display: block; font-weight: 600">{{c.name}}</span>
+<span style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px">
+<span style="display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 4px; background: #F0F2F5; font: 400 11px/1 'JetBrains Mono', monospace; color: #3D4654">表 {{c.tables}}</span>
+<span style="display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 4px; background: #F0F2F5; font: 400 11px/1 'JetBrains Mono', monospace; color: #3D4654">{{c.join}}</span>
+<span style="display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 4px; background: #F0F2F5; font: 400 11px/1 'JetBrains Mono', monospace; color: #3D4654">谓词 {{c.preds}}</span>
+</span>
+</button>
+</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-size: 12px; color: #3D4654"><span style="font-family: 'JetBrains Mono', monospace; color: #151A22">{{c.members}}</span><span style="display: block; color: #5D6675">{{c.mix}}</span></td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace">{{c.count}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 500">{{c.total}}</td>
+<td style="padding: 10px 14px; border-bottom: 1px solid #EEF0F3; text-align: right; font-family: 'JetBrains Mono', monospace">{{c.max}}</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 10px 14px; font-size: 12px; color: #5D6675">
+<span>4 个聚类 · 9 个模板 · 3 个模板独立（无相似项）</span>
+<span>截断或不可规范化的 17 次执行不参与聚类</span>
+</div>
+</section>
+
+<aside aria-label="已选聚类" style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<div style="padding: 14px 16px 12px; border-bottom: 1px solid #DFE3E8">
+<div style="font-size: 12px; color: #5D6675">已选聚类</div>
+<h2 style="margin: 2px 0 0; font-size: 16px; line-height: 22px; font-weight: 600">{{sel.name}}</h2>
+</div>
+<div style="padding: 12px 16px; border-bottom: 1px solid #DFE3E8">
+<h3 style="margin: 0 0 8px; font-size: 13px; font-weight: 600">为什么归为一类</h3>
+<dl style="margin: 0; display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 6px 10px; font-size: 12px">
+<dt style="color: #5D6675">表集合</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace">{{sel.tables}}</dd>
+<dt style="color: #5D6675">Join 形态</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace">{{sel.joinDetail}}</dd>
+<dt style="color: #5D6675">谓词列集合</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace">{{sel.predDetail}}</dd>
+<dt style="color: #5D6675">差异</dt><dd style="margin: 0; color: #3D4654">{{sel.diff}}</dd>
+</dl>
+</div>
+<div style="padding: 12px 16px 6px; display: flex; justify-content: space-between; align-items: baseline">
+<h3 style="margin: 0; font-size: 13px; font-weight: 600">成员模板</h3>
+<span style="font-size: 12px; color: #5D6675">取消勾选的模板可拆出</span>
+</div>
+<ul style="list-style: none; margin: 0; padding: 0 12px 8px; display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{sel.items}}" as="m" hint-placeholder-count="3">
+<li style="padding: 8px 10px; border: 1px solid #EEF0F3; border-radius: 8px; background: {{m.bg}}">
+<label style="display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 4px 8px; align-items: start; cursor: pointer">
+<input type="checkbox" checked="{{m.checked}}" onChange="{{m.toggle}}" style="margin-top: 3px">
+<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/18px 'JetBrains Mono', monospace">{{m.template}}</span>
+<span style="font: 500 12px/18px 'JetBrains Mono', monospace; text-align: right">{{m.count}} 次</span>
+<span></span>
+<span style="display: inline-flex; gap: 6px; align-items: center"><span style="display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 9px; font-size: 11px; color: {{m.srcColor}}; background: {{m.srcBg}}; border: {{m.srcBorder}}">{{m.source}}</span><span style="font-size: 11px; color: #5D6675">{{m.note}}</span></span>
+<span style="font: 400 11px/18px 'JetBrains Mono', monospace; color: #5D6675; text-align: right">{{m.total}}</span>
+</label>
+</li>
+</sc-for>
+</ul>
+<sc-if value="{{splitDone}}" hint-placeholder-val="{{ false }}">
+<p role="status" style="margin: 0 16px 8px; padding: 8px 10px; background: #EAF0FE; border-radius: 6px; font-size: 12px; color: #1743B8">已把 1 个模板拆为独立聚类（仅本视图）。<button type="button" onClick="{{undo}}" style="height: 28px; padding: 0 6px; border: 0; background: transparent; color: #1F55E0">撤销</button></p>
+</sc-if>
+<div style="margin-top: auto; padding: 14px 16px; border-top: 1px solid #DFE3E8; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" onClick="{{split}}" style="flex: 1 1 auto; height: 36px; padding: 0 14px; border: 0; border-radius: 6px; background: #1F55E0; color: #FFFFFF; font-weight: 500">拆出未勾选的模板</button>
+<button type="button" style="height: 36px; padding: 0 12px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22">按谓词列再细分</button>
+</div>
+<p style="margin: 0; font-size: 12px; color: #5D6675">拆分只改变本视图的归并，不修改任何模板或 StarRocks 数据；阶段 A 不保存，刷新后恢复默认归并。</p>
+<p style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #5D6675"><span style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; background: #F0F2F5; color: #5D6675; font-size: 11px">Planned · 阶段 B</span>保存拆分结果，后续窗口沿用</p>
+</div>
+</aside>
+
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { picked: 0, unchecked: {}, split: false }; }
+  renderVals() {
+    const official = { srcColor: '#18794E', srcBg: '#E7F5EE', srcBorder: '0' };
+    const unofficial = { srcColor: '#3D4654', srcBg: '#FFFFFF', srcBorder: '1px solid #DFE3E8' };
+    const data = [
+      { name: 'orders ⋈ customers · 地区与日期筛选', tables: '{orders, customers}', join: 'INNER o.cid = c.id', preds: '{c.region, o.dt}', members: '3', mix: '2 官方 + 1 非官方', count: '377', total: '1h 26m', max: '19.6 s',
+        joinDetail: 'orders INNER JOIN customers ON orders.cid = customers.id', predDetail: '{customers.region, orders.dt}', diff: '投影列不同（o.* / o.id, o.amount），谓词值不同',
+        items: [
+          { template: 'SELECT o.*, c.region FROM orders o JOIN customers c ON o.cid = c.id WHERE c.region = ? AND o.dt >= ?', count: '188', total: '41m 12s', source: '官方 digest', note: '9a1b2c3d', ...official },
+          { template: 'SELECT o.id, o.amount FROM orders o JOIN customers c ON o.cid = c.id WHERE c.region = ? AND o.dt >= ?', count: '143', total: '36m 02s', source: '非官方指纹', note: '7c41e0a9', ...unofficial },
+          { template: 'SELECT c.region, SUM(o.amount) FROM orders o JOIN customers c ON o.cid = c.id WHERE o.dt >= ? AND c.region IN (?) GROUP BY c.region', count: '46', total: '9m 30s', source: '官方 digest', note: 'b72e10f4', ...official }
+        ] },
+      { name: 'orders · 按客户聚合', tables: '{orders}', join: '无 Join', preds: '{dt}', members: '2', mix: '2 官方', count: '436', total: '1h 11m', max: '27.8 s',
+        joinDetail: '无 Join', predDetail: '{orders.dt}', diff: '分组列相同，是否带 dt 筛选不同',
+        items: [
+          { template: 'SELECT customer_id, SUM(amount) FROM orders GROUP BY customer_id', count: '412', total: '1h 08m', source: '官方 digest', note: '0f1e2d3c', ...official },
+          { template: 'SELECT customer_id, SUM(amount) FROM orders WHERE dt = ? GROUP BY customer_id', count: '24', total: '3m 40s', source: '官方 digest', note: '5e6a7b8c', ...official }
+        ] },
+      { name: 'events · 按日去重用户', tables: '{events}', join: '无 Join', preds: '{dt, uid}', members: '2', mix: '1 官方 + 1 非官方', count: '160', total: '23m 31s', max: '9.2 s',
+        joinDetail: '无 Join', predDetail: '{events.dt, events.uid}', diff: '一个按 dt 分组，一个按 uid 列表计数',
+        items: [
+          { template: 'SELECT dt, COUNT(DISTINCT uid) FROM events WHERE dt >= ? GROUP BY dt', count: '96', total: '18m 40s', source: '官方 digest', note: 'c4d5e6f7', ...official },
+          { template: 'SELECT count(*) FROM events WHERE uid IN (?) AND dt = ?', count: '64', total: '4m 51s', source: '非官方指纹', note: '91d04c6e', ...unofficial }
+        ] },
+      { name: 'sales · 地区均价', tables: '{sales}', join: '无 Join', preds: '{ts}', members: '2', mix: '1 官方 + 1 非官方', count: '160', total: '19m 09s', max: '8.1 s',
+        joinDetail: '无 Join', predDetail: '{sales.ts}', diff: '其一来自 digest 未开启的时段',
+        items: [
+          { template: 'SELECT region, AVG(price) FROM sales WHERE ts BETWEEN ? AND ? GROUP BY region', count: '63', total: '6m 51s', source: '官方 digest', note: '7b8c9d0e', ...official },
+          { template: 'SELECT region, AVG(price) FROM sales WHERE ts BETWEEN ? AND ? GROUP BY region', count: '97', total: '12m 18s', source: '非官方指纹', note: '2be8f31c', ...unofficial }
+        ] }
+    ];
+    const picked = this.state.picked;
+    const clusters = data.map((c, i) => ({ ...c, bg: i === picked ? '#F3F6FE' : '#FFFFFF', ring: i === picked ? 'inset 0 0 0 1.5px #1F55E0' : 'none', pressed: i === picked ? 'true' : 'false', pick: () => this.setState({ picked: i, unchecked: {}, split: false }) }));
+    const raw = data[picked];
+    const sel = { ...raw, items: raw.items.map((m, j) => {
+      const off = !!this.state.unchecked[j];
+      return { ...m, checked: !off, bg: off ? '#FAFBFC' : '#FFFFFF', toggle: () => this.setState({ unchecked: { ...this.state.unchecked, [j]: !off }, split: false }) };
+    }) };
+    return { clusters, sel, splitDone: this.state.split, split: () => this.setState({ split: true }), undo: () => this.setState({ split: false, unchecked: {} }) };
+  }
+}
+</script>
+</body>
+</html>

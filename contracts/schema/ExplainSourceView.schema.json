@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExplainSourceView",
+  "description": "The only text exposed for an Explain is the registered structural grammar. Attribute and SQL text remain outside the response contract.",
+  "type": "object",
+  "required": [
+    "display_state",
+    "limitations",
+    "lines",
+    "source_kind",
+    "truncation_state"
+  ],
+  "properties": {
+    "display_state": {
+      "$ref": "#/definitions/ExplainSourceDisplayState"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SourceLine"
+      }
+    },
+    "source_kind": {
+      "$ref": "#/definitions/ExplainSourceKind"
+    },
+    "truncation_state": {
+      "$ref": "#/definitions/ExplainSourceTruncationState"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "ExplainSourceDisplayState": {
+      "type": "string",
+      "enum": [
+        "safe_structure_only",
+        "raw_text"
+      ]
+    },
+    "ExplainSourceKind": {
+      "type": "string",
+      "enum": [
+        "explain_logical",
+        "explain_verbose",
+        "explain_costs"
+      ]
+    },
+    "ExplainSourceTruncationState": {
+      "type": "string",
+      "enum": [
+        "not_truncated",
+        "input_limited"
+      ]
+    },
+    "SourceLine": {
+      "type": "object",
+      "required": [
+        "line_no",
+        "source_ref",
+        "text"
+      ],
+      "properties": {
+        "line_no": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

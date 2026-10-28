@@ -1,0 +1,84 @@
+PLAN COST
+  CPU: 8.1000048E7
+  Memory: 2.16000264E7
+
+PLAN FRAGMENT 0(F02)
+  Output Exprs:6: count | 7: sum | 8: max
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  7:AGGREGATE (merge finalize)
+  |  aggregate: count[([6: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false], sum[([7: sum, BIGINT, true]); args: BIGINT; result: BIGINT; args nullable: true; result nullable: true], max[([8: max, BIGINT, true]); args: BIGINT; result: BIGINT; args nullable: true; result nullable: true]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 750000.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[0.0, 1500000.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * max-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  6:EXCHANGE
+     distribution type: GATHER
+     cardinality: 1
+
+PLAN FRAGMENT 1(F01)
+
+  Input Partition: HASH_PARTITIONED: 2: h_user
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 06
+
+  5:AGGREGATE (update serialize)
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false], sum[([4: count, BIGINT, false]); args: BIGINT; result: BIGINT; args nullable: false; result nullable: true], max[([5: sum, BIGINT, true]); args: BIGINT; result: BIGINT; args nullable: true; result nullable: true]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 750000.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[0.0, 1500000.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * max-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  4:Project
+  |  output columns:
+  |  4 <-> [4: count, BIGINT, false]
+  |  5 <-> [5: sum, BIGINT, true]
+  |  cardinality: 750000
+  |  column statistics: 
+  |  * count-->[0.0, 1500000.0, 0.0, 8.0, 750000.0] ESTIMATE
+  |  * sum-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  3:AGGREGATE (merge finalize)
+  |  aggregate: count[([4: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false], sum[([5: sum, BIGINT, true]); args: INT; result: BIGINT; args nullable: true; result nullable: true]
+  |  group by: [2: h_user, BIGINT, false]
+  |  cardinality: 750000
+  |  column statistics: 
+  |  * h_user-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[0.0, 1500000.0, 0.0, 8.0, 750000.0] ESTIMATE
+  |  * sum-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  2:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [2: h_user, BIGINT, false]
+     cardinality: 1500000
+
+PLAN FRAGMENT 2(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 2: h_user
+  OutPut Exchange Id: 02
+
+  1:AGGREGATE (update serialize)
+  |  STREAMING
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false], sum[([3: h_val, INT, false]); args: INT; result: BIGINT; args nullable: false; result nullable: true]
+  |  group by: [2: h_user, BIGINT, false]
+  |  cardinality: 1500000
+  |  column statistics: 
+  |  * h_user-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  0:OlapScanNode
+     table: hc_fact, rollup: hc_fact
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10095,10097,10099,10101,10103,10105,10107,10109
+     actualRows=0, avgRowSize=2.0
+     cardinality: 3000000
+     column statistics: 
+     * h_user-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+     * h_val-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN

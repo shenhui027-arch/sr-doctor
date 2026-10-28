@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ProductSqlFingerprint",
+  "oneOf": [
+    {
+      "description": "`template` keeps identifiers and structure; every literal is `?`.",
+      "type": "object",
+      "required": [
+        "fingerprint",
+        "state",
+        "template"
+      ],
+      "properties": {
+        "fingerprint": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "exact"
+          ]
+        },
+        "template": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "reason",
+        "state"
+      ],
+      "properties": {
+        "reason": {
+          "$ref": "#/definitions/ProductSqlFingerprintPartialReason"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "partial"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "reason",
+        "state"
+      ],
+      "properties": {
+        "reason": {
+          "$ref": "#/definitions/ProductSqlFingerprintUnavailableReason"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "unavailable"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "ProductSqlFingerprintPartialReason": {
+      "oneOf": [
+        {
+          "description": "Only a prefix of the audited statement was read.",
+          "type": "string",
+          "enum": [
+            "statement_truncated"
+          ]
+        }
+      ]
+    },
+    "ProductSqlFingerprintUnavailableReason": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "statement_sql_null",
+            "empty_statement",
+            "unbalanced_parentheses",
+            "multiple_statements"
+          ]
+        },
+        {
+          "description": "The statement read returned no row for this execution.",
+          "type": "string",
+          "enum": [
+            "statement_not_read"
+          ]
+        },
+        {
+          "description": "Duplicate audit rows of one execution disagree on `stmt`.",
+          "type": "string",
+          "enum": [
+            "conflicting_source_rows"
+          ]
+        },
+        {
+          "description": "Unterminated quote, comment or identifier, or a character outside the fixed-version lexer (for example `#`).",
+          "type": "string",
+          "enum": [
+            "lexical_error"
+          ]
+        },
+        {
+          "description": "Only SELECT / WITH / INSERT / UPDATE / DELETE get an official digest.",
+          "type": "string",
+          "enum": [
+            "unsupported_statement"
+          ]
+        },
+        {
+          "description": "The official digest replaces 16+ flattened AND/OR terms with their column set; this product does not reproduce that rule.",
+          "type": "string",
+          "enum": [
+            "massive_compound_predicate"
+          ]
+        }
+      ]
+    }
+  }
+}

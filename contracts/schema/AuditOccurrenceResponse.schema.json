@@ -1,0 +1,1242 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuditOccurrenceResponse",
+  "type": "object",
+  "required": [
+    "cluster_identity",
+    "connection_id",
+    "coverage",
+    "discovery_generation",
+    "limitations",
+    "rows",
+    "schema_version",
+    "scope",
+    "top"
+  ],
+  "properties": {
+    "audit_timestamp_time_zone": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TimeZoneEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "cluster_identity": {
+      "$ref": "#/definitions/AuditClusterIdentity"
+    },
+    "connection_id": {
+      "type": "string"
+    },
+    "coverage": {
+      "$ref": "#/definitions/AuditCoverage"
+    },
+    "discovery_generation": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AuditOccurrencePresentation"
+      }
+    },
+    "schema_version": {
+      "$ref": "#/definitions/AuditWorkloadVersion"
+    },
+    "scope": {
+      "$ref": "#/definitions/AuditScope"
+    },
+    "top": {
+      "$ref": "#/definitions/AuditTopWindow"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AuditAggregateFact": {
+      "type": "object",
+      "required": [
+        "aggregation",
+        "metric"
+      ],
+      "properties": {
+        "aggregation": {
+          "$ref": "#/definitions/AuditAggregation"
+        },
+        "metric": {
+          "$ref": "#/definitions/AuditMetricFact"
+        },
+        "source_nonnegative_count": {
+          "description": "Source-side nonnegative numeric rows, not a second parser verdict.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditAggregation": {
+      "type": "string",
+      "enum": [
+        "sum",
+        "max"
+      ]
+    },
+    "AuditClusterIdentity": {
+      "oneOf": [
+        {
+          "description": "No native cross-connection cluster identity has been established.",
+          "type": "object",
+          "required": [
+            "connection_id",
+            "detected_version",
+            "state"
+          ],
+          "properties": {
+            "connection_id": {
+              "type": "string"
+            },
+            "detected_version": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "session_scoped"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditCoverage": {
+      "type": "object",
+      "required": [
+        "conflicting_duplicate_row_count",
+        "error_count",
+        "error_proportion",
+        "exact_duplicate_row_count",
+        "invalid_query_id_count",
+        "metric_inputs",
+        "missing_context_count",
+        "missing_digest_count",
+        "raw_row_count",
+        "retained_event_count",
+        "retained_family_count",
+        "statement_filter"
+      ],
+      "properties": {
+        "conflicting_duplicate_row_count": {
+          "type": "string"
+        },
+        "error_count": {
+          "description": "Exact ERR count among the retained canonical events in this scope.",
+          "type": "string"
+        },
+        "error_proportion": {
+          "description": "Exact ERR / retained-event fraction. It is not a rounded percentage.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditErrorProportion"
+            }
+          ]
+        },
+        "exact_duplicate_row_count": {
+          "type": "string"
+        },
+        "invalid_query_id_count": {
+          "type": "string"
+        },
+        "metric_inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditMetricCoverage"
+          }
+        },
+        "missing_context_count": {
+          "type": "string"
+        },
+        "missing_digest_count": {
+          "type": "string"
+        },
+        "raw_row_count": {
+          "type": "string"
+        },
+        "retained_event_count": {
+          "type": "string"
+        },
+        "retained_family_count": {
+          "type": "string"
+        },
+        "statement_filter": {
+          "description": "Raw source rows in the same window and field filters that the explicit statement-class filter hid. Never folded into `raw_row_count`.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditStatementFilterCoverage"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditErrorCodeFact": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditOptionalFactUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "sql_null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditErrorProportion": {
+      "description": "Exact numerator/denominator facts for a family's source ERR proportion. Decimal strings deliberately avoid a lossy percentage or JSON number.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "denominator",
+            "numerator",
+            "state"
+          ],
+          "properties": {
+            "denominator": {
+              "type": "string"
+            },
+            "numerator": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "exact"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "denominator",
+            "numerator",
+            "state"
+          ],
+          "properties": {
+            "denominator": {
+              "type": "string"
+            },
+            "numerator": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_applicable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditErrorProportionUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditErrorProportionInvalidReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "invalid"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditErrorProportionInvalidReason": {
+      "type": "string",
+      "enum": [
+        "error_count_invalid",
+        "execution_count_invalid",
+        "numerator_exceeds_denominator"
+      ]
+    },
+    "AuditErrorProportionUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "legacy_field_absent",
+        "error_count_missing",
+        "execution_count_missing"
+      ]
+    },
+    "AuditFamilyContext": {
+      "type": "object",
+      "properties": {
+        "catalog": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cluster": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "database": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "engine_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditFamilyMembership": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "context",
+            "family_key",
+            "native_digest",
+            "state"
+          ],
+          "properties": {
+            "context": {
+              "$ref": "#/definitions/AuditFamilyContext"
+            },
+            "family_key": {
+              "type": "string"
+            },
+            "native_digest": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "exact_native_digest"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditUngroupedReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "ungrouped"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "AuditMetricCoverage": {
+      "type": "object",
+      "required": [
+        "aggregate",
+        "metric_id",
+        "negative_count",
+        "nonnegative_count",
+        "sql_null_count",
+        "text_present_count"
+      ],
+      "properties": {
+        "aggregate": {
+          "$ref": "#/definitions/AuditAggregateFact"
+        },
+        "metric_id": {
+          "$ref": "#/definitions/AuditMetricId"
+        },
+        "negative_count": {
+          "type": "string"
+        },
+        "nonnegative_count": {
+          "type": "string"
+        },
+        "sql_null_count": {
+          "type": "string"
+        },
+        "text_present_count": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditMetricFact": {
+      "type": "object",
+      "required": [
+        "input",
+        "metric_id",
+        "state"
+      ],
+      "properties": {
+        "canonical_number": {
+          "description": "Decimal text only; never encode audit counters as a JSON number.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "$ref": "#/definitions/AuditMetricInput"
+        },
+        "metric_id": {
+          "$ref": "#/definitions/AuditMetricId"
+        },
+        "parser_state": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ParseState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/AuditMetricState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditMetricId": {
+      "type": "string",
+      "enum": [
+        "query_time",
+        "pending_time",
+        "scan_bytes",
+        "scan_rows",
+        "cpu_cost",
+        "memory_cost",
+        "return_rows"
+      ]
+    },
+    "AuditMetricInput": {
+      "description": "Lossless transport input. `Text(\"0\")` is deliberately distinct from SQL NULL and remains decimal text so JavaScript never receives a lossy number.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "sql_null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditOptionalFactUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "AuditMetricState": {
+      "description": "This is a result state, not a second parser. The core AuditLoader adapter must map its one typed-parser outcome and audit-only negative policy here.",
+      "type": "string",
+      "enum": [
+        "exact",
+        "missing",
+        "invalid",
+        "negative_sentinel",
+        "overflow",
+        "precision_unsafe",
+        "unavailable"
+      ]
+    },
+    "AuditOccurrencePresentation": {
+      "type": "object",
+      "required": [
+        "family",
+        "metrics",
+        "query"
+      ],
+      "properties": {
+        "catalog": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_code": {
+          "description": "AuditLoader's optional `errorCode` source fact. An empty source string is deliberately not a SQL NULL or a missing source column.",
+          "default": {
+            "state": "unavailable",
+            "reason": "source_column_absent"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditErrorCodeFact"
+            }
+          ]
+        },
+        "family": {
+          "$ref": "#/definitions/AuditFamilyMembership"
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditMetricFact"
+          }
+        },
+        "query": {
+          "$ref": "#/definitions/ConnectedQueryRef"
+        },
+        "statement_sample": {
+          "description": "This execution's own audited `stmt`, as the same bounded character prefix a family sample uses. Old fixtures omit it.",
+          "default": {
+            "state": "unavailable",
+            "reason": "not_read"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditStatementSample"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditOptionalFactUnavailableReason": {
+      "description": "The existing fixed schema probe did not prove an optional AuditLoader source column. This is deliberately distinct from a present SQL NULL.",
+      "type": "string",
+      "enum": [
+        "source_column_absent",
+        "conflicting_source_rows"
+      ]
+    },
+    "AuditScope": {
+      "type": "object",
+      "required": [
+        "statement_filter",
+        "window"
+      ],
+      "properties": {
+        "catalog": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "database": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "native_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resource_group": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditTerminalState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "statement_filter": {
+          "description": "Explicit, user-visible statement-class filter. It is part of the scope so every Audit read (window cards, Top tables, families, concurrency, SQL lookup) uses the same population; hidden rows stay countable.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditStatementFilter"
+            }
+          ]
+        },
+        "user": {
+          "description": "Optional exact AuditLoader source-user filter. The source column is capability-probed; a requested value never falls back to an unfiltered read when that column is absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "window": {
+          "$ref": "#/definitions/AuditWindow"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditStatementFilter": {
+      "description": "Product-owned statement-class filter over AuditLoader rows.\n\n`ExcludeDoctorAndNonQuery` keeps only rows whose FE-reported `isQuery` is exactly 1 (official 3.5.14 `ConnectContext.isQueryStmt`: a `QueryStatement` or EXECUTE of a prepared query; statements that fail to parse keep the initial `true`) and whose `stmt` does not start with this product's fixed statement marker. SET/SHOW/DDL/DML rows, rows with a NULL `isQuery`, and this tool's own statements are hidden but counted.",
+      "type": "string",
+      "enum": [
+        "all",
+        "exclude_doctor_and_non_query"
+      ]
+    },
+    "AuditStatementFilterCoverage": {
+      "oneOf": [
+        {
+          "description": "`statement_filter = all`: nothing was hidden, so no hidden count exists.",
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_applied"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "hidden_doctor_row_count",
+            "hidden_non_query_row_count",
+            "state"
+          ],
+          "properties": {
+            "hidden_doctor_row_count": {
+              "description": "Exact decimal count of `isQuery = 1` rows carrying this tool's marker.",
+              "type": "string"
+            },
+            "hidden_non_query_row_count": {
+              "description": "Exact decimal count of rows whose `isQuery` is not 1 (including NULL).",
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "applied"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditStatementSample": {
+      "oneOf": [
+        {
+          "description": "`truncated` is true when the source text is longer than the prefix.",
+          "type": "object",
+          "required": [
+            "state",
+            "truncated",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "sql_null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditStatementSampleUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditStatementSampleUnavailableReason": {
+      "oneOf": [
+        {
+          "description": "The probed audit schema has no `stmt` column.",
+          "type": "string",
+          "enum": [
+            "source_column_absent"
+          ]
+        },
+        {
+          "description": "This response did not read samples (Top chart rows, legacy fixtures).",
+          "type": "string",
+          "enum": [
+            "not_read"
+          ]
+        },
+        {
+          "description": "Duplicate audit rows of one execution disagree on `stmt`.",
+          "type": "string",
+          "enum": [
+            "conflicting_source_rows"
+          ]
+        }
+      ]
+    },
+    "AuditTerminalState": {
+      "type": "string",
+      "enum": [
+        "finished",
+        "error"
+      ]
+    },
+    "AuditTopWindow": {
+      "type": "object",
+      "required": [
+        "full_window_count",
+        "requested_limit",
+        "returned_count",
+        "truncated"
+      ],
+      "properties": {
+        "full_window_count": {
+          "type": "string"
+        },
+        "requested_limit": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "returned_count": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "truncated": {
+          "description": "Based on the server's full-window count, not rows.len() == limit.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditUngroupedReason": {
+      "type": "string",
+      "enum": [
+        "native_digest_missing",
+        "native_digest_invalid",
+        "cluster_missing",
+        "cluster_invalid",
+        "engine_version_missing",
+        "engine_version_invalid",
+        "catalog_missing",
+        "catalog_invalid",
+        "database_missing",
+        "database_invalid"
+      ]
+    },
+    "AuditWindow": {
+      "type": "object",
+      "required": [
+        "end_seconds",
+        "start_seconds"
+      ],
+      "properties": {
+        "end_seconds": {
+          "description": "Exclusive Unix second. Adjacent windows therefore cannot overlap.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "start_seconds": {
+          "description": "Inclusive Unix second. This is a `u32`, never a lossy JavaScript `u64`.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditWorkloadVersion": {
+      "type": "string",
+      "enum": [
+        "audit-workload.v1"
+      ]
+    },
+    "CanonicalNumber": {
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/NumberKind"
+        },
+        "scale": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "value": {
+          "description": "Base-10 only: JSON numbers are never used for counters.",
+          "type": "string"
+        }
+      }
+    },
+    "ConnectedPlanCheckAction": {
+      "description": "The available arm must carry a session-owned capability reference. The unavailable arm cannot carry one, so invalid state/reference matrices are rejected by the wire contract rather than interpreted in the browser.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "plan_sql_ref",
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "plan_sql_ref": {
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/definitions/PlanCheckAvailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/PlanCheckUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ConnectedProfileFetchAction": {
+      "description": "A Profile action is never an availability claim about the remote cache: `available` means the bounded fetch may be attempted for this row.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/ProfileFetchAvailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/ProfileFetchUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ConnectedQueryRef": {
+      "type": "object",
+      "required": [
+        "connection_id",
+        "plan_check",
+        "profile_fetch",
+        "query_id",
+        "source_refs",
+        "status",
+        "timestamp_state"
+      ],
+      "properties": {
+        "connection_id": {
+          "type": "string"
+        },
+        "database": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "discovery_generation": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "discovery_source": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/QueryDiscoverySource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed_at_local": {
+          "description": "Original bounded wall-clock text returned by Audit/ProfileList.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed_at_utc": {
+          "description": "RFC 3339 text avoids a JavaScript-unsafe epoch-millisecond integer. `None` is required when a fetch response has only a query ID and no independently observed timestamp; the API must not invent UTC.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_check": {
+          "$ref": "#/definitions/ConnectedPlanCheckAction"
+        },
+        "profile_fetch": {
+          "$ref": "#/definitions/ConnectedProfileFetchAction"
+        },
+        "query_id": {
+          "type": "string"
+        },
+        "query_time_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "resource_group": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string"
+        },
+        "timestamp_state": {
+          "$ref": "#/definitions/ConnectedTimestampState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedTimestampState": {
+      "description": "Records what the timestamp can prove. AuditLoader emits a wall-clock DATETIME without an origin offset, so a reader-session conversion is an interpretation rather than evidence of the producer's original instant.",
+      "type": "string",
+      "enum": [
+        "reader_session_interpreted",
+        "raw_wall_time_only",
+        "unavailable"
+      ]
+    },
+    "NumberKind": {
+      "type": "string",
+      "enum": [
+        "integer",
+        "decimal"
+      ]
+    },
+    "ParseState": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "missing",
+        "invalid",
+        "partial",
+        "overflow"
+      ]
+    },
+    "PlanCheckAvailableReason": {
+      "type": "string",
+      "enum": [
+        "statement_retained"
+      ]
+    },
+    "PlanCheckUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "statement_missing_or_not_select",
+        "query_metadata_unavailable",
+        "query_id_invalid",
+        "query_id_duplicate"
+      ]
+    },
+    "ProfileFetchAvailableReason": {
+      "type": "string",
+      "enum": [
+        "can_be_attempted",
+        "profile_fetched"
+      ]
+    },
+    "ProfileFetchUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "query_id_invalid",
+        "query_id_duplicate",
+        "query_not_finished"
+      ]
+    },
+    "QueryDiscoverySource": {
+      "type": "string",
+      "enum": [
+        "audit",
+        "profile_list"
+      ]
+    },
+    "TimeZoneEvidence": {
+      "type": "object",
+      "required": [
+        "current_utc_offset_seconds",
+        "effective_time_zone",
+        "session_time_zone",
+        "source_ref",
+        "system_time_zone"
+      ],
+      "properties": {
+        "current_utc_offset_seconds": {
+          "description": "Observed offset at connection time. Historical rows are never converted with this value because daylight-saving rules may differ at row time.",
+          "type": "integer",
+          "format": "int32"
+        },
+        "effective_time_zone": {
+          "description": "Session zone unless it is `SYSTEM`, then the server-reported system zone.",
+          "type": "string"
+        },
+        "session_time_zone": {
+          "description": "Effective time zone of the exact StarRocks session used by the connector.",
+          "type": "string"
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "system_time_zone": {
+          "description": "FE host time zone reported by StarRocks. This resolves a session value of `SYSTEM` without guessing from the application host.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

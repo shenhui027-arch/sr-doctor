@@ -1,0 +1,204 @@
+/* Queries · audit history (design: Main board). Labels are 12px sans; mono only carries numbers, IDs and SQL. */
+.audit-workload { min-height: 0; display: grid; grid-auto-rows: min-content; align-content: start; gap: 12px; padding: 16px; color: var(--text); background: var(--page); font: 400 13px/19.5px var(--sans); }
+.audit-workload.audit-workload-overview { grid-template-rows: none; grid-auto-rows: min-content; align-content: start; }
+.audit-filters, .audit-window-evidence, .audit-results, .audit-selection, .audit-family-summary, .audit-unavailable { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+
+/* Page header: title, one-line subtitle, capability chips, time range and refresh. Not a card. */
+.audit-workload-header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; padding: 0; }
+.audit-workload-heading { min-width: 0; }
+.audit-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.audit-workload-header h2, .audit-unavailable h2 { margin: 0; color: var(--text); font: 600 20px/28px var(--sans); letter-spacing: -.01em; }
+.audit-results h3, .audit-selection h3, .audit-family-summary h3 { margin: 0; color: var(--text); font: 600 15px/22px var(--sans); }
+.audit-workload-header p, .audit-selection p, .audit-family-summary p, .audit-unavailable p { margin: 2px 0 0; color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-capability-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+
+/* Segmented controls follow the Tokens board: sunken track, white selected segment. */
+.audit-window-chips { display: inline-flex; gap: 2px; padding: 3px; background: color-mix(in srgb, var(--border) 40%, var(--chip)); border-radius: 8px; }
+.audit-window-chips button { height: 28px; padding: 0 12px; color: var(--text-2); background: transparent; border: 0; border-radius: var(--radius-control); font: 400 12px/18px var(--sans); white-space: nowrap; cursor: pointer; }
+.audit-window-chips button:hover:not(:disabled) { color: var(--text); }
+.audit-window-chips button[aria-pressed="true"] { color: var(--text); background: var(--surface); font-weight: 600; box-shadow: 0 1px 2px rgb(21 26 34 / 8%); }
+.audit-window-chips button:disabled { cursor: progress; opacity: .7; }
+
+/* Filter drawer: a card with a summary line; the form opens inside it. */
+.audit-filter-drawer { padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.audit-filter-drawer > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; min-height: 44px; padding: 10px 14px; color: var(--muted); font: 400 12px/18px var(--sans); cursor: pointer; }
+.audit-filter-drawer-title { color: var(--accent); font-weight: 500; }
+.audit-filter-drawer[open] > summary { border-bottom: 1px solid var(--border-soft); }
+.audit-filter-drawer > .audit-filter-note { margin: 0; padding: 0 14px 10px; }
+.audit-filters { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 10px 12px; align-items: end; padding: 12px 14px; border: 0; border-radius: 0; }
+.audit-filters label { min-width: 0; display: grid; gap: 4px; color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-filters input, .audit-filters select { width: 100%; height: 34px; padding: 0 10px; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-control); font: 400 13px/19.5px var(--sans); }
+.audit-filters input:disabled { color: var(--muted); background: var(--sunken); }
+.audit-filter-note { color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-filters button { min-height: 34px; white-space: nowrap; }
+.audit-statement-filter { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.audit-filters .audit-statement-filter label { display: flex; gap: 6px; align-items: center; color: var(--text); font: 500 13px/19.5px var(--sans); }
+.audit-filters .audit-statement-filter input { width: auto; height: auto; margin: 0; accent-color: var(--accent); }
+.audit-statement-filter-evidence { color: var(--muted); }
+
+/* Window coverage strip: a quiet evidence line above the results. */
+.audit-window-evidence { display: grid; gap: 2px; padding: 9px 14px; color: var(--muted); background: var(--sunken); border-color: var(--border-soft); font: 400 12px/18px var(--sans); }
+.audit-window-evidence p { margin: 0; overflow-wrap: anywhere; }
+.audit-window-evidence strong { color: var(--text); font-weight: 500; }
+.audit-window-evidence span[title] { color: var(--text); font: 400 12px/18px var(--mono); }
+.audit-window-evidence [role="status"] { color: var(--warning); }
+.audit-window-evidence details summary { cursor: pointer; }
+
+/* KPI summary: one joined card; numbers are mono, labels are sans. */
+.audit-summary-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; overflow: hidden; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.audit-summary-card { min-width: 0; display: grid; align-content: start; gap: 4px; padding: 12px 14px; background: var(--surface); }
+.audit-summary-card h3 { margin: 0; color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-summary-card p { margin: 0; overflow: hidden; color: var(--muted); font: 400 12px/18px var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.audit-summary-card strong { overflow: hidden; color: var(--text); font: 500 22px/28px var(--mono); letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
+.audit-summary-card-critical strong { color: var(--critical); }
+.audit-summary-card-qualified strong { color: var(--warning); font-size: 16px; }
+.audit-summary-card-missing strong { color: var(--muted); font: 400 13px/28px var(--sans); }
+
+/* Result type switch: compact outlined segmented pair; pressed is dark. */
+.audit-mode-tabs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.audit-mode-tabs button { height: 30px; padding: 0 12px; color: var(--text-2); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-control); font: 400 12px/18px var(--sans); cursor: pointer; }
+.audit-mode-tabs button:hover:not(:disabled) { background: var(--sunken); }
+.audit-mode-tabs button.active { color: #ffffff; background: var(--text); border-color: var(--text); }
+.audit-mode-tabs > span { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; color: var(--accent-strong); background: var(--accent-tint); border-radius: 12px; font: 400 12px/18px var(--sans); }
+
+/* Results table card. */
+.audit-results { min-height: 286px; display: grid; grid-template-rows: auto minmax(180px, 1fr) auto; gap: 0; padding: 0; }
+.audit-results > h3 { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.audit-table-wrap { min-height: 180px; max-height: 560px; overflow: auto; }
+.audit-table-wrap table { width: 100%; min-width: 980px; border-collapse: collapse; font: 400 13px/19.5px var(--sans); }
+.audit-table-wrap th, .audit-table-wrap td { height: 40px; padding: 0 10px; overflow: hidden; border-bottom: 1px solid var(--border-soft); text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+/* Individual executions: ID, start, state, Profile and the six metrics get fixed widths that fit their
+   values (a number never loses its unit to an ellipsis); SQL takes the rest (about 150px or more). When the
+   detail panel is open, the three metrics it repeats for the chosen row (scanned rows, returned rows,
+   audit memory) leave the table; below the minimum width the table scrolls inside its card. */
+.audit-table-wrap table.audit-occurrence-table { min-width: 1100px; table-layout: fixed; }
+.audit-board-layout:has(> .audit-selection) table.audit-occurrence-table { min-width: 824px; }
+.audit-board-layout:has(> .audit-selection) .audit-occurrence-table :is(th, td):is(:nth-child(6), :nth-child(7), :nth-child(10)) { display: none; }
+.audit-occurrence-table th, .audit-occurrence-table td { padding: 0 6px; }
+.audit-occurrence-table th { height: auto; padding-block: 6px; white-space: normal; vertical-align: bottom; }
+.audit-occurrence-table td.audit-cell-num { text-overflow: clip; }
+.audit-occurrence-table th:nth-child(1) { width: 120px; }
+.audit-occurrence-table th:nth-child(3) { width: 158px; }
+.audit-occurrence-table th:nth-child(4) { width: 64px; }
+.audit-occurrence-table th:nth-child(5), .audit-occurrence-table th:nth-child(6) { width: 74px; }
+.audit-occurrence-table th:nth-child(7) { width: 64px; }
+.audit-occurrence-table th:nth-child(8) { width: 82px; }
+.audit-occurrence-table th:nth-child(9), .audit-occurrence-table th:nth-child(10) { width: 88px; }
+.audit-occurrence-table th:nth-child(11) { width: 88px; }
+.audit-table-wrap .audit-cell-sql { color: var(--text); font: 400 12px/18px var(--mono); }
+.audit-table-wrap th:first-child, .audit-table-wrap td:first-child { padding-left: 14px; }
+.audit-table-wrap th:last-child, .audit-table-wrap td:last-child { padding-right: 14px; }
+.audit-table-wrap th { position: sticky; top: 0; z-index: 1; height: 36px; color: var(--muted); background: var(--surface); border-bottom-color: var(--border); font: 500 12px/18px var(--sans); }
+/* Metric headers carry their source key as title; numbers align right. */
+.audit-table-wrap th[title], .audit-table-wrap .audit-cell-num { text-align: right; }
+.audit-table-wrap .audit-cell-num, .audit-table-wrap .audit-cell-time, .audit-table-wrap .audit-cell-id button { font-family: var(--mono); font-size: 12px; }
+.audit-table-wrap .audit-cell-num { font-variant-numeric: tabular-nums; }
+.audit-table-wrap .audit-cell-time { color: var(--text-2); }
+.audit-table-wrap .audit-cell-critical { color: var(--critical); }
+.audit-table-wrap .audit-cell-action { text-align: right; }
+.audit-table-wrap tr.audit-row { cursor: pointer; }
+.audit-table-wrap tbody tr:hover { background: var(--sunken); }
+.audit-table-wrap tr.selected, .audit-table-wrap tr.selected:hover { background: color-mix(in srgb, var(--accent-tint) 70%, var(--surface)); box-shadow: inset 3px 0 0 var(--accent); }
+.audit-table-wrap td > button:not(.button) { width: 100%; padding: 0; color: var(--text); background: transparent; border: 0; text-align: left; font: inherit; cursor: pointer; }
+.audit-table-wrap tr.selected td > button:not(.button) { color: var(--accent-strong); font-weight: 500; }
+.audit-table-wrap td .button { min-height: 28px; padding: 0 10px; font: 500 12px/18px var(--sans); }
+.audit-status-ok { color: var(--ok); }
+.audit-status-critical { color: var(--critical); }
+.audit-status-accent { color: var(--accent); }
+.audit-status-neutral { color: var(--text-2); }
+.audit-cell-profile { color: var(--muted); }
+.audit-cell-profile.audit-profile-available { color: var(--accent); }
+.audit-family-label { display: inline; }
+.audit-family-digest { color: var(--text); font: 500 12px/18px var(--mono); }
+.audit-family-context, .audit-family-ungrouped { color: var(--muted); font-size: 12px; }
+
+/* Tokens board value states: the real 0 is a number; everything else is a dashed tag, never a number alone. */
+.audit-value-tag { display: inline-block; max-width: 100%; padding: 0 6px; overflow: hidden; color: var(--muted); border: 1px dashed var(--dashed); border-radius: 4px; font: 400 12px/18px var(--sans); text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }
+.audit-value-qualified { color: var(--warning); border-color: var(--hot-soft); font-family: var(--mono); }
+.audit-empty { margin: 0; padding: 12px 14px; color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-coverage { margin: 0; padding: 10px 14px; color: var(--muted); border-top: 1px solid var(--border-soft); font: 400 12px/18px var(--sans); }
+.audit-coverage summary { cursor: pointer; }
+.audit-coverage p { margin: 6px 0 0; font: 400 12px/18px var(--mono); overflow-wrap: anywhere; }
+
+/* Family drill-in. */
+.audit-family-summary { padding: 14px; }
+.audit-family-summary > div:first-child { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.audit-family-summary > p { overflow-wrap: anywhere; }
+.audit-family-summary dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.audit-family-summary dl > div { min-width: 0; padding: 10px 12px; background: var(--sunken); border: 1px solid var(--border-soft); border-radius: 8px; }
+.audit-family-summary dt { color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-family-summary dd { min-width: 0; margin: 2px 0 6px; overflow: hidden; font: 500 13px/19.5px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.audit-family-detail { display: grid; gap: 14px; padding: 14px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.audit-family-detail-header { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(220px, auto); gap: 14px; align-items: center; }
+.audit-family-detail-header h3, .audit-family-detail h4, .audit-family-detail h5 { margin: 0; color: var(--text); font: 600 14px/20px var(--sans); }
+.audit-family-detail-header p, .audit-family-detail p { margin: 4px 0 0; color: var(--muted); font: 400 12px/18px var(--sans); overflow-wrap: anywhere; }
+.audit-family-detail-header > div > p { color: var(--text-2); font-family: var(--mono); }
+.audit-family-detail-window { font: 400 12px/18px var(--mono) !important; }
+.audit-family-detail-layout { display: grid; grid-template-columns: minmax(0, 56fr) minmax(0, 44fr); gap: 14px; }
+.audit-family-distribution, .audit-family-representatives, .audit-family-detail-evidence { min-width: 0; padding: 12px; background: var(--sunken); border: 1px solid var(--border-soft); border-radius: var(--radius-card); }
+.audit-family-detail-counts { display: inline-block; padding: 2px 8px; color: var(--accent-strong) !important; background: var(--accent-tint); border-radius: 12px; font: 400 12px/18px var(--mono) !important; }
+.audit-family-buckets { display: grid; gap: 5px; margin: 12px 0; }
+.audit-family-buckets > div { display: grid; grid-template-columns: minmax(120px, 2fr) minmax(0, 3fr); gap: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border-soft); }
+.audit-family-buckets dt, .audit-family-exclusions dt { min-width: 0; color: var(--text); font: 400 12px/18px var(--mono); overflow-wrap: anywhere; }
+.audit-family-buckets small { color: var(--muted); font: inherit; }
+.audit-family-buckets dd, .audit-family-exclusions dd { margin: 0; color: var(--text); font: 500 12px/18px var(--mono); }
+.audit-family-buckets dd { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.audit-family-buckets meter { display: block; width: 100%; min-width: 0; height: 12px; accent-color: var(--accent); }
+.audit-family-exclusions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.audit-family-exclusions > div { min-width: 0; padding: 7px 10px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-control); }
+.audit-family-detail-note { font: 400 12px/18px var(--sans) !important; }
+.audit-family-representatives { display: grid; align-content: start; gap: 8px; }
+.audit-family-representative { min-width: 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.audit-family-representative-slowest { border-color: var(--hot-soft); background: var(--hot-tint); }
+.audit-family-representative-profile_known { border-color: color-mix(in srgb, var(--ok) 35%, var(--border)); background: var(--ok-tint); }
+.audit-family-representative-id { color: var(--text) !important; font: 400 12px/18px var(--mono) !important; overflow-wrap: anywhere; }
+.audit-family-representative button { margin-top: 8px; min-height: 30px; font-size: 12px; }
+.audit-family-detail-actions { padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.audit-family-detail-actions h4 { font-size: 13px; }
+.audit-family-detail-actions > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.audit-family-detail-actions button { min-height: 32px; font-size: 12px; }
+.audit-family-detail-actions > button { width: 100%; margin-top: 8px; }
+.audit-family-detail-evidence { display: grid; gap: 2px; }
+.audit-family-detail-evidence p { margin: 0; }
+
+/* Results + sticky selection panel. */
+.audit-results-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px; align-items: start; }
+.audit-results-main { min-width: 0; display: grid; gap: 10px; }
+.audit-selection { position: sticky; top: 64px; display: grid; gap: 12px; padding: 14px 16px; max-height: calc(100vh - 76px); overflow: auto; }
+.audit-selection > header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.audit-selection > header code { color: var(--text); font: 500 12px/18px var(--mono); }
+.audit-selection-empty p { margin: 0; }
+.audit-selection-context { margin: 0 !important; color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-status-chip { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; background: var(--chip); border-radius: 10px; font: 400 12px/18px var(--sans); }
+.audit-status-chip.audit-status-ok { background: var(--ok-tint); }
+.audit-status-chip.audit-status-critical { background: var(--critical-tint); }
+.audit-status-chip.audit-status-accent { background: var(--accent-tint); }
+.audit-selection-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.audit-selection-facts > div { min-width: 0; padding: 8px 10px; background: var(--sunken); border: 1px solid var(--border-soft); border-radius: var(--radius-control); }
+.audit-selection-facts dt { color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-selection-facts dd { margin: 2px 0 0; overflow: hidden; font: 500 14px/20px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.audit-selection-note { margin: 0 !important; color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-selection-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.audit-selection-actions button { min-height: 36px; flex: 1 1 auto; }
+.audit-optional-facts { min-width: 0; padding: 10px 12px; background: var(--sunken); border: 1px solid var(--border-soft); border-radius: var(--radius-control); font: 400 12px/18px var(--sans); overflow-wrap: anywhere; }
+.audit-optional-facts > summary { color: var(--text-2); cursor: pointer; }
+.audit-optional-facts[open] > summary { margin-bottom: 8px; }
+.audit-optional-facts dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; margin: 0; }
+.audit-optional-facts dt { color: var(--muted); }
+.audit-optional-facts dd { margin: 4px 0 0; color: var(--text); font-family: var(--mono); white-space: pre-wrap; }
+.audit-optional-facts .audit-fact-source { color: var(--muted); }
+.audit-sql, .audit-sql-error, .audit-profile-receipt { margin: 0; }
+.audit-sql-error, .audit-error { color: var(--critical); font: 400 12px/18px var(--sans); }
+.audit-profile-receipt { display: inline-flex; align-self: start; padding: 2px 8px; color: var(--ok); background: var(--ok-tint); border-radius: 12px; font: 400 12px/18px var(--sans); }
+.audit-error { margin: 0; padding: 9px 12px; background: var(--critical-tint); border: 1px solid color-mix(in srgb, var(--critical) 30%, var(--border)); border-radius: var(--radius-control); }
+
+/* Trends stay collapsed by default. */
+.audit-trends { padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.audit-trends > summary { padding: 11px 14px; cursor: pointer; color: var(--text); font: 500 13px/19.5px var(--sans); }
+.audit-trends[open] > summary { border-bottom: 1px solid var(--border-soft); }
+.audit-trends > .audit-overview-charts { padding: 12px 14px 14px; }
+.audit-boundary { padding: 0 2px; color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-unavailable { margin: 18px; padding: 18px; }
+.audit-unavailable .button { margin-top: 12px; }
+@media (max-width: 1200px) { .audit-workload { min-width: 1080px; } .audit-filters { grid-template-columns: repeat(5, minmax(140px, 1fr)); } .audit-summary-cards, .audit-family-summary dl { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1100px) { .audit-results-layout { grid-template-columns: minmax(0, 1fr); } .audit-selection { position: static; max-height: none; } }

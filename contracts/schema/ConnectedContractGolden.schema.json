@@ -1,0 +1,5250 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConnectedContractGolden",
+  "description": "Synthetic-only contract evidence. It deliberately has no Docker or product execution receipt; real Docker E2E is a later task's evidence.",
+  "type": "object",
+  "required": [
+    "advisor_request",
+    "advisor_response",
+    "connection",
+    "evidence",
+    "experiment",
+    "explain_response",
+    "plan_comparison",
+    "profile_comparison_request",
+    "profile_comparison_response",
+    "profile_fetch_request",
+    "profile_fetch_response",
+    "query_request",
+    "query_response",
+    "query_sql_request",
+    "query_sql_response",
+    "running_profile_candidate_list_request",
+    "running_profile_candidate_list_response",
+    "running_profile_snapshot_request",
+    "running_profile_snapshot_response",
+    "schema_version"
+  ],
+  "properties": {
+    "advisor_request": {
+      "$ref": "#/definitions/PlanAdvisorRequest"
+    },
+    "advisor_response": {
+      "$ref": "#/definitions/PlanAdvisorResponse"
+    },
+    "connection": {
+      "$ref": "#/definitions/ConnectionSessionView"
+    },
+    "evidence": {
+      "$ref": "#/definitions/ConnectedGoldenEvidence"
+    },
+    "experiment": {
+      "$ref": "#/definitions/OptimizationExperimentContext"
+    },
+    "explain_response": {
+      "$ref": "#/definitions/ExplainResponse"
+    },
+    "plan_comparison": {
+      "$ref": "#/definitions/PlanComparison"
+    },
+    "profile_comparison_request": {
+      "$ref": "#/definitions/ConnectedProfileComparisonRequest"
+    },
+    "profile_comparison_response": {
+      "$ref": "#/definitions/ConnectedProfileComparisonResponse"
+    },
+    "profile_fetch_request": {
+      "$ref": "#/definitions/ProfileFetchRequest"
+    },
+    "profile_fetch_response": {
+      "$ref": "#/definitions/ProfileFetchResponse"
+    },
+    "query_request": {
+      "$ref": "#/definitions/ConnectedQueryListRequest"
+    },
+    "query_response": {
+      "$ref": "#/definitions/ConnectedQueryListResponse"
+    },
+    "query_sql_request": {
+      "$ref": "#/definitions/ConnectedQuerySqlRequest"
+    },
+    "query_sql_response": {
+      "$ref": "#/definitions/ConnectedQuerySqlResponse"
+    },
+    "running_profile_candidate_list_request": {
+      "$ref": "#/definitions/RunningProfileCandidateListRequest"
+    },
+    "running_profile_candidate_list_response": {
+      "$ref": "#/definitions/RunningProfileCandidateListResponse"
+    },
+    "running_profile_snapshot_request": {
+      "$ref": "#/definitions/RunningProfileSnapshotRequest"
+    },
+    "running_profile_snapshot_response": {
+      "$ref": "#/definitions/RunningProfileSnapshotResponse"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "0.1"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AdvisorProvenance": {
+      "type": "string",
+      "enum": [
+        "official_experimental_fe_local_volatile"
+      ]
+    },
+    "AnalysisAttempt": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/AnalysisOutcomeAttempt"
+        },
+        {
+          "$ref": "#/definitions/AnalysisErrorAttempt"
+        }
+      ]
+    },
+    "AnalysisErrorAttempt": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/ErrorSummary"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AnalysisOutcome": {
+      "type": "object",
+      "required": [
+        "report"
+      ],
+      "properties": {
+        "report": {
+          "$ref": "#/definitions/AnalysisSnapshotReport"
+        }
+      }
+    },
+    "AnalysisOutcomeAttempt": {
+      "type": "object",
+      "required": [
+        "outcome"
+      ],
+      "properties": {
+        "outcome": {
+          "$ref": "#/definitions/AnalysisOutcome"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AnalysisReceipt": {
+      "type": "object",
+      "required": [
+        "components"
+      ],
+      "properties": {
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReceiptComponent"
+          }
+        }
+      }
+    },
+    "AnalysisSnapshotReport": {
+      "type": "object",
+      "required": [
+        "analysis_key",
+        "analysis_receipt",
+        "analysis_state",
+        "completeness",
+        "derived_metric_cells",
+        "diagnostics",
+        "facts_hash",
+        "findings",
+        "graph_view",
+        "input",
+        "operator_rows",
+        "profile_context",
+        "provenance_index",
+        "rule_evaluations",
+        "schema_version",
+        "source_view",
+        "version"
+      ],
+      "properties": {
+        "analysis_key": {
+          "type": "string"
+        },
+        "analysis_receipt": {
+          "$ref": "#/definitions/AnalysisReceipt"
+        },
+        "analysis_state": {
+          "$ref": "#/definitions/AnalysisState"
+        },
+        "completeness": {
+          "$ref": "#/definitions/CompletenessReport"
+        },
+        "derived_metric_cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MetricCell"
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        },
+        "execution_shape": {
+          "description": "Fragment / instance counts; Compare's parallelism gate reads only this.",
+          "default": {
+            "state": "unavailable",
+            "recipe_id": "sr3514.query_runtime_profile.instance_num.v1",
+            "fragment_count": null,
+            "instance_count": null,
+            "fragments": [],
+            "reasons": [
+              "retained_report_without_execution_shape"
+            ]
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ExecutionShape"
+            }
+          ]
+        },
+        "execution_summary": {
+          "description": "Per-plan-node reading built with the official ExplainAnalyzer recipe.",
+          "default": {
+            "state": "unavailable",
+            "recipe_id": "sr3514.explain_analyzer.node_info.v1",
+            "query_total_time": {
+              "state": "unavailable",
+              "canonical_number": null,
+              "canonical_unit": null,
+              "display_text": null,
+              "reasons": [
+                "retained_report_without_summary"
+              ],
+              "source_refs": [],
+              "bounds": null
+            },
+            "cumulative_operator_time": {
+              "state": "unavailable",
+              "canonical_number": null,
+              "canonical_unit": null,
+              "display_text": null,
+              "reasons": [
+                "retained_report_without_summary"
+              ],
+              "source_refs": [],
+              "bounds": null
+            },
+            "result_rows": {
+              "state": "unavailable",
+              "canonical_number": null,
+              "canonical_unit": null,
+              "display_text": null,
+              "reasons": [
+                "retained_report_without_summary"
+              ],
+              "source_refs": [],
+              "bounds": null
+            },
+            "nodes": [],
+            "reasons": [
+              "retained_report_without_summary"
+            ]
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ExecutionSummary"
+            }
+          ]
+        },
+        "facts_hash": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Finding"
+          }
+        },
+        "graph_view": {
+          "description": "The single execution graph: plan nodes and their typed relations.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/GraphView"
+            }
+          ]
+        },
+        "input": {
+          "$ref": "#/definitions/InputSummary"
+        },
+        "operator_rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OperatorRow"
+          }
+        },
+        "profile_context": {
+          "$ref": "#/definitions/ProfileContext"
+        },
+        "provenance_index": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "query_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/QuerySummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rule_evaluations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RuleEvaluation"
+          }
+        },
+        "schema_version": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "source_view": {
+          "$ref": "#/definitions/SourceView"
+        },
+        "version": {
+          "$ref": "#/definitions/VersionContext"
+        }
+      }
+    },
+    "AnalysisState": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial"
+      ]
+    },
+    "AuditStatementFilter": {
+      "description": "Product-owned statement-class filter over AuditLoader rows.\n\n`ExcludeDoctorAndNonQuery` keeps only rows whose FE-reported `isQuery` is exactly 1 (official 3.5.14 `ConnectContext.isQueryStmt`: a `QueryStatement` or EXECUTE of a prepared query; statements that fail to parse keep the initial `true`) and whose `stmt` does not start with this product's fixed statement marker. SET/SHOW/DDL/DML rows, rows with a NULL `isQuery`, and this tool's own statements are hidden but counted.",
+      "type": "string",
+      "enum": [
+        "all",
+        "exclude_doctor_and_non_query"
+      ]
+    },
+    "BoundedFidelity": {
+      "type": "string",
+      "enum": [
+        "rounded",
+        "truncated",
+        "interval"
+      ]
+    },
+    "BoundedInterval": {
+      "type": "object",
+      "required": [
+        "lower",
+        "lower_inclusive",
+        "upper",
+        "upper_inclusive"
+      ],
+      "properties": {
+        "lower": {
+          "$ref": "#/definitions/CanonicalNumber"
+        },
+        "lower_inclusive": {
+          "type": "boolean"
+        },
+        "upper": {
+          "$ref": "#/definitions/CanonicalNumber"
+        },
+        "upper_inclusive": {
+          "type": "boolean"
+        }
+      }
+    },
+    "CandidateProfileResponsibility": {
+      "type": "string",
+      "enum": [
+        "user_external_rerun"
+      ]
+    },
+    "CandidateProfileState": {
+      "type": "string",
+      "enum": [
+        "awaiting_user_external_rerun",
+        "fetched_after_user_external_rerun"
+      ]
+    },
+    "CanonicalNumber": {
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/NumberKind"
+        },
+        "scale": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "value": {
+          "description": "Base-10 only: JSON numbers are never used for counters.",
+          "type": "string"
+        }
+      }
+    },
+    "Comparison": {
+      "type": "object",
+      "required": [
+        "baseline",
+        "candidate",
+        "comparison_key",
+        "comparison_receipt",
+        "compatibility_delta",
+        "diagnostics",
+        "finding_delta",
+        "limitations",
+        "metric_deltas",
+        "reasons",
+        "schema_version",
+        "state",
+        "structure_delta"
+      ],
+      "properties": {
+        "baseline": {
+          "$ref": "#/definitions/AnalysisAttempt"
+        },
+        "candidate": {
+          "$ref": "#/definitions/AnalysisAttempt"
+        },
+        "comparison_key": {
+          "type": "string"
+        },
+        "comparison_receipt": {
+          "$ref": "#/definitions/ComparisonReceipt"
+        },
+        "compatibility_delta": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        },
+        "finding_delta": {
+          "$ref": "#/definitions/FindingDelta"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metric_deltas": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MetricDelta"
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "schema_version": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "state": {
+          "$ref": "#/definitions/ComparisonState"
+        },
+        "structure_delta": {
+          "$ref": "#/definitions/StructureDelta"
+        }
+      }
+    },
+    "ComparisonReceipt": {
+      "type": "object",
+      "required": [
+        "components"
+      ],
+      "properties": {
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReceiptComponent"
+          }
+        }
+      }
+    },
+    "ComparisonState": {
+      "type": "string",
+      "enum": [
+        "comparable",
+        "partially_comparable",
+        "not_comparable"
+      ]
+    },
+    "Compatibility": {
+      "type": "string",
+      "enum": [
+        "compatible",
+        "partial",
+        "incompatible",
+        "inconclusive"
+      ]
+    },
+    "CompatibilityCheck": {
+      "type": "object",
+      "required": [
+        "check_id",
+        "domain",
+        "source_refs",
+        "state"
+      ],
+      "properties": {
+        "check_id": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "expected": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/CompatibilityCheckState"
+        }
+      }
+    },
+    "CompatibilityCheckState": {
+      "type": "string",
+      "enum": [
+        "matched",
+        "missing",
+        "unknown",
+        "conflict"
+      ]
+    },
+    "CompletenessReport": {
+      "type": "object",
+      "required": [
+        "graph",
+        "metrics",
+        "provenance",
+        "summary",
+        "version"
+      ],
+      "properties": {
+        "graph": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        },
+        "metrics": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        },
+        "provenance": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        },
+        "summary": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        },
+        "version": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        }
+      }
+    },
+    "CompletenessState": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "ConnectedComparisonInterpretationState": {
+      "type": "string",
+      "enum": [
+        "observed_only"
+      ]
+    },
+    "ConnectedComparisonValidationContext": {
+      "type": "object",
+      "required": [
+        "candidate_attestation",
+        "fetch_order",
+        "interpretation_state",
+        "same_connection_session",
+        "same_discovery_generation"
+      ],
+      "properties": {
+        "candidate_attestation": {
+          "type": "string"
+        },
+        "fetch_order": {
+          "type": "string"
+        },
+        "interpretation_state": {
+          "$ref": "#/definitions/ConnectedComparisonInterpretationState"
+        },
+        "same_connection_session": {
+          "type": "boolean"
+        },
+        "same_discovery_generation": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedGoldenEvidence": {
+      "type": "string",
+      "enum": [
+        "synthetic_contract_only_not_docker_e2e"
+      ]
+    },
+    "ConnectedPlanCheckAction": {
+      "description": "The available arm must carry a session-owned capability reference. The unavailable arm cannot carry one, so invalid state/reference matrices are rejected by the wire contract rather than interpreted in the browser.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "plan_sql_ref",
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "plan_sql_ref": {
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/definitions/PlanCheckAvailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/PlanCheckUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ConnectedProfileComparisonRequest": {
+      "description": "Strict input for the connected-only, server-fetched Profile comparison.\n\nThe client supplies only opaque IDs; it never submits reports or raw Profile bytes. The API validates the path/body connection ID and both query IDs before it asks the connector for either Profile.",
+      "type": "object",
+      "required": [
+        "baseline_query_id",
+        "candidate_query_id",
+        "connection_id",
+        "discovery_generation"
+      ],
+      "properties": {
+        "baseline_query_id": {
+          "type": "string"
+        },
+        "candidate_query_id": {
+          "type": "string"
+        },
+        "connection_id": {
+          "type": "string"
+        },
+        "discovery_generation": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedProfileComparisonResponse": {
+      "description": "The comparison is assembled exclusively from two Profiles fetched through the same opaque local connection session. `Comparison` already contains the typed attempts and reports, so this wrapper deliberately does not duplicate them.",
+      "type": "object",
+      "required": [
+        "baseline",
+        "candidate",
+        "comparison",
+        "limitations",
+        "validation_context"
+      ],
+      "properties": {
+        "baseline": {
+          "$ref": "#/definitions/ConnectedProfileComparisonSide"
+        },
+        "candidate": {
+          "$ref": "#/definitions/ConnectedProfileComparisonSide"
+        },
+        "comparison": {
+          "$ref": "#/definitions/Comparison"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validation_context": {
+          "$ref": "#/definitions/ConnectedComparisonValidationContext"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedProfileComparisonSide": {
+      "description": "Provenance for one server-fetched side of a connected Profile comparison.",
+      "type": "object",
+      "required": [
+        "input_origin",
+        "query"
+      ],
+      "properties": {
+        "input_origin": {
+          "$ref": "#/definitions/InputOrigin"
+        },
+        "query": {
+          "$ref": "#/definitions/ConnectedQueryRef"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedProfileFetchAction": {
+      "description": "A Profile action is never an availability claim about the remote cache: `available` means the bounded fetch may be attempted for this row.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/ProfileFetchAvailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/ProfileFetchUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ConnectedQueryListRequest": {
+      "type": "object",
+      "required": [
+        "connection_id",
+        "limit"
+      ],
+      "properties": {
+        "connection_id": {
+          "type": "string"
+        },
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "statement_filter": {
+          "description": "Explicit statement-class filter for the discovery list. An omitted field keeps the earlier unfiltered request semantics (`all`).",
+          "default": "all",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditStatementFilter"
+            }
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedQueryListResponse": {
+      "type": "object",
+      "required": [
+        "discovery_generation",
+        "filter_scope",
+        "limitations",
+        "queries",
+        "source",
+        "statement_filter"
+      ],
+      "properties": {
+        "discovery_generation": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "filter_scope": {
+          "$ref": "#/definitions/QueryFilterScope"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ConnectedQueryRef"
+          }
+        },
+        "source": {
+          "$ref": "#/definitions/QueryDiscoverySource"
+        },
+        "statement_filter": {
+          "description": "What the requested statement-class filter actually did on the resolved source. Hidden rows are counted, never silently dropped.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/QueryListStatementFilterCoverage"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedQueryRef": {
+      "type": "object",
+      "required": [
+        "connection_id",
+        "plan_check",
+        "profile_fetch",
+        "query_id",
+        "source_refs",
+        "status",
+        "timestamp_state"
+      ],
+      "properties": {
+        "connection_id": {
+          "type": "string"
+        },
+        "database": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "discovery_generation": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "discovery_source": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/QueryDiscoverySource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed_at_local": {
+          "description": "Original bounded wall-clock text returned by Audit/ProfileList.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed_at_utc": {
+          "description": "RFC 3339 text avoids a JavaScript-unsafe epoch-millisecond integer. `None` is required when a fetch response has only a query ID and no independently observed timestamp; the API must not invent UTC.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_check": {
+          "$ref": "#/definitions/ConnectedPlanCheckAction"
+        },
+        "profile_fetch": {
+          "$ref": "#/definitions/ConnectedProfileFetchAction"
+        },
+        "query_id": {
+          "type": "string"
+        },
+        "query_time_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "resource_group": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string"
+        },
+        "timestamp_state": {
+          "$ref": "#/definitions/ConnectedTimestampState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedQuerySqlRequest": {
+      "description": "Narrow, session-owned lookup for SQL that was observed during the current discovery generation. Query lists intentionally omit this field.",
+      "type": "object",
+      "required": [
+        "connection_id",
+        "discovery_generation",
+        "query_id"
+      ],
+      "properties": {
+        "connection_id": {
+          "type": "string"
+        },
+        "discovery_generation": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "query_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedQuerySqlResponse": {
+      "description": "Bounded SQL text returned only after an explicit lookup in the current short-lived connection session. It is never part of query discovery rows.",
+      "type": "object",
+      "required": [
+        "discovery_generation",
+        "query_id",
+        "sql"
+      ],
+      "properties": {
+        "discovery_generation": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "query_id": {
+          "type": "string"
+        },
+        "sql": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedRecommendation": {
+      "type": "object",
+      "required": [
+        "action_kind",
+        "applicability",
+        "evidence",
+        "limitations",
+        "recommendation",
+        "recommendation_id",
+        "source",
+        "source_version",
+        "suggested_action"
+      ],
+      "properties": {
+        "action_kind": {
+          "type": "string"
+        },
+        "advisor_provenance": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AdvisorProvenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "applicability": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommendation": {
+          "description": "The frozen analysis recommendation is composed, never widened.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Recommendation"
+            }
+          ]
+        },
+        "recommendation_id": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/definitions/RecommendationSource"
+        },
+        "source_version": {
+          "type": "string"
+        },
+        "suggested_action": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedSchemaVersion": {
+      "type": "string",
+      "enum": [
+        "0.1"
+      ]
+    },
+    "ConnectedTimestampState": {
+      "description": "Records what the timestamp can prove. AuditLoader emits a wall-clock DATETIME without an origin offset, so a reader-session conversion is an interpretation rather than evidence of the producer's original instant.",
+      "type": "string",
+      "enum": [
+        "reader_session_interpreted",
+        "raw_wall_time_only",
+        "unavailable"
+      ]
+    },
+    "ConnectionCapabilityReport": {
+      "type": "object",
+      "required": [
+        "audit",
+        "explain_costs",
+        "plan_advisor",
+        "profile_fetch",
+        "profile_list",
+        "time_zone",
+        "version_probe"
+      ],
+      "properties": {
+        "audit": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "audit_statement_filter": {
+          "description": "`isQuery` (TINYINT) and `stmt` were both probed in this session, so the explicit statement-class filter can be applied without a fallback.",
+          "default": "unknown",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ConnectionCapabilityState"
+            }
+          ]
+        },
+        "audit_user_filter": {
+          "default": "unknown",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ConnectionCapabilityState"
+            }
+          ]
+        },
+        "explain_costs": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "plan_advisor": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "profile_fetch": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "profile_list": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "time_zone": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "version_probe": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectionCapabilityState": {
+      "type": "string",
+      "enum": [
+        "available",
+        "unavailable",
+        "forbidden",
+        "unknown"
+      ]
+    },
+    "ConnectionSessionState": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "unsupported",
+        "expired",
+        "closed",
+        "failed"
+      ]
+    },
+    "ConnectionSessionView": {
+      "type": "object",
+      "required": [
+        "capabilities",
+        "connection_id",
+        "idle_timeout_seconds",
+        "limitations",
+        "state",
+        "tls_mode"
+      ],
+      "properties": {
+        "capabilities": {
+          "$ref": "#/definitions/ConnectionCapabilityReport"
+        },
+        "connection_id": {
+          "type": "string"
+        },
+        "detected_version": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/VersionEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "idle_timeout_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/ConnectionSessionState"
+        },
+        "time_zone": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TimeZoneEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tls_mode": {
+          "$ref": "#/definitions/TlsMode"
+        }
+      },
+      "additionalProperties": false
+    },
+    "CorrelationEvidence": {
+      "type": "object",
+      "required": [
+        "baseline_analysis_key",
+        "baseline_analysis_receipt",
+        "baseline_origin",
+        "baseline_source_hash",
+        "baseline_source_kind",
+        "candidate_explain_snapshot_id",
+        "candidate_origin",
+        "candidate_plan_hash",
+        "source_refs"
+      ],
+      "properties": {
+        "baseline_analysis_key": {
+          "type": "string"
+        },
+        "baseline_analysis_receipt": {
+          "$ref": "#/definitions/AnalysisReceipt"
+        },
+        "baseline_origin": {
+          "$ref": "#/definitions/InputOrigin"
+        },
+        "baseline_source_hash": {
+          "type": "string"
+        },
+        "baseline_source_kind": {
+          "$ref": "#/definitions/SourceKind"
+        },
+        "candidate_explain_snapshot_id": {
+          "type": "string"
+        },
+        "candidate_origin": {
+          "$ref": "#/definitions/InputOrigin"
+        },
+        "candidate_plan_hash": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "Diagnostic": {
+      "type": "object",
+      "required": [
+        "affected_ids",
+        "code",
+        "details",
+        "message_id",
+        "recoverability",
+        "severity",
+        "source_refs",
+        "stage"
+      ],
+      "properties": {
+        "affected_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "code": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "recoverability": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stage": {
+          "type": "string"
+        }
+      }
+    },
+    "DimensionCompleteness": {
+      "type": "object",
+      "required": [
+        "present_count",
+        "reasons",
+        "state"
+      ],
+      "properties": {
+        "expected_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "present_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/CompletenessState"
+        }
+      }
+    },
+    "DirectionSemantics": {
+      "type": "string",
+      "enum": [
+        "upstream_to_downstream",
+        "parent_to_child",
+        "dependency_precedes"
+      ]
+    },
+    "EdgeSource": {
+      "type": "string",
+      "enum": [
+        "explicit",
+        "verified_derived"
+      ]
+    },
+    "ErrorSummary": {
+      "type": "object",
+      "required": [
+        "code",
+        "message_id",
+        "recoverability",
+        "stage"
+      ],
+      "properties": {
+        "affected_side": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "recoverability": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        }
+      }
+    },
+    "EvidenceCompleteness": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "ExecutionShape": {
+      "type": "object",
+      "required": [
+        "fragments",
+        "reasons",
+        "recipe_id",
+        "state"
+      ],
+      "properties": {
+        "fragment_count": {
+          "description": "Distinct `Fragment N:` sections; `None` when they can not be counted.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "fragments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FragmentInstanceCount"
+          }
+        },
+        "instance_count": {
+          "description": "Sum of every fragment's `InstanceNum`; `None` unless all are exact.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recipe_id": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/definitions/ExecutionShapeState"
+        }
+      }
+    },
+    "ExecutionShapeState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "unavailable"
+          ]
+        },
+        {
+          "description": "Fragment count and every fragment's `InstanceNum` are exact.",
+          "type": "string",
+          "enum": [
+            "complete"
+          ]
+        },
+        {
+          "description": "Fragments are known but at least one `InstanceNum` is missing or invalid.",
+          "type": "string",
+          "enum": [
+            "partial"
+          ]
+        }
+      ]
+    },
+    "ExecutionSummary": {
+      "type": "object",
+      "required": [
+        "cumulative_operator_time",
+        "nodes",
+        "query_total_time",
+        "reasons",
+        "recipe_id",
+        "result_rows",
+        "state"
+      ],
+      "properties": {
+        "cumulative_operator_time": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PlanNodeSummary"
+          }
+        },
+        "query_total_time": {
+          "description": "`Summary.Total` as reported by the FE; independent of operator time.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SummaryValue"
+            }
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recipe_id": {
+          "type": "string"
+        },
+        "result_rows": {
+          "description": "`RESULT_SINK.PushRowNum`: rows returned to the client.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SummaryValue"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/ExecutionSummaryState"
+        }
+      }
+    },
+    "ExecutionSummaryState": {
+      "type": "string",
+      "enum": [
+        "available",
+        "unavailable"
+      ]
+    },
+    "ExpectedChangeDirection": {
+      "type": "string",
+      "enum": [
+        "decrease",
+        "increase"
+      ]
+    },
+    "ExpectedMetricChange": {
+      "type": "object",
+      "required": [
+        "direction",
+        "metric_id"
+      ],
+      "properties": {
+        "direction": {
+          "$ref": "#/definitions/ExpectedChangeDirection"
+        },
+        "metric_id": {
+          "description": "A registered metric id of the finding's subject.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainAggregatePhase": {
+      "type": "string",
+      "enum": [
+        "update_serialize",
+        "update_finalize",
+        "merge_finalize"
+      ]
+    },
+    "ExplainCardFactSlot": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "expected_fact_kind",
+            "fact_ref",
+            "reason_codes",
+            "selection_recipe",
+            "slot_id",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "expected_fact_kind": {
+              "$ref": "#/definitions/ExplainFactKind"
+            },
+            "fact_ref": {
+              "type": "string"
+            },
+            "reason_codes": {
+              "type": "array",
+              "maxItems": 0
+            },
+            "selection_recipe": {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            "slot_id": {
+              "$ref": "#/definitions/ExplainCardSlotId"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "selected"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "expected_fact_kind",
+            "fact_ref",
+            "reason_codes",
+            "selection_recipe",
+            "slot_id",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "expected_fact_kind": {
+              "$ref": "#/definitions/ExplainFactKind"
+            },
+            "fact_ref": {
+              "type": "null"
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "selection_recipe": {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            "slot_id": {
+              "$ref": "#/definitions/ExplainCardSlotId"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "expected_fact_kind",
+            "fact_ref",
+            "reason_codes",
+            "selection_recipe",
+            "slot_id",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "expected_fact_kind": {
+              "type": "null"
+            },
+            "fact_ref": {
+              "type": "null"
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "selection_recipe": {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            "slot_id": {
+              "$ref": "#/definitions/ExplainCardSlotId"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_applicable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ExplainCardSlotId": {
+      "type": "string",
+      "enum": [
+        "primary",
+        "secondary",
+        "tertiary"
+      ]
+    },
+    "ExplainCardinalityEstimate": {
+      "type": "object",
+      "required": [
+        "kind",
+        "scale",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/ExplainCardinalityNumberKind"
+        },
+        "scale": {
+          "type": "null"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,38})$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainCardinalityNumberKind": {
+      "type": "string",
+      "enum": [
+        "integer"
+      ]
+    },
+    "ExplainDistribution": {
+      "type": "string",
+      "enum": [
+        "broadcast",
+        "gather",
+        "shuffle"
+      ]
+    },
+    "ExplainFactEvidenceKind": {
+      "type": "string",
+      "enum": [
+        "explicit",
+        "verified_derived"
+      ]
+    },
+    "ExplainFactKind": {
+      "description": "The small, version-pinned set of plan facts that an Explain-only card may render.  These are estimates or structural facts, never runtime metrics.",
+      "type": "string",
+      "enum": [
+        "cardinality_estimate",
+        "distribution",
+        "join_strategy",
+        "aggregate_phase",
+        "plan_child_count"
+      ]
+    },
+    "ExplainFactValue": {
+      "description": "The value arm remains type-safe while the outer fact tag always expresses availability.  This prevents a formatter fact kind from being mistaken for an availability state on the public wire.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ExplainCardinalityEstimate"
+        },
+        {
+          "$ref": "#/definitions/ExplainDistribution"
+        },
+        {
+          "$ref": "#/definitions/ExplainJoinStrategy"
+        },
+        {
+          "$ref": "#/definitions/ExplainAggregatePhase"
+        },
+        {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      ]
+    },
+    "ExplainJoinStrategy": {
+      "type": "string",
+      "enum": [
+        "inner_broadcast",
+        "inner_partitioned",
+        "right_outer_bucket_shuffle",
+        "right_outer_partitioned"
+      ]
+    },
+    "ExplainLevel": {
+      "type": "string",
+      "enum": [
+        "logical",
+        "verbose",
+        "costs"
+      ]
+    },
+    "ExplainMetadataAvailability": {
+      "type": "string",
+      "enum": [
+        "available",
+        "unavailable"
+      ]
+    },
+    "ExplainNodeFact": {
+      "description": "A fact is an exclusive `available`/`unavailable` wire arm.  The unavailable arm carries only a typed kind and stable reason codes, never raw formatter text.  Available facts keep `fact_kind` explicit for a renderer that does not know the source grammar.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "evidence_kind",
+            "fact_kind",
+            "fact_ref",
+            "node_ref",
+            "source_refs",
+            "state",
+            "value"
+          ],
+          "properties": {
+            "evidence_kind": {
+              "$ref": "#/definitions/ExplainFactEvidenceKind"
+            },
+            "fact_kind": {
+              "$ref": "#/definitions/ExplainFactKind"
+            },
+            "fact_ref": {
+              "type": "string"
+            },
+            "node_ref": {
+              "type": "string"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/ExplainFactValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "fact_kind",
+            "fact_ref",
+            "node_ref",
+            "reason_codes",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "fact_kind": {
+              "$ref": "#/definitions/ExplainFactKind"
+            },
+            "fact_ref": {
+              "type": "string"
+            },
+            "node_ref": {
+              "type": "string"
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ExplainNodeFactSet": {
+      "type": "object",
+      "required": [
+        "card_slots",
+        "completeness",
+        "facts",
+        "node_ref",
+        "reason_codes",
+        "source_refs"
+      ],
+      "properties": {
+        "card_slots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExplainCardFactSlot"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "completeness": {
+          "$ref": "#/definitions/CompletenessState"
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExplainNodeFact"
+          }
+        },
+        "node_ref": {
+          "type": "string"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainReceipt": {
+      "description": "Receipts that pin the independently versioned Explain surface.  Each component hash is over its actual fixed semantic content. These are available surface pins, not proof that every recipe was applied. Raw-text modes explicitly mark COSTS recipes as not applied in limitations.",
+      "type": "object",
+      "required": [
+        "adapter",
+        "card_facts_recipe",
+        "exchange_recipe",
+        "schema"
+      ],
+      "properties": {
+        "adapter": {
+          "$ref": "#/definitions/ReceiptComponent"
+        },
+        "card_facts_recipe": {
+          "$ref": "#/definitions/ReceiptComponent"
+        },
+        "exchange_recipe": {
+          "$ref": "#/definitions/ReceiptComponent"
+        },
+        "schema": {
+          "$ref": "#/definitions/ReceiptComponent"
+        },
+        "version_pack": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReceiptComponent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainResponse": {
+      "type": "object",
+      "required": [
+        "snapshot"
+      ],
+      "properties": {
+        "snapshot": {
+          "$ref": "#/definitions/ExplainSnapshot"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainRuntimeState": {
+      "type": "string",
+      "enum": [
+        "unavailable"
+      ]
+    },
+    "ExplainSchemaVersion": {
+      "type": "string",
+      "enum": [
+        "0.4"
+      ]
+    },
+    "ExplainSnapshot": {
+      "type": "object",
+      "required": [
+        "diagnostics",
+        "explain_level",
+        "explain_schema_version",
+        "facts_hash",
+        "graph_view",
+        "input_origin",
+        "limitations",
+        "plan_hash",
+        "plan_node_fact_sets",
+        "receipt",
+        "runtime_state",
+        "snapshot_id",
+        "source_locators",
+        "source_refs",
+        "source_view",
+        "version"
+      ],
+      "properties": {
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        },
+        "explain_level": {
+          "$ref": "#/definitions/ExplainLevel"
+        },
+        "explain_schema_version": {
+          "$ref": "#/definitions/ExplainSchemaVersion"
+        },
+        "facts_hash": {
+          "type": "string"
+        },
+        "graph_view": {
+          "description": "Explain carries the plan graph only. Runtime remains explicitly unavailable in `runtime_state` and is never joined from a Profile.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/GraphView"
+            }
+          ]
+        },
+        "input_origin": {
+          "$ref": "#/definitions/InputOrigin"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "plan_hash": {
+          "type": "string"
+        },
+        "plan_node_fact_sets": {
+          "description": "Source-ordered typed plan facts.  The client only renders these values; it never reparses raw Explain text or derives a fallback.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExplainNodeFactSet"
+          }
+        },
+        "receipt": {
+          "$ref": "#/definitions/ExplainReceipt"
+        },
+        "runtime_state": {
+          "description": "Explain is plan-only; a runtime field cannot be populated here.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ExplainRuntimeState"
+            }
+          ]
+        },
+        "snapshot_id": {
+          "type": "string"
+        },
+        "source_locators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExplainSourceLocator"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_view": {
+          "$ref": "#/definitions/ExplainSourceView"
+        },
+        "version": {
+          "$ref": "#/definitions/ExplainVersionContext"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainSourceDisplayState": {
+      "type": "string",
+      "enum": [
+        "safe_structure_only",
+        "raw_text"
+      ]
+    },
+    "ExplainSourceKind": {
+      "type": "string",
+      "enum": [
+        "explain_logical",
+        "explain_verbose",
+        "explain_costs"
+      ]
+    },
+    "ExplainSourceLocator": {
+      "description": "A locator for Explain source material.  `row_line` ranges are byte offsets in the original MySQL cell, never in a reconstructed joined string.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "byte_length",
+            "kind",
+            "row_count",
+            "source_ref"
+          ],
+          "properties": {
+            "byte_length": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "result"
+              ]
+            },
+            "row_count": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "source_ref": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "byte_end",
+            "byte_start",
+            "global_line_no",
+            "kind",
+            "row_line_no",
+            "row_no",
+            "source_ref"
+          ],
+          "properties": {
+            "byte_end": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "byte_start": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "global_line_no": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 1.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "row_line"
+              ]
+            },
+            "row_line_no": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 1.0
+            },
+            "row_no": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 1.0
+            },
+            "source_ref": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "availability",
+            "field",
+            "kind",
+            "source_ref"
+          ],
+          "properties": {
+            "availability": {
+              "$ref": "#/definitions/ExplainMetadataAvailability"
+            },
+            "evidence_hash": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "field": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "connection_metadata"
+              ]
+            },
+            "source_ref": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ExplainSourceTruncationState": {
+      "type": "string",
+      "enum": [
+        "not_truncated",
+        "input_limited"
+      ]
+    },
+    "ExplainSourceView": {
+      "description": "The only text exposed for an Explain is the registered structural grammar. Attribute and SQL text remain outside the response contract.",
+      "type": "object",
+      "required": [
+        "display_state",
+        "limitations",
+        "lines",
+        "source_kind",
+        "truncation_state"
+      ],
+      "properties": {
+        "display_state": {
+          "$ref": "#/definitions/ExplainSourceDisplayState"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SourceLine"
+          }
+        },
+        "source_kind": {
+          "$ref": "#/definitions/ExplainSourceKind"
+        },
+        "truncation_state": {
+          "$ref": "#/definitions/ExplainSourceTruncationState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainVersionContext": {
+      "description": "The narrow, same-connection version envelope for a COSTS plan.  It is intentionally not a `ProfileContext`: an Explain has no runtime profile.",
+      "type": "object",
+      "required": [
+        "limitations",
+        "pack_match",
+        "source_refs"
+      ],
+      "properties": {
+        "detected_release": {
+          "description": "A registered release only.  Unknown server text is never reflected.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pack_match": {
+          "$ref": "#/definitions/PackMatch"
+        },
+        "selected_pack": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SelectedVersionPack"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "Fidelity": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "rounded",
+        "truncated",
+        "interval",
+        "unknown"
+      ]
+    },
+    "Finding": {
+      "type": "object",
+      "required": [
+        "category",
+        "confidence",
+        "confidence_reasons",
+        "evidence",
+        "evidence_completeness",
+        "evidence_completeness_reasons",
+        "finding_id",
+        "limitations",
+        "recommendation",
+        "related_finding_refs",
+        "rule_id",
+        "rule_trace_ref",
+        "rule_version",
+        "severity"
+      ],
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "confidence": {
+          "$ref": "#/definitions/FindingConfidence"
+        },
+        "confidence_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_completeness": {
+          "$ref": "#/definitions/EvidenceCompleteness"
+        },
+        "evidence_completeness_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "finding_id": {
+          "type": "string"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "measurements": {
+          "description": "What the rule measured on its subject, in the rule's own terms (a skew ratio, a fan-out ratio, bytes sent, a time share). Empty when the rule publishes no measurement; the browser never derives one.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FindingMeasurement"
+          }
+        },
+        "recommendation": {
+          "$ref": "#/definitions/Recommendation"
+        },
+        "related_finding_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rule_id": {
+          "type": "string"
+        },
+        "rule_trace_ref": {
+          "type": "string"
+        },
+        "rule_version": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "subject_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "FindingConfidence": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "FindingDelta": {
+      "type": "object",
+      "required": [
+        "added",
+        "algorithm_changed",
+        "changed",
+        "incomparable",
+        "persisting",
+        "resolved"
+      ],
+      "properties": {
+        "added": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "algorithm_changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "incomparable": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "measurement_changes": {
+          "description": "Rule measurements of the findings named by `added`, `resolved`, `persisting` and `changed`, paired by `measurement_id`. Display text is copied from each side's `Finding.measurements`; the comparator does not compute a measurement delta. Absent in payloads older than v0.6.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FindingMeasurementChange"
+          }
+        },
+        "partial_evidence": {
+          "description": "Entries from `resolved` or `added` (`rule_id:subject_ref`) whose finding or unique negative evaluation has partial evidence. The backend labels these explicitly; consumers must not infer this from the report state. Older comparisons omit this field and deserialize as an empty list.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "persisting": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "resolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "FindingMeasurement": {
+      "description": "One value a rule evaluator computed from the typed inputs it compared. The text is formatted by the backend; bounded inputs give an interval.",
+      "type": "object",
+      "required": [
+        "display_text",
+        "input_refs",
+        "measurement_id"
+      ],
+      "properties": {
+        "display_text": {
+          "type": "string"
+        },
+        "input_refs": {
+          "description": "Metric cells (`MetricCell.metric_cell_ref`) the value was computed from.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "measurement_id": {
+          "description": "Stable identifier, e.g. `slowest_over_mean_driver_time`.",
+          "type": "string"
+        },
+        "operator_type": {
+          "description": "Physical operator the value belongs to when narrower than the plan node.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threshold_text": {
+          "description": "The rule's trigger condition on this value (e.g. `> 2×`); absent for context values that are not compared.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "FindingMeasurementChange": {
+      "description": "One rule measurement of one finding entry, before and after.",
+      "type": "object",
+      "required": [
+        "finding_entry",
+        "measurement_id"
+      ],
+      "properties": {
+        "baseline_display_text": {
+          "description": "`None` when that side has no such finding or the finding did not publish this measurement; never 0.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "baseline_threshold_text": {
+          "description": "Each side's rule condition on this value. They differ when the two findings were triggered on different severity tiers of one rule.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "candidate_display_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "candidate_threshold_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "finding_entry": {
+          "description": "The `FindingDelta` entry (`rule_id:subject_ref`) the measurement belongs to.",
+          "type": "string"
+        },
+        "measurement_id": {
+          "type": "string"
+        }
+      }
+    },
+    "FragmentInstanceCount": {
+      "type": "object",
+      "required": [
+        "fragment_id",
+        "reasons",
+        "source_refs"
+      ],
+      "properties": {
+        "fragment_id": {
+          "type": "string"
+        },
+        "instance_num": {
+          "description": "FE `InstanceNum`; `None` when missing, ambiguous or invalid (never 0).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "GraphEdge": {
+      "type": "object",
+      "required": [
+        "direction_semantics",
+        "edge_id",
+        "evidence_refs",
+        "from",
+        "quality",
+        "relation",
+        "source",
+        "to"
+      ],
+      "properties": {
+        "derivation_recipe": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "direction_semantics": {
+          "$ref": "#/definitions/DirectionSemantics"
+        },
+        "edge_id": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "from": {
+          "type": "string"
+        },
+        "input_role": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/InputRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality": {
+          "$ref": "#/definitions/SourceQuality"
+        },
+        "relation": {
+          "$ref": "#/definitions/GraphRelation"
+        },
+        "restates_edge_id": {
+          "description": "Set on a `fragment_sink` edge whose relation an explicit `plan_child` edge (exchange -> sending fragment root) already states in the opposite direction. A renderer draws the referenced edge and skips this one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "$ref": "#/definitions/EdgeSource"
+        },
+        "source_ordinal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "to": {
+          "type": "string"
+        }
+      }
+    },
+    "GraphEntityKind": {
+      "type": "string",
+      "enum": [
+        "plan_node",
+        "operator_group",
+        "pipeline",
+        "fragment",
+        "sink"
+      ]
+    },
+    "GraphNode": {
+      "type": "object",
+      "required": [
+        "entity_kind",
+        "metric_observation_refs",
+        "native_operator_refs",
+        "node_id",
+        "source_quality",
+        "source_refs",
+        "subordinate_operator_refs"
+      ],
+      "properties": {
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entity_kind": {
+          "$ref": "#/definitions/GraphEntityKind"
+        },
+        "execution_state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fragment_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metric_observation_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "native_operator_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OrderedOperatorRef"
+          }
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "pipeline_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_node_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_node_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_ordinal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_quality": {
+          "$ref": "#/definitions/SourceQuality"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sql_facts": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/GraphSqlFact"
+          }
+        },
+        "sql_location": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GraphSqlLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subordinate_operator_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OrderedOperatorRef"
+          }
+        }
+      }
+    },
+    "GraphRelation": {
+      "type": "string",
+      "enum": [
+        "plan_child",
+        "fragment_sink",
+        "exchange_link",
+        "dependency",
+        "verified_data_flow"
+      ]
+    },
+    "GraphSqlFact": {
+      "type": "object",
+      "required": [
+        "kind",
+        "source_refs",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/GraphSqlFactKind"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "GraphSqlFactKind": {
+      "type": "string",
+      "enum": [
+        "table",
+        "fields",
+        "predicate",
+        "join_condition"
+      ]
+    },
+    "GraphSqlLocation": {
+      "description": "Request-local bounded source excerpt; never a reconstructed SQL expression.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "after",
+            "before",
+            "highlight",
+            "kind",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "after": {
+              "type": "string"
+            },
+            "before": {
+              "type": "string"
+            },
+            "highlight": {
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/definitions/GraphSqlFactKind"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "located"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "ambiguous"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "unsupported"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "GraphState": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "GraphView": {
+      "type": "object",
+      "required": [
+        "completeness",
+        "edges",
+        "nodes",
+        "root_node_ids",
+        "source_refs",
+        "state",
+        "topology_source",
+        "unconnected_node_ids",
+        "unresolved_relations"
+      ],
+      "properties": {
+        "completeness": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        },
+        "edges": {
+          "description": "This remains source ordered; canonicalization never sorts these edges by ID.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GraphEdge"
+          }
+        },
+        "nodes": {
+          "description": "This remains source ordered when the source relation is ordered.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GraphNode"
+          }
+        },
+        "root_node_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/GraphState"
+        },
+        "topology_source": {
+          "$ref": "#/definitions/TopologySource"
+        },
+        "unconnected_node_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unresolved_relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/UnresolvedRelation"
+          }
+        }
+      }
+    },
+    "HotspotTier": {
+      "description": "Official thresholds: share > 30% is most consuming, > 15% second. `Boundary` (product contract): the official reading and the text precision interval of the share disagree about one of those thresholds, so the tier is not decidable; the time-share rules report the same input as `suspected` at that boundary.",
+      "type": "string",
+      "enum": [
+        "most_consuming",
+        "second_most_consuming",
+        "boundary",
+        "none",
+        "unknown"
+      ]
+    },
+    "InputOrigin": {
+      "type": "string",
+      "enum": [
+        "offline_import",
+        "connected_profile_fetch",
+        "candidate_profile_user_external_rerun",
+        "connected_explain",
+        "connected_sql_runtime"
+      ]
+    },
+    "InputRole": {
+      "type": "string",
+      "enum": [
+        "probe",
+        "build",
+        "child",
+        "sink",
+        "source"
+      ]
+    },
+    "InputSummary": {
+      "type": "object",
+      "required": [
+        "adapter_evidence",
+        "byte_length",
+        "detected_kind",
+        "requested_kind",
+        "source_hash"
+      ],
+      "properties": {
+        "adapter_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "byte_length": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "detected_kind": {
+          "$ref": "#/definitions/SourceKind"
+        },
+        "filename": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "requested_kind": {
+          "$ref": "#/definitions/RequestedSourceKind"
+        },
+        "source_hash": {
+          "type": "string"
+        }
+      }
+    },
+    "LosslessFidelity": {
+      "type": "string",
+      "enum": [
+        "exact"
+      ]
+    },
+    "MergeState": {
+      "type": "string",
+      "enum": [
+        "merged",
+        "unmerged",
+        "unknown"
+      ]
+    },
+    "MetricCell": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "bounds",
+                "fidelity"
+              ],
+              "properties": {
+                "bounds": {
+                  "type": "null"
+                },
+                "fidelity": {
+                  "$ref": "#/definitions/LosslessFidelity"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "bounds",
+                "fidelity"
+              ],
+              "properties": {
+                "bounds": {
+                  "$ref": "#/definitions/BoundedInterval"
+                },
+                "fidelity": {
+                  "$ref": "#/definitions/BoundedFidelity"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "bounds",
+                "fidelity"
+              ],
+              "properties": {
+                "bounds": {
+                  "type": "null"
+                },
+                "fidelity": {
+                  "$ref": "#/definitions/UnknownFidelity"
+                }
+              }
+            }
+          ],
+          "required": [
+            "canonical_number",
+            "canonical_unit",
+            "state"
+          ],
+          "properties": {
+            "canonical_number": {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            "canonical_unit": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "exact"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "missing"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "invalid"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "partial"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "overflow"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "incompatible"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ],
+      "required": [
+        "display_text",
+        "metric_cell_ref",
+        "metric_id",
+        "reasons",
+        "source_refs",
+        "subject_ref"
+      ],
+      "properties": {
+        "display_text": {
+          "type": "string"
+        },
+        "match_key": {
+          "description": "Structural identity of the counter inside its subject: physical operator (fragment, pipeline, type, plan node, operator id) plus the raw counter name, which separates base/MIN/MAX statistics. Present only when unique within the report, so Compare can pair it across two Profiles of one plan; absent means it can not be paired unambiguously.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metric_cell_ref": {
+          "type": "string"
+        },
+        "metric_id": {
+          "type": "string"
+        },
+        "order_rank": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "subject_ref": {
+          "type": "string"
+        }
+      }
+    },
+    "MetricDelta": {
+      "type": "object",
+      "required": [
+        "limitations",
+        "metric_id",
+        "percentage_state",
+        "state"
+      ],
+      "properties": {
+        "absolute_delta": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "baseline_metric_cell_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bounds": {
+          "description": "Absolute-delta interval. This never carries percentage bounds.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BoundedInterval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "candidate_metric_cell_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fidelity": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Fidelity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metric_id": {
+          "type": "string"
+        },
+        "order_rank": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "percentage_bounds": {
+          "description": "Percentage-delta interval. This is independent from `bounds`.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BoundedInterval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "percentage_state": {
+          "$ref": "#/definitions/PercentageState"
+        },
+        "percentage_value": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/MetricDeltaState"
+        },
+        "subject_match": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "MetricDeltaState": {
+      "type": "string",
+      "enum": [
+        "comparable",
+        "not_comparable"
+      ]
+    },
+    "NumberKind": {
+      "type": "string",
+      "enum": [
+        "integer",
+        "decimal"
+      ]
+    },
+    "OfficialProfileEligibility": {
+      "description": "Server-issued receipt that may bind a standard execution's completed query to one later fixed `ANALYZE PROFILE` read in the same short-lived session.",
+      "type": "object",
+      "required": [
+        "execution_attempt_id",
+        "method"
+      ],
+      "properties": {
+        "execution_attempt_id": {
+          "type": "string"
+        },
+        "method": {
+          "$ref": "#/definitions/OfficialProfileEligibilityMethod"
+        }
+      },
+      "additionalProperties": false
+    },
+    "OfficialProfileEligibilityMethod": {
+      "description": "The only execution method that can issue an official Profile-read receipt. A standard Profile capture is the only execution method; this receipt binds that one attempt to a later official read.",
+      "type": "string",
+      "enum": [
+        "standard_profile"
+      ]
+    },
+    "OperatorRow": {
+      "type": "object",
+      "required": [
+        "metric_cells",
+        "operator_ref",
+        "operator_type",
+        "source_refs"
+      ],
+      "properties": {
+        "metric_cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MetricCell"
+          }
+        },
+        "operator_ref": {
+          "type": "string"
+        },
+        "operator_type": {
+          "type": "string"
+        },
+        "plan_node_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "OptimizationExperimentContext": {
+      "type": "object",
+      "required": [
+        "candidate_profile_responsibility",
+        "candidate_profile_state",
+        "correlation",
+        "experiment_id",
+        "limitations",
+        "validation_steps"
+      ],
+      "properties": {
+        "candidate_profile_responsibility": {
+          "$ref": "#/definitions/CandidateProfileResponsibility"
+        },
+        "candidate_profile_state": {
+          "$ref": "#/definitions/CandidateProfileState"
+        },
+        "correlation": {
+          "$ref": "#/definitions/CorrelationEvidence"
+        },
+        "experiment_id": {
+          "type": "string"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "plan_comparison": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PlanComparison"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "validation_steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "OrderedOperatorRef": {
+      "type": "object",
+      "required": [
+        "operator_ref",
+        "source_ordinal",
+        "source_refs",
+        "source_role"
+      ],
+      "properties": {
+        "operator_ref": {
+          "type": "string"
+        },
+        "source_ordinal": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_role": {
+          "$ref": "#/definitions/SourceRole"
+        }
+      }
+    },
+    "PackMatch": {
+      "type": "string",
+      "enum": [
+        "exact_pack",
+        "baseline_with_deltas",
+        "no_pack"
+      ]
+    },
+    "PercentageState": {
+      "type": "string",
+      "enum": [
+        "computed",
+        "undefined_baseline_zero",
+        "undefined_baseline_interval_contains_zero",
+        "missing",
+        "invalid",
+        "semantic_mismatch",
+        "approximate"
+      ]
+    },
+    "PlanAdvisorRequest": {
+      "type": "object",
+      "required": [
+        "connection_id"
+      ],
+      "properties": {
+        "connection_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "PlanAdvisorResponse": {
+      "type": "object",
+      "required": [
+        "capability",
+        "limitations",
+        "recommendations"
+      ],
+      "properties": {
+        "capability": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommendations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ConnectedRecommendation"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "PlanCheckAvailableReason": {
+      "type": "string",
+      "enum": [
+        "statement_retained"
+      ]
+    },
+    "PlanCheckUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "statement_missing_or_not_select",
+        "query_metadata_unavailable",
+        "query_id_invalid",
+        "query_id_duplicate"
+      ]
+    },
+    "PlanComparison": {
+      "type": "object",
+      "required": [
+        "correlation",
+        "limitations",
+        "runtime_delta_state",
+        "schema_version",
+        "state",
+        "structure_delta"
+      ],
+      "properties": {
+        "correlation": {
+          "$ref": "#/definitions/CorrelationEvidence"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "runtime_delta_state": {
+          "description": "Profile/Explain never has a runtime delta until a candidate Profile exists.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RuntimeDeltaState"
+            }
+          ]
+        },
+        "schema_version": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "state": {
+          "$ref": "#/definitions/PlanComparisonState"
+        },
+        "structure_delta": {
+          "$ref": "#/definitions/StructureDelta"
+        }
+      },
+      "additionalProperties": false
+    },
+    "PlanComparisonState": {
+      "type": "string",
+      "enum": [
+        "comparable",
+        "partially_comparable",
+        "not_comparable"
+      ]
+    },
+    "PlanNodeOperatorSummary": {
+      "type": "object",
+      "required": [
+        "operator_time",
+        "operator_type",
+        "pull_rows",
+        "push_rows",
+        "role",
+        "source_refs"
+      ],
+      "properties": {
+        "fragment_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operator_time": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "operator_type": {
+          "type": "string"
+        },
+        "pull_rows": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "push_rows": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "role": {
+          "$ref": "#/definitions/SummaryOperatorRole"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PlanNodeSummary": {
+      "type": "object",
+      "required": [
+        "hotspot",
+        "node_id",
+        "operators",
+        "output_rows",
+        "plan_node_id",
+        "reasons",
+        "total_time"
+      ],
+      "properties": {
+        "fragment_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hotspot": {
+          "$ref": "#/definitions/HotspotTier"
+        },
+        "node_id": {
+          "description": "Joins `GraphView.nodes[].node_id`.",
+          "type": "string"
+        },
+        "operators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PlanNodeOperatorSummary"
+          }
+        },
+        "output_rows": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "plan_node_id": {
+          "type": "string"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "time_share_basis_points": {
+          "description": "Share of `QueryCumulativeOperatorTime` in basis points (1/100 percent).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "time_share_display": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total_time": {
+          "$ref": "#/definitions/SummaryValue"
+        }
+      }
+    },
+    "ProfileContext": {
+      "type": "object",
+      "required": [
+        "evidence_refs",
+        "limitations",
+        "merge_state",
+        "profile_level",
+        "query_state",
+        "snapshot_kind"
+      ],
+      "properties": {
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "merge_state": {
+          "$ref": "#/definitions/MergeState"
+        },
+        "profile_level": {
+          "$ref": "#/definitions/ProfileLevel"
+        },
+        "query_state": {
+          "$ref": "#/definitions/QueryState"
+        },
+        "snapshot_kind": {
+          "$ref": "#/definitions/SnapshotKind"
+        }
+      }
+    },
+    "ProfileFetchAvailableReason": {
+      "type": "string",
+      "enum": [
+        "can_be_attempted",
+        "profile_fetched"
+      ]
+    },
+    "ProfileFetchKind": {
+      "type": "string",
+      "enum": [
+        "baseline",
+        "candidate_user_external_rerun"
+      ]
+    },
+    "ProfileFetchRequest": {
+      "type": "object",
+      "required": [
+        "connection_id",
+        "discovery_generation",
+        "kind",
+        "query_id"
+      ],
+      "properties": {
+        "connection_id": {
+          "type": "string"
+        },
+        "discovery_generation": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "kind": {
+          "$ref": "#/definitions/ProfileFetchKind"
+        },
+        "query_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ProfileFetchResponse": {
+      "type": "object",
+      "required": [
+        "analysis_key",
+        "analysis_receipt",
+        "input_origin",
+        "limitations",
+        "outcome",
+        "query",
+        "source_hash",
+        "source_kind",
+        "source_refs",
+        "state"
+      ],
+      "properties": {
+        "analysis_key": {
+          "type": "string"
+        },
+        "analysis_receipt": {
+          "$ref": "#/definitions/AnalysisReceipt"
+        },
+        "input_origin": {
+          "$ref": "#/definitions/InputOrigin"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "official_profile_eligibility": {
+          "description": "Present only after a verified standard execution in this same session.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/OfficialProfileEligibility"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "description": "Reusing `AnalysisOutcome` keeps connected and offline analysis on one report contract without returning the connector's raw Profile bytes.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AnalysisOutcome"
+            }
+          ]
+        },
+        "query": {
+          "$ref": "#/definitions/ConnectedQueryRef"
+        },
+        "source_hash": {
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/definitions/SourceKind"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/ProfileFetchState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ProfileFetchState": {
+      "description": "A `ProfileFetchResponse` is emitted only after the server-side fetch and analysis have succeeded. All unavailable/forbidden cases use a non-2xx `ErrorEnvelope`, so the success DTO has no nullable failure arms.",
+      "type": "string",
+      "enum": [
+        "fetched"
+      ]
+    },
+    "ProfileFetchUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "query_id_invalid",
+        "query_id_duplicate",
+        "query_not_finished"
+      ]
+    },
+    "ProfileLevel": {
+      "type": "string",
+      "enum": [
+        "level_1",
+        "level_2",
+        "unknown"
+      ]
+    },
+    "QueryDiscoverySource": {
+      "type": "string",
+      "enum": [
+        "audit",
+        "profile_list"
+      ]
+    },
+    "QueryFilterScope": {
+      "type": "string",
+      "enum": [
+        "audit_window",
+        "latest_profile_cache_rows"
+      ]
+    },
+    "QueryListStatementFilterCoverage": {
+      "description": "Outcome of the discovery list's statement-class filter. Counts are exact decimal source rows under the same window and status/digest filters and do not depend on the list limit. \"Not applied\", \"indistinguishable\" and a real zero stay distinct states.",
+      "oneOf": [
+        {
+          "description": "`statement_filter = all`: nothing was hidden, so no hidden count exists.",
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_applied"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "AuditLoader rows with a proven `isQuery` TINYINT and `stmt` column: the same predicate as the Audit history filter.",
+          "type": "object",
+          "required": [
+            "hidden_doctor_row_count",
+            "hidden_non_query_row_count",
+            "state"
+          ],
+          "properties": {
+            "hidden_doctor_row_count": {
+              "description": "`isQuery = 1` rows whose `stmt` starts with this tool's marker.",
+              "type": "string"
+            },
+            "hidden_non_query_row_count": {
+              "description": "Rows whose `isQuery` is not 1 (including NULL).",
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "applied"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "ProfileList rows: `Statement` keeps this tool's marker, but the source has no statement-class column, so non-query statements (for example a load with a Profile) cannot be distinguished and stay visible.",
+          "type": "object",
+          "required": [
+            "hidden_doctor_row_count",
+            "state"
+          ],
+          "properties": {
+            "hidden_doctor_row_count": {
+              "description": "Marked rows among the bounded ProfileList rows read this time.",
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "doctor_only_applied"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The resolved source cannot prove which rows this tool sent, so nothing was hidden. `reason` is a stable limitation code.",
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "indistinguishable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "QueryState": {
+      "type": "string",
+      "enum": [
+        "finished",
+        "running",
+        "error",
+        "unknown"
+      ]
+    },
+    "QuerySummary": {
+      "type": "object",
+      "required": [
+        "limitations"
+      ],
+      "properties": {
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "query_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ReceiptComponent": {
+      "type": "object",
+      "required": [
+        "id",
+        "manifest_hash",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "manifest_hash": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "RecipeRef": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "Recommendation": {
+      "type": "object",
+      "required": [
+        "expected_changes",
+        "expected_direction",
+        "kind",
+        "limitations",
+        "next_step",
+        "recommendation_id",
+        "result_effect",
+        "risk",
+        "risk_level",
+        "steps",
+        "title",
+        "validation_steps"
+      ],
+      "properties": {
+        "expected_changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExpectedMetricChange"
+          }
+        },
+        "expected_direction": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/RecommendationKind"
+        },
+        "limitations": {
+          "description": "What the recommendation did not check (the finding's own limitations describe its measurement instead).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "next_step": {
+          "description": "What to do first, in one sentence.",
+          "type": "string"
+        },
+        "recommendation_id": {
+          "description": "Stable id of the recommendation text, e.g. `rec.scan.reduce_read@v1`.",
+          "type": "string"
+        },
+        "result_effect": {
+          "description": "Whether a correct change is expected to keep the query result.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RecommendationResultEffect"
+            }
+          ]
+        },
+        "risk": {
+          "type": "string"
+        },
+        "risk_level": {
+          "$ref": "#/definitions/RecommendationRiskLevel"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RecommendationStep"
+          }
+        },
+        "title": {
+          "description": "Short action title; the finding category names the problem instead.",
+          "type": "string"
+        },
+        "validation_steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "RecommendationKind": {
+      "oneOf": [
+        {
+          "description": "Points at where the cost is (time-share rules).",
+          "type": "string",
+          "enum": [
+            "optimization_target"
+          ]
+        },
+        {
+          "description": "A concrete check for an observed signal (spill, skew, fan-out…).",
+          "type": "string",
+          "enum": [
+            "investigation"
+          ]
+        }
+      ]
+    },
+    "RecommendationResultEffect": {
+      "type": "string",
+      "enum": [
+        "unchanged",
+        "may_change"
+      ]
+    },
+    "RecommendationRiskLevel": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "RecommendationSource": {
+      "type": "string",
+      "enum": [
+        "product_rule_set",
+        "official_plan_advisor"
+      ]
+    },
+    "RecommendationStep": {
+      "type": "object",
+      "required": [
+        "detail",
+        "evidence_refs",
+        "title"
+      ],
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "description": "Exact metric cells (`MetricCell.metric_cell_ref`) of the finding's own subject that this step reads; empty when none is printed.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ReleaseDeltas": {
+      "type": "object",
+      "required": [
+        "delta_ids",
+        "deltas_hash",
+        "line",
+        "release"
+      ],
+      "properties": {
+        "delta_ids": {
+          "description": "Delta ids from `version-deltas.json` that apply, in file order.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deltas_hash": {
+          "type": "string"
+        },
+        "line": {
+          "description": "Its minor line, `x.y`.",
+          "type": "string"
+        },
+        "release": {
+          "description": "The reported release, `x.y.z`.",
+          "type": "string"
+        }
+      }
+    },
+    "RequestedSourceKind": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "json_profile",
+        "text_profile"
+      ]
+    },
+    "RuleEvaluation": {
+      "type": "object",
+      "required": [
+        "applicability_checks",
+        "comparisons",
+        "evidence_completeness",
+        "evidence_completeness_reasons",
+        "evidence_refs",
+        "input_observation_refs",
+        "limitations",
+        "missing_prerequisites",
+        "rule_id",
+        "rule_version",
+        "status",
+        "threshold_receipts"
+      ],
+      "properties": {
+        "applicability_checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "comparisons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_completeness": {
+          "$ref": "#/definitions/EvidenceCompleteness"
+        },
+        "evidence_completeness_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "finding_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input_observation_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_prerequisites": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rule_id": {
+          "type": "string"
+        },
+        "rule_version": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/RuleEvaluationStatus"
+        },
+        "subject_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threshold_receipts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "RuleEvaluationStatus": {
+      "type": "string",
+      "enum": [
+        "triggered",
+        "suspected",
+        "not_triggered",
+        "not_applicable",
+        "suppressed"
+      ]
+    },
+    "RunningProfileCandidateListRequest": {
+      "description": "A bounded ProfileList-only observation. `at_limit` reports the remote ProfileList cap before Running filtering; `local_truncated` reports the independent caller cap after filtering. Neither is a coverage claim.",
+      "type": "object",
+      "required": [
+        "connection_id",
+        "limit"
+      ],
+      "properties": {
+        "connection_id": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "statement_filter": {
+          "description": "Hides this tool's own marked statements from the Running list. An omitted field keeps the earlier unfiltered request semantics (`all`).",
+          "default": "all",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditStatementFilter"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RunningProfileCandidateListResponse": {
+      "type": "object",
+      "required": [
+        "at_limit",
+        "candidates",
+        "discovery_generation",
+        "limit",
+        "limitations",
+        "local_truncated",
+        "read_at_utc",
+        "rejected",
+        "returned",
+        "source",
+        "statement_filter"
+      ],
+      "properties": {
+        "at_limit": {
+          "description": "The actual, unfiltered ProfileList result reached the remote request cap.",
+          "type": "boolean"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ConnectedQueryRef"
+          }
+        },
+        "discovery_generation": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "limit": {
+          "description": "Effective local maximum after bounded request normalization.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "local_truncated": {
+          "description": "Running candidates exceeded the independent local limit.",
+          "type": "boolean"
+        },
+        "profile_observed_at_utc": {
+          "description": "ProfileList does not supply a source sampling timestamp in this contract.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "read_at_utc": {
+          "description": "API receipt time, not a source sampling timestamp.",
+          "type": "string"
+        },
+        "rejected": {
+          "description": "Running rows excluded because their retained shape, ID, or projection was invalid.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "returned": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source": {
+          "$ref": "#/definitions/QueryDiscoverySource"
+        },
+        "statement_filter": {
+          "description": "What the requested statement filter did on the Running rows read this time: `not_applied` or `doctor_only_applied` with the hidden count.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/QueryListStatementFilterCoverage"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RunningProfileSnapshotRequest": {
+      "type": "object",
+      "required": [
+        "connection_id",
+        "discovery_generation",
+        "query_id"
+      ],
+      "properties": {
+        "connection_id": {
+          "type": "string"
+        },
+        "discovery_generation": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "query_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RunningProfileSnapshotResponse": {
+      "description": "A one-off raw Profile read for a query that was observed Running in the supplied discovery generation. The source parser owns `profile_lifecycle`; it is deliberately independent from the earlier ProfileList observation.",
+      "type": "object",
+      "required": [
+        "analysis_key",
+        "analysis_receipt",
+        "input_origin",
+        "limitations",
+        "list_observed_state",
+        "outcome",
+        "profile_lifecycle",
+        "query",
+        "read_at_utc",
+        "source_hash",
+        "source_kind",
+        "source_refs"
+      ],
+      "properties": {
+        "analysis_key": {
+          "type": "string"
+        },
+        "analysis_receipt": {
+          "$ref": "#/definitions/AnalysisReceipt"
+        },
+        "input_origin": {
+          "$ref": "#/definitions/InputOrigin"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "list_observed_state": {
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/definitions/AnalysisOutcome"
+        },
+        "profile_lifecycle": {
+          "$ref": "#/definitions/QueryState"
+        },
+        "profile_observed_at_utc": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query": {
+          "$ref": "#/definitions/ConnectedQueryRef"
+        },
+        "read_at_utc": {
+          "description": "API receipt time, independent from ProfileList's unknown source time.",
+          "type": "string"
+        },
+        "source_hash": {
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/definitions/SourceKind"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "RuntimeDeltaState": {
+      "type": "string",
+      "enum": [
+        "not_comparable_missing_runtime_profile"
+      ]
+    },
+    "SelectedVersionPack": {
+      "type": "object",
+      "required": [
+        "manifest_hash",
+        "pack_id",
+        "product_pack_version",
+        "upstream_commit",
+        "upstream_release"
+      ],
+      "properties": {
+        "manifest_hash": {
+          "type": "string"
+        },
+        "pack_id": {
+          "type": "string"
+        },
+        "product_pack_version": {
+          "type": "string"
+        },
+        "release_deltas": {
+          "description": "A release other than the pack's own: the pack read with the audited deltas of that release (multi-version source audit). Absent for the pack's own release.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReleaseDeltas"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "upstream_commit": {
+          "type": "string"
+        },
+        "upstream_release": {
+          "type": "string"
+        }
+      }
+    },
+    "SnapshotKind": {
+      "type": "string",
+      "enum": [
+        "final",
+        "runtime",
+        "unknown"
+      ]
+    },
+    "SourceKind": {
+      "type": "string",
+      "enum": [
+        "json_profile",
+        "text_profile"
+      ]
+    },
+    "SourceLine": {
+      "type": "object",
+      "required": [
+        "line_no",
+        "source_ref",
+        "text"
+      ],
+      "properties": {
+        "line_no": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "SourceLineRef": {
+      "type": "object",
+      "required": [
+        "line_no",
+        "source_ref"
+      ],
+      "properties": {
+        "line_no": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_ref": {
+          "type": "string"
+        }
+      }
+    },
+    "SourceQuality": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "partial"
+      ]
+    },
+    "SourceRole": {
+      "type": "string",
+      "enum": [
+        "native",
+        "subordinate"
+      ]
+    },
+    "SourceToken": {
+      "type": "object",
+      "required": [
+        "kind",
+        "source_ref",
+        "text"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "SourceView": {
+      "type": "object",
+      "required": [
+        "json_tokens",
+        "limitations",
+        "plain_text_lines",
+        "source_kind",
+        "truncation_state"
+      ],
+      "properties": {
+        "json_tokens": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SourceToken"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "line_refs": {
+          "description": "The line of every text source reference in the report, from the adapter's typed locator. Names a reference whose line text is outside the safe allowlist above, so the browser never parses a reference.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SourceLineRef"
+          }
+        },
+        "plain_text_lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SourceLine"
+          }
+        },
+        "source_kind": {
+          "$ref": "#/definitions/SourceKind"
+        },
+        "truncation_state": {
+          "type": "string"
+        }
+      }
+    },
+    "StructureDelta": {
+      "type": "object",
+      "required": [
+        "added",
+        "changed",
+        "edge_delta",
+        "matches",
+        "removed",
+        "state",
+        "unresolved"
+      ],
+      "properties": {
+        "added": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "edge_delta": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "matches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "removed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "type": "string"
+        },
+        "unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "SummaryOperatorRole": {
+      "type": "string",
+      "enum": [
+        "native",
+        "subordinate"
+      ]
+    },
+    "SummaryValue": {
+      "description": "One backend-computed value. `Unavailable` never carries a number, so a missing metric can not be read as zero.\n\n`Exact` means the value equals the official 3.5.14 `ANALYZE PROFILE` reading of the same Profile text (`RuntimeProfileParser` parses the printed counters too). When a counter was printed with less precision than the runtime value (e.g. `28.802ms` is truncated to the microsecond), `bounds` is the interval in `canonical_unit` that contains the runtime value; `None` means every input was printed losslessly.",
+      "type": "object",
+      "required": [
+        "reasons",
+        "source_refs",
+        "state"
+      ],
+      "properties": {
+        "bounds": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BoundedInterval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_number": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "display_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/SummaryValueState"
+        }
+      }
+    },
+    "SummaryValueState": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "unavailable"
+      ]
+    },
+    "SupportStatus": {
+      "type": "string",
+      "enum": [
+        "supported",
+        "parse_only",
+        "unsupported",
+        "unknown"
+      ]
+    },
+    "TimeZoneEvidence": {
+      "type": "object",
+      "required": [
+        "current_utc_offset_seconds",
+        "effective_time_zone",
+        "session_time_zone",
+        "source_ref",
+        "system_time_zone"
+      ],
+      "properties": {
+        "current_utc_offset_seconds": {
+          "description": "Observed offset at connection time. Historical rows are never converted with this value because daylight-saving rules may differ at row time.",
+          "type": "integer",
+          "format": "int32"
+        },
+        "effective_time_zone": {
+          "description": "Session zone unless it is `SYSTEM`, then the server-reported system zone.",
+          "type": "string"
+        },
+        "session_time_zone": {
+          "description": "Effective time zone of the exact StarRocks session used by the connector.",
+          "type": "string"
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "system_time_zone": {
+          "description": "FE host time zone reported by StarRocks. This resolves a session value of `SYSTEM` without guessing from the application host.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TlsMode": {
+      "description": "`plaintext` reaches any host the user names (unencrypted, explicit choice); `docker_loopback_plaintext` is the literal-loopback test fixture mode.",
+      "type": "string",
+      "enum": [
+        "verify_full",
+        "docker_loopback_plaintext",
+        "plaintext"
+      ]
+    },
+    "TopologySource": {
+      "type": "string",
+      "enum": [
+        "execution_topology",
+        "embedded_plan",
+        "verified_profile_relation",
+        "explain_costs",
+        "explain_logical",
+        "explain_verbose",
+        "none"
+      ]
+    },
+    "UnknownFidelity": {
+      "type": "string",
+      "enum": [
+        "unknown"
+      ]
+    },
+    "UnresolvedRelation": {
+      "type": "object",
+      "required": [
+        "reason",
+        "relation_ref",
+        "source_refs"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "relation_ref": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "VersionContext": {
+      "type": "object",
+      "required": [
+        "compatibility",
+        "compatibility_checks",
+        "detection_evidence",
+        "issues",
+        "pack_match",
+        "support_status",
+        "version_source"
+      ],
+      "properties": {
+        "compatibility": {
+          "$ref": "#/definitions/Compatibility"
+        },
+        "compatibility_checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CompatibilityCheck"
+          }
+        },
+        "detection_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/VersionEvidence"
+          }
+        },
+        "effective_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pack_match": {
+          "$ref": "#/definitions/PackMatch"
+        },
+        "reported_version": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/VersionEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selected_pack": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SelectedVersionPack"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "support_status": {
+          "$ref": "#/definitions/SupportStatus"
+        },
+        "user_declared_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version_source": {
+          "$ref": "#/definitions/VersionSource"
+        }
+      }
+    },
+    "VersionEvidence": {
+      "type": "object",
+      "required": [
+        "source_ref",
+        "value"
+      ],
+      "properties": {
+        "source_ref": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "VersionSource": {
+      "type": "string",
+      "enum": [
+        "detected",
+        "user_declared",
+        "unknown"
+      ]
+    }
+  }
+}

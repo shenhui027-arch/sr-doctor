@@ -1,0 +1,166 @@
+[0mSummary[0m
+    [0mQueryId: 3166fa08-cd61-11f1-aa66-fa07fa775cf5[0m
+    [0mVersion: 3.5.14-23a56ec[0m
+    [0mState: Finished[0m
+    [0mTotalTime: 879ms[0m
+        [0mExecutionTime: 314.070ms [Scan: 42.017ms (13.38%), Network: 17.799ms (5.67%), ResultDeliverTime: 0ns (0.00%), ScheduleTime: 309.198ms (98.45%)][0m
+        [0mCollectProfileTime: 9ms[0m
+        [0mFrontendProfileMergeTime: 234.037ms[0m
+    [0mQueryPeakMemoryUsage: ?, QueryAllocatedMemoryUsage: 40.906 MB[0m
+    [0mTop Most Time-consuming Nodes:[0m
+        [1m[38;2;250;128;114m1. EXCHANGE (id=1) [SHUFFLE]: 40.722ms (29.24%)[0m
+        [1m[38;2;250;128;114m2. OLAP_SCAN (id=0) : 32.888ms (23.61%)[0m
+        [1m[38;2;250;128;114m3. OLAP_SCAN (id=2) : 21.670ms (15.56%)[0m
+        [1m[38;2;250;128;114m4. HASH_JOIN (id=4) [INNER JOIN, PARTITIONED]: 21.431ms (15.39%)[0m
+        [0m5. EXCHANGE (id=3) [SHUFFLE]: 6.759ms (4.85%)[0m
+        [0m6. EXCHANGE (id=7) [SHUFFLE]: 5.544ms (3.98%)[0m
+        [0m7. SORT (id=9) [ROW_NUMBER, SORT]: 3.607ms (2.59%)[0m
+        [0m8. MERGE_EXCHANGE (id=10) [GATHER]: 3.162ms (2.27%)[0m
+        [0m9. AGGREGATION (id=6) [serialize, update]: 2.560ms (1.84%)[0m
+        [0m10. AGGREGATION (id=8) [finalize, merge]: 387.694us (0.28%)[0m
+    [0mTop Most Memory-consuming Nodes:[0m
+    [0mNonDefaultVariables:[0m
+        [0menable_adaptive_sink_dop: false -> true[0m
+        [0menable_async_profile: true -> false[0m
+        [0menable_profile: false -> true[0m
+        [0menable_spill: false -> true[0m
+        [0mspill_mode: auto -> force[0m
+[0mFragment 0[0m
+│   [0mBackendNum: 1[0m
+│   [0mInstancePeakMemoryUsage: 54.719 KB, InstanceAllocatedMemoryUsage: 76.039 KB[0m
+│   [0mPrepareTime: ?[0m
+└──[0mRESULT_SINK[0m
+   │   [0mTotalTime: 387.284us (0.28%) [CPUTime: 387.284us][0m
+   │   [0mOutputRows: 25[0m
+   │   [0mSinkType: MYSQL_PROTOCAL[0m
+   └──[0mMERGE_EXCHANGE (id=10) [GATHER][0m
+          [0mEstimates: [row: 25, cpu: 500.00, memory: 500.00, network: 500.00, cost: 10155642.31][0m
+          [0mTotalTime: 3.162ms (2.27%) [CPUTime: 1.022ms, NetworkTime: 2.139ms][0m
+          [0mOutputRows: 25[0m
+          [0mPeakMemory: ?, AllocatedMemory: ?[0m
+[0m
+[0mFragment 1[0m
+│   [0mBackendNum: 3[0m
+│   [0mInstancePeakMemoryUsage: 325.947 KB, InstanceAllocatedMemoryUsage: 938.055 KB[0m
+│   [0mPrepareTime: ?[0m
+└──[0mDATA_STREAM_SINK (id=10)[0m
+   │   [0mPartitionType: UNPARTITIONED[0m
+   └──[0mSORT (id=9) [ROW_NUMBER, SORT][0m
+      │   [0mEstimates: [row: 25, cpu: 500.00, memory: 500.00, network: 500.00, cost: 10153642.31][0m
+      │   [0mTotalTime: 3.607ms (2.59%) [CPUTime: 3.607ms][0m
+      │   [0mOutputRows: 25[0m
+      │   [0mPeakMemory: ?, AllocatedMemory: ?[0m
+      │   [0mOrderByExprs: [<slot 9> 9: c_region][0m
+      │   [0mSubordinateOperators: [0m
+      │       [0mNOOP[0m
+      │       [0mSPILL_PROCESS[0m
+      └──[0mAGGREGATION (id=8) [finalize, merge][0m
+         │   [0mEstimates: [row: 25, cpu: 500.00, memory: 500.00, network: 0.00, cost: 10151642.31][0m
+         │   [0mTotalTime: 387.694us (0.28%) [CPUTime: 387.694us][0m
+         │   [0mOutputRows: 25[0m
+         │   [0mPeakMemory: ?, AllocatedMemory: ?[0m
+         │   [0mAggExprs: [count(11: count), sum(12: sum)][0m
+         │   [0mGroupingExprs: [9: c_region][0m
+         │   [0mSubordinateOperators: [0m
+         │       [0mNOOP[0m
+         │       [0mSPILL_PROCESS[0m
+         └──[0mEXCHANGE (id=7) [SHUFFLE][0m
+                [0mEstimates: [row: 25, cpu: 50.00, memory: 0.00, network: 50.00, cost: 10150392.31][0m
+                [0mTotalTime: 5.544ms (3.98%) [CPUTime: 1.284ms, NetworkTime: 4.259ms][0m
+                [0mOutputRows: 75[0m
+                [0mPeakMemory: ?, AllocatedMemory: ?[0m
+[0m
+[0mFragment 2[0m
+│   [0mBackendNum: 3[0m
+│   [0mInstancePeakMemoryUsage: 2.455 MB, InstanceAllocatedMemoryUsage: 27.462 MB[0m
+│   [0mPrepareTime: ?[0m
+└──[0mDATA_STREAM_SINK (id=7)[0m
+   │   [0mPartitionType: HASH_PARTITIONED[0m
+   │   [0mPartitionExprs: [9: c_region][0m
+   └──[0mAGGREGATION (id=6) [serialize, update][0m
+      │   [0mEstimates: [row: 25, cpu: 400641.03, memory: 50.00, network: 0.00, cost: 10150292.31][0m
+      │   [0mTotalTime: 2.560ms (1.84%) [CPUTime: 2.560ms][0m
+      │   [0mOutputRows: 75[0m
+      │   [0mPeakMemory: ?, AllocatedMemory: ?[0m
+      │   [0mAggExprs: [count(*), sum(6: s_amount)][0m
+      │   [0mGroupingExprs: [9: c_region][0m
+      └──[0mPROJECT (id=5) [0m
+         │   [0mEstimates: [row: ?, cpu: ?, memory: ?, network: ?, cost: ?][0m
+         │   [0mTotalTime: 170.043us (0.12%) [CPUTime: 170.043us][0m
+         │   [0mOutputRows: 200.000K (200000)[0m
+         │   [0mExpression: [6: s_amount, 9: c_region][0m
+         └──[1m[38;2;250;128;114mHASH_JOIN (id=4) [INNER JOIN, PARTITIONED][0m
+            │   [1m[38;2;250;128;114mEstimates: [row: 200320, cpu: 6566410.26, memory: 160000.00, network: 0.00, cost: 9949871.79][0m
+            │   [1m[38;2;250;128;114mTotalTime: 21.431ms (15.39%) [CPUTime: 21.431ms][0m
+            │   [1m[38;2;250;128;114mOutputRows: 200.000K (200000)[0m
+            │   [1m[38;2;250;128;114mPeakMemory: ?, AllocatedMemory: ?[0m
+            │   [1m[38;2;250;128;114mBuildTime: 1.106ms[0m
+            │   [1m[38;2;250;128;114mProbeTime: 20.095ms[0m
+            │   [1m[38;2;250;128;114mEqJoinConjuncts: [3: s_cust = 7: c_id][0m
+            │   [1m[38;2;250;128;114mSubordinateOperators: [0m
+            │       [1m[38;2;250;128;114mCHUNK_ACCUMULATE[0m
+            │       [1m[38;2;250;128;114mNOOP[0m
+            │       [1m[38;2;250;128;114mSPILL_PROCESS[0m
+            │   [1m[38;2;250;128;114mDetail Timers: [0m
+            │       [1m[38;2;250;128;114mBuildHashTableTime: 23.542ms [min=6.658ms, max=34.757ms][0m
+            ├──[1m[38;2;250;128;114m<PROBE> EXCHANGE (id=1) [SHUFFLE][0m
+            │      [1m[38;2;250;128;114mEstimates: [row: 200000, cpu: 2400000.00, memory: 0.00, network: 2400000.00, cost: 6000000.00][0m
+            │      [1m[38;2;250;128;114mTotalTime: 40.722ms (29.24%) [CPUTime: 33.713ms, NetworkTime: 7.009ms][0m
+            │      [1m[38;2;250;128;114mOutputRows: 200.000K (200000)[0m
+            │      [1m[38;2;250;128;114mPeakMemory: ?, AllocatedMemory: ?[0m
+            │      [1m[38;2;250;128;114mDetail Timers: [0m
+            │          [1m[38;2;250;128;114mOverallTime: 9.443ms [min=3.856ms, max=13.705ms][0m
+            └──[0m<BUILD> EXCHANGE (id=3) [SHUFFLE][0m
+                   [0mEstimates: [row: 20000, cpu: 160000.00, memory: 0.00, network: 160000.00, cost: 400000.00][0m
+                   [0mTotalTime: 6.759ms (4.85%) [CPUTime: 2.369ms, NetworkTime: 4.390ms][0m
+                   [0mOutputRows: 20.000K (20000)[0m
+                   [0mPeakMemory: ?, AllocatedMemory: ?[0m
+[0m
+[0mFragment 3[0m
+│   [0mBackendNum: 3[0m
+│   [0mInstancePeakMemoryUsage: 285.898 KB, InstanceAllocatedMemoryUsage: 2.060 MB[0m
+│   [0mPrepareTime: 20.259ms[0m
+└──[0mDATA_STREAM_SINK (id=3)[0m
+   │   [0mPartitionType: HASH_PARTITIONED[0m
+   │   [0mPartitionExprs: [7: c_id][0m
+   └──[1m[38;2;250;128;114mOLAP_SCAN (id=2) [0m
+          [1m[38;2;250;128;114mEstimates: [row: 20000, cpu: 160000.00, memory: 0.00, network: 0.00, cost: 80000.00][0m
+          [1m[38;2;250;128;114mTotalTime: 21.670ms (15.56%) [CPUTime: 1.902ms, ScanTime: 19.767ms][0m
+          [1m[38;2;250;128;114mOutputRows: 20.000K (20000)[0m
+          [1m[38;2;250;128;114mTable: : customers[0m
+          [1m[38;2;250;128;114mSubordinateOperators: [0m
+              [1m[38;2;250;128;114mNOOP[0m
+              [1m[38;2;250;128;114mOLAP_SCAN_PREPARE[0m
+          [1m[38;2;250;128;114mDetail Timers: [ScanTime = IOTaskExecTime + IOTaskWaitTime][0m
+              [1m[38;2;250;128;114mIOTaskExecTime: 13.282ms [min=3.309ms, max=19.528ms][0m
+                  [1m[38;2;250;128;114mIOTime: 11.686ms [min=2.568ms, max=16.322ms][0m
+                  [1m[38;2;250;128;114mSegmentRead: 12.806ms [min=2.859ms, max=19.066ms][0m
+                      [1m[38;2;250;128;114mBlockSeek: 12.699ms [min=2.706ms, max=19.033ms][0m
+              [1m[38;2;250;128;114mIOTaskWaitTime: 194.024us [min=131.636us, max=238.969us][0m
+[0m
+[0mFragment 4[0m
+│   [0mBackendNum: 3[0m
+│   [0mInstancePeakMemoryUsage: 1.175 MB, InstanceAllocatedMemoryUsage: 10.395 MB[0m
+│   [0mPrepareTime: ?[0m
+└──[0mDATA_STREAM_SINK (id=1)[0m
+   │   [0mPartitionType: HASH_PARTITIONED[0m
+   │   [0mPartitionExprs: [3: s_cust][0m
+   └──[1m[38;2;250;128;114mOLAP_SCAN (id=0) [0m
+          [1m[38;2;250;128;114mEstimates: [row: 200000, cpu: 2400000.00, memory: 0.00, network: 0.00, cost: 1200000.00][0m
+          [1m[38;2;250;128;114mTotalTime: 32.888ms (23.61%) [CPUTime: 10.638ms, ScanTime: 22.250ms][0m
+          [1m[38;2;250;128;114mOutputRows: 200.000K (200000)[0m
+          [1m[38;2;250;128;114mRuntimeFilter: 200.000K (200000) -> 200.000K (200000) (0.00%)[0m
+          [1m[38;2;250;128;114mTable: : sales[0m
+          [1m[38;2;250;128;114mSubordinateOperators: [0m
+              [1m[38;2;250;128;114mCHUNK_ACCUMULATE[0m
+              [1m[38;2;250;128;114mNOOP[0m
+              [1m[38;2;250;128;114mOLAP_SCAN_PREPARE[0m
+          [1m[38;2;250;128;114mDetail Timers: [ScanTime = IOTaskExecTime + IOTaskWaitTime][0m
+              [1m[38;2;250;128;114mIOTaskExecTime: 11.736ms [min=3.539ms, max=16.974ms][0m
+                  [1m[38;2;250;128;114mIOTime: 6.912ms [min=1.764ms, max=12.412ms][0m
+                  [1m[38;2;250;128;114mSegmentInit: 7.218ms [min=2.044ms, max=12.762ms][0m
+                      [1m[38;2;250;128;114mZoneMapIndexFiter: 7.040ms [min=1.878ms, max=12.584ms][0m
+                  [1m[38;2;250;128;114mSegmentRead: 3.845ms [min=359.959us, max=11.147ms][0m
+                      [1m[38;2;250;128;114mBlockFetch: 3.681ms [min=221.277us, max=10.990ms][0m
+              [1m[38;2;250;128;114mIOTaskWaitTime: 2.042ms [min=88.355us, max=8.650ms][0m
+[0m

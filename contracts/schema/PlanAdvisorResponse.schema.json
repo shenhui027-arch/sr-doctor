@@ -1,0 +1,277 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PlanAdvisorResponse",
+  "type": "object",
+  "required": [
+    "capability",
+    "limitations",
+    "recommendations"
+  ],
+  "properties": {
+    "capability": {
+      "$ref": "#/definitions/ConnectionCapabilityState"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ConnectedRecommendation"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AdvisorProvenance": {
+      "type": "string",
+      "enum": [
+        "official_experimental_fe_local_volatile"
+      ]
+    },
+    "ConnectedRecommendation": {
+      "type": "object",
+      "required": [
+        "action_kind",
+        "applicability",
+        "evidence",
+        "limitations",
+        "recommendation",
+        "recommendation_id",
+        "source",
+        "source_version",
+        "suggested_action"
+      ],
+      "properties": {
+        "action_kind": {
+          "type": "string"
+        },
+        "advisor_provenance": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AdvisorProvenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "applicability": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommendation": {
+          "description": "The frozen analysis recommendation is composed, never widened.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Recommendation"
+            }
+          ]
+        },
+        "recommendation_id": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/definitions/RecommendationSource"
+        },
+        "source_version": {
+          "type": "string"
+        },
+        "suggested_action": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectionCapabilityState": {
+      "type": "string",
+      "enum": [
+        "available",
+        "unavailable",
+        "forbidden",
+        "unknown"
+      ]
+    },
+    "ExpectedChangeDirection": {
+      "type": "string",
+      "enum": [
+        "decrease",
+        "increase"
+      ]
+    },
+    "ExpectedMetricChange": {
+      "type": "object",
+      "required": [
+        "direction",
+        "metric_id"
+      ],
+      "properties": {
+        "direction": {
+          "$ref": "#/definitions/ExpectedChangeDirection"
+        },
+        "metric_id": {
+          "description": "A registered metric id of the finding's subject.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Recommendation": {
+      "type": "object",
+      "required": [
+        "expected_changes",
+        "expected_direction",
+        "kind",
+        "limitations",
+        "next_step",
+        "recommendation_id",
+        "result_effect",
+        "risk",
+        "risk_level",
+        "steps",
+        "title",
+        "validation_steps"
+      ],
+      "properties": {
+        "expected_changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExpectedMetricChange"
+          }
+        },
+        "expected_direction": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/RecommendationKind"
+        },
+        "limitations": {
+          "description": "What the recommendation did not check (the finding's own limitations describe its measurement instead).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "next_step": {
+          "description": "What to do first, in one sentence.",
+          "type": "string"
+        },
+        "recommendation_id": {
+          "description": "Stable id of the recommendation text, e.g. `rec.scan.reduce_read@v1`.",
+          "type": "string"
+        },
+        "result_effect": {
+          "description": "Whether a correct change is expected to keep the query result.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RecommendationResultEffect"
+            }
+          ]
+        },
+        "risk": {
+          "type": "string"
+        },
+        "risk_level": {
+          "$ref": "#/definitions/RecommendationRiskLevel"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RecommendationStep"
+          }
+        },
+        "title": {
+          "description": "Short action title; the finding category names the problem instead.",
+          "type": "string"
+        },
+        "validation_steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "RecommendationKind": {
+      "oneOf": [
+        {
+          "description": "Points at where the cost is (time-share rules).",
+          "type": "string",
+          "enum": [
+            "optimization_target"
+          ]
+        },
+        {
+          "description": "A concrete check for an observed signal (spill, skew, fan-out…).",
+          "type": "string",
+          "enum": [
+            "investigation"
+          ]
+        }
+      ]
+    },
+    "RecommendationResultEffect": {
+      "type": "string",
+      "enum": [
+        "unchanged",
+        "may_change"
+      ]
+    },
+    "RecommendationRiskLevel": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "RecommendationSource": {
+      "type": "string",
+      "enum": [
+        "product_rule_set",
+        "official_plan_advisor"
+      ]
+    },
+    "RecommendationStep": {
+      "type": "object",
+      "required": [
+        "detail",
+        "evidence_refs",
+        "title"
+      ],
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "description": "Exact metric cells (`MetricCell.metric_cell_ref`) of the finding's own subject that this step reads; empty when none is printed.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,68 @@
+PLAN COST
+  CPU: 2640704.0
+  Memory: 864.0
+
+PLAN FRAGMENT 0(F02)
+  Output Exprs:7: expr | 8: count | 9: count
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  5:EXCHANGE
+     cardinality: 40
+
+PLAN FRAGMENT 1(F01)
+
+  Input Partition: HASH_PARTITIONED: 7: expr
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 05
+
+  4:AGGREGATE (merge finalize)
+  |  aggregate: multi_distinct_count[([8: count, VARBINARY, false]); args: INT; result: BIGINT; args nullable: true; result nullable: false], count[([9: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false]
+  |  group by: [7: expr, INT, true]
+  |  cardinality: 40
+  |  column statistics: 
+  |  * expr-->[-20.0, 20.0, 0.0, 4.0, 40.0] ESTIMATE
+  |  * count-->[0.0, 200000.0, 0.0, 8.0, 40.0] ESTIMATE
+  |  * count-->[0.0, 200000.0, 0.0, 8.0, 40.0] ESTIMATE
+  |  
+  3:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [7: expr, INT, true]
+     cardinality: 40
+
+PLAN FRAGMENT 2(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 7: expr
+  OutPut Exchange Id: 03
+
+  2:AGGREGATE (update serialize)
+  |  STREAMING
+  |  aggregate: multi_distinct_count[([3: s_cust, INT, false]); args: INT; result: VARBINARY; args nullable: false; result nullable: false], count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false]
+  |  group by: [7: expr, INT, true]
+  |  cardinality: 40
+  |  column statistics: 
+  |  * expr-->[-20.0, 20.0, 0.0, 4.0, 40.0] ESTIMATE
+  |  * count-->[0.0, 19968.0, 0.0, 4.0, 40.0] ESTIMATE
+  |  * count-->[0.0, 200000.0, 0.0, 8.0, 40.0] ESTIMATE
+  |  
+  1:Project
+  |  output columns:
+  |  3 <-> [3: s_cust, INT, false]
+  |  7 <-> [4: s_prod, INT, false] % 20
+  |  cardinality: 200000
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * expr-->[-20.0, 20.0, 0.0, 4.0, 40.0] ESTIMATE
+  |  
+  0:OlapScanNode
+     table: sales, rollup: sales
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10161,10163,10165,10167,10169,10171,10173,10175
+     actualRows=0, avgRowSize=12.0
+     cardinality: 200000
+     column statistics: 
+     * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * s_prod-->[1.0, 5000.0, 0.0, 4.0, 5019.0] ESTIMATE
+     * expr-->[-20.0, 20.0, 0.0, 4.0, 40.0] ESTIMATE

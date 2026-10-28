@@ -1,0 +1,89 @@
+/* Doctor: summary strip, then findings | execution structure | inspector, then plan nodes and source. */
+.doctor-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 20px 28px; }
+.doctor-import { display: grid; gap: 8px; max-width: 880px; padding: 16px 20px; }
+.doctor-import-hint { margin: 0; }
+/* Flex like the design board: the graph takes the slack, the side columns keep their (fractional) share. */
+.doctor-workbench { display: flex; gap: 12px; align-items: stretch; }
+.doctor-findings-column { flex: 1 1 300px; max-width: 360px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.doctor-findings-column > .evidence-gaps { flex: 0 0 auto; }
+/* No finding: the inspector's empty note sits under the gaps at its content height. */
+.doctor-findings-column > .finding-inspector-empty { gap: 4px; padding: 12px 14px; }
+.doctor-findings-column > .finding-inspector-empty h2 { font-size: 13px; line-height: 20px; }
+.doctor-findings-column > .finding-inspector-empty p { font-size: 12px; line-height: 18px; }
+.doctor-graph { flex: 999 1 560px; display: grid; gap: 12px; min-width: 0; }
+.doctor-workbench > .finding-inspector { flex: 1 1 340px; max-width: 400px; min-width: 0; }
+
+/* Seven query-level facts in one strip; a non-exact value shows its state, never 0. */
+.doctor-summary { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.doctor-summary-facts { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; margin: 0; background: var(--border); }
+.doctor-summary-facts > div { min-width: 0; padding: 10px 14px; background: var(--surface); }
+.doctor-summary-facts dt { overflow: hidden; color: var(--muted); font: 400 12px/18px var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.doctor-summary-facts dd { margin: 2px 0 0; color: var(--text); font: 500 20px/28px var(--mono); letter-spacing: -.02em; white-space: nowrap; }
+.doctor-summary-facts dd:has(.metric-state-badge) { margin-top: 4px; font-size: 0; line-height: 0; }
+.doctor-summary-facts .metric-state-badge { height: 24px; line-height: 22px; }
+.doctor-summary-facts dd.doctor-summary-note { margin: 0; overflow: hidden; color: var(--muted); font: 400 11px/16.5px var(--sans); letter-spacing: 0; text-overflow: ellipsis; }
+.metric-state-badge { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; color: var(--muted); border: 1px dashed var(--dashed); border-radius: 4px; font: 400 12px/18px var(--sans); }
+.metric-state-badge[data-state="invalid"] { color: var(--critical); border-color: #e8a29b; }
+.metric-state-badge[data-state="partial"] { color: var(--warning); border-color: var(--hot-soft); }
+
+
+
+@media (max-width: 1280px) {
+  .doctor-workbench { display: grid; grid-template-columns: minmax(260px, 300px) minmax(0, 1fr); }
+  .doctor-workbench > .doctor-findings-column { max-width: none; }
+  .doctor-workbench > .finding-inspector { grid-column: 1 / -1; position: static; max-width: none; max-height: none; }
+}
+@media (max-width: 1100px) {
+  .doctor-summary-facts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) { .doctor-layout { padding: 12px 16px 20px; } }
+
+/* Fail-closed Profile states (Level 2, running snapshot): what is not evaluated and what to capture next. */
+.profile-state-notice { display: grid; gap: 4px; padding: 12px 16px; color: var(--text); background: var(--warning-tint); border: 1px solid var(--warning); border-radius: 8px; }
+.profile-state-notice strong { font: 600 14px/20px var(--sans); }
+.profile-state-notice p { margin: 0; color: var(--text-2); font-size: 13px; line-height: 20px; }
+.profile-state-notice .profile-state-next { color: var(--text); font-weight: 500; }
+
+/* Entry to the official ANALYZE PROFILE reading, under the execution graph. */
+.official-profile-entry { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; color: var(--muted); font-size: 12px; line-height: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.official-profile-entry .official-profile-open { flex: none; }
+
+/* Details (design board 02, bottom): tabs over the operator table, metrics, source text and provenance. */
+.doctor-details { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.doctor-details-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--border); }
+.doctor-details-tabs [role="tab"] { height: 40px; padding: 0 10px; color: var(--text-2); background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; font: 400 13px/19.5px var(--sans); cursor: pointer; }
+.doctor-details-tabs [role="tab"][aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.doctor-details-tabs [role="tab"] > span { margin-left: 4px; color: var(--muted); font: 500 13px/19.5px var(--mono); }
+.doctor-details-hint { align-self: center; margin-left: auto; color: var(--muted); font: 400 12px/18px var(--sans); }
+/* Operators and metrics scroll inside the card under a sticky header, so a long metric list never becomes a page of its own. */
+.doctor-details-table-wrap { max-height: max(360px, calc(100vh - 160px)); overflow: auto; }
+.doctor-details-empty { margin: 0; padding: 14px; color: var(--muted); font: 12px/18px var(--sans); }
+.doctor-details .plan-node-table, .doctor-details .raw-metrics-table { min-width: 900px; font: 400 12px/18px var(--sans); }
+.doctor-details .plan-node-table th, .doctor-details .raw-metrics-table th { position: sticky; top: 0; z-index: 1; padding: 8px 10px; color: var(--muted); background: var(--surface); border-bottom: 1px solid var(--border); font: 500 12px/18px var(--sans); }
+.doctor-details .plan-node-table td, .doctor-details .raw-metrics-table td { padding: 8px 10px; color: var(--text); border-bottom: 1px solid var(--border-soft); }
+.doctor-details .plan-node-table :is(th, td):first-child, .doctor-details .plan-node-table :is(th, td):last-child { padding-inline: 14px; }
+.doctor-details .plan-node-table tbody tr { cursor: pointer; }
+.doctor-details .plan-node-table tr.selected td { background: #f3f6fe; }
+.doctor-details .plan-node-table tr.hot-most td:first-child, .doctor-details .plan-node-table tr.hot-second td:first-child { box-shadow: none; }
+.doctor-details .num { text-align: right; font-family: var(--mono); }
+.doctor-details .plan-node-link { color: var(--text); font: 400 12px/18px var(--mono); }
+.doctor-details .plan-node-link small { color: var(--muted); font: inherit; }
+.doctor-details td.plan-node-fact { max-width: 280px; color: var(--text-2); }
+.doctor-details .plan-node-table th.share { width: 160px; }
+.doctor-details .plan-node-share { display: flex; gap: 8px; }
+.doctor-details .plan-node-share .share-bar { flex: 1 1 auto; background: var(--border-soft); }
+.doctor-details .plan-node-share .share-bar > span { background: var(--dashed); border-radius: 3px; }
+.doctor-details .hot-second .plan-node-share .share-bar > span { background: var(--hot-soft); }
+.doctor-details .hot-most .plan-node-share .share-bar > span { background: var(--hot); }
+.doctor-details .plan-node-share b { width: 40px; text-align: right; font: 400 12px/18px var(--mono); }
+.doctor-details tr.hot-most :is(td.time, .plan-node-share b) { color: var(--hot); }
+.doctor-details .metric-unavailable, .doctor-details tr.unmeasured .plan-node-share b { color: var(--muted); }
+.structure-source { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 10px; font: 400 11px/16.5px var(--sans); white-space: nowrap; }
+.structure-source.explicit { color: #18794e; background: #e7f5ee; }
+.structure-source.derived { color: #1743b8; background: #eaf0fe; }
+.structure-source.unavailable { color: var(--muted); background: var(--surface); border: 1px dashed var(--dashed); }
+.doctor-details .source-panel { margin: 0; border: 0; border-radius: 0 0 10px 10px; }
+.doctor-provenance { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1px; margin: 0; padding: 0; background: var(--border-soft); border-radius: 0 0 10px 10px; overflow: hidden; }
+.doctor-provenance > div { padding: 10px 14px; background: var(--surface); }
+.doctor-provenance dt { color: var(--muted); font: 400 12px/18px var(--sans); }
+.doctor-provenance dd { margin: 2px 0 0; overflow-wrap: anywhere; color: var(--text); font: 400 12px/18px var(--mono); }

@@ -1,0 +1,75 @@
+/* Queries · Profile list (same treatment as the audit history board). Labels are 12px sans; mono only for IDs, digests, times and durations. */
+.queries-workspace { display: grid; gap: 12px; padding: 0; color: var(--text); background: var(--page); font: 400 13px/19.5px var(--sans); }
+
+/* Connection details disclosure. */
+.connection-details { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.connection-details > summary { padding: 11px 14px; cursor: pointer; color: var(--text-2); font: 500 12px/18px var(--sans); }
+.connection-details[open] > summary { border-bottom: 1px solid var(--border-soft); }
+.connection-evidence { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0; align-items: stretch; overflow: hidden; background: var(--surface); }
+.connection-details .connection-evidence { border: 0; border-radius: 0 0 var(--radius-card) var(--radius-card); }
+.connection-evidence > div { min-width: 0; display: grid; align-content: start; gap: 2px; padding: 10px 14px; background: var(--surface); box-shadow: 1px 0 0 var(--border-soft), 0 1px 0 var(--border-soft); }
+.connection-evidence span { color: var(--muted); font: 400 12px/18px var(--sans); }
+.connection-evidence strong { overflow: hidden; color: var(--text); font: 500 13px/19.5px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.connection-evidence small { color: var(--muted); font: 400 12px/18px var(--sans); }
+.connection-evidence strong[class^="capability-"] { justify-self: start; display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 1px solid transparent; border-radius: 11px; font: 400 12px/18px var(--sans); }
+.connection-evidence .capability-available { color: var(--ok); background: var(--ok-tint); }
+.connection-evidence .capability-unavailable, .connection-evidence .capability-forbidden { color: var(--warning); background: var(--warning-tint); }
+.connection-evidence .capability-unknown { color: var(--muted); background: transparent; border-color: var(--dashed); border-style: dashed; }
+.connection-evidence > p { grid-column: 1 / -1; margin: 0; padding: 9px 14px; color: var(--muted); background: var(--surface); font: 400 12px/18px var(--sans); overflow-wrap: anywhere; }
+
+/* Query list card: filter bar, then the table. */
+.query-browser { position: relative; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.query-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.query-filters h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.query-filters label { min-width: 0; display: grid; gap: 4px; color: var(--muted); font: 400 12px/18px var(--sans); }
+.query-filters input { width: 200px; min-width: 0; height: 34px; padding: 0 10px; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-control); font: 400 13px/19.5px var(--sans); }
+.query-filters input:disabled { color: var(--muted); background: var(--sunken); }
+.query-filters label strong { display: inline-flex; align-items: center; height: 34px; padding: 0 10px; color: var(--accent-strong); background: var(--accent-tint); border-radius: var(--radius-control); font: 500 13px/19.5px var(--sans); white-space: nowrap; }
+.query-filters button { height: 34px; min-height: 34px; }
+.query-filters button[type="submit"] { margin-left: auto; }
+.query-table-wrap { max-height: 480px; min-height: 160px; overflow: auto; }
+.query-table { width: 100%; min-width: 1120px; border-collapse: collapse; font: 400 13px/19.5px var(--sans); }
+.query-table th, .query-table td { height: 40px; padding: 0 10px; overflow: hidden; border-bottom: 1px solid var(--border-soft); text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.query-table th:first-child, .query-table td:first-child { padding-left: 14px; }
+.query-table th:last-child, .query-table td:last-child { padding-right: 14px; }
+.query-table th { position: sticky; top: 0; z-index: 1; height: 36px; color: var(--muted); background: var(--surface); border-bottom-color: var(--border); font: 500 12px/18px var(--sans); }
+/* Started, Query ID, Digest and Duration are machine text. */
+.query-table td:nth-child(1) button, .query-table td:nth-child(2), .query-table td:nth-child(6), .query-table td:nth-child(7) { font-family: var(--mono); font-size: 12px; }
+.query-table th:nth-child(7), .query-table td:nth-child(7) { text-align: right; font-variant-numeric: tabular-nums; }
+.query-table td:last-child { color: var(--muted); }
+.query-table td:last-child.tone-success { color: var(--accent); }
+.query-table tr.query-row { cursor: pointer; }
+.query-table tbody tr:hover { background: var(--sunken); }
+.query-table tr.selected, .query-table tr.selected:hover { background: color-mix(in srgb, var(--accent-tint) 70%, var(--surface)); box-shadow: inset 3px 0 0 var(--accent); }
+.query-table td button { width: 100%; padding: 0; color: var(--text); background: transparent; border: 0; text-align: left; font: inherit; cursor: pointer; }
+.query-table tr.selected td button { color: var(--accent-strong); font-weight: 500; }
+.query-error, .queries-empty-row { position: absolute; right: 12px; bottom: 10px; left: 12px; z-index: 2; margin: 0; padding: 9px 12px; color: var(--critical); background: var(--critical-tint); border: 1px solid color-mix(in srgb, var(--critical) 30%, var(--border)); border-radius: var(--radius-control); font: 400 12px/18px var(--sans); }
+.queries-empty-row { color: var(--muted); background: var(--surface); border-color: var(--border); text-align: center; }
+
+/* Selected query: facts | Profile evidence | actions. */
+.selected-query { position: relative; display: grid; grid-template-columns: 1fr 1.135fr 340px; gap: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.selected-query > div { min-width: 0; padding: 14px 16px; border-right: 1px solid var(--border-soft); }
+.selected-query h2 { margin: 0 0 10px; color: var(--text); font: 600 14px/20px var(--sans); }
+.selected-query dl { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 4px 14px; margin: 0; }
+.selected-query dl div { min-width: 0; display: contents; }
+.selected-query dt, .selected-query dd { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selected-query dt { color: var(--muted); font: 400 12px/20px var(--sans); }
+.selected-query dd { color: var(--text); font: 400 13px/19.5px var(--sans); }
+.selected-query dd.fact-mono { font: 400 12px/20px var(--mono); }
+.fact-missing-tag { display: inline-block; padding: 0 6px; color: var(--muted); border: 1px dashed var(--dashed); border-radius: 4px; font: 400 12px/18px var(--sans); }
+.selected-query-actions { display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 8px; border-right: 0 !important; background: var(--sunken); }
+.selected-query-actions button { min-height: 34px; padding: 0 10px; font-size: 12px; }
+.selected-query-actions button:nth-of-type(7), .connected-compare-boundary, .query-sql-error, .connected-action-reason { grid-column: 1 / -1; }
+.connected-compare-boundary, .connected-action-reason { margin: 2px 0 0; color: var(--muted); font: 400 12px/18px var(--sans); }
+.query-sql-error { margin: 2px 0 0; color: var(--critical); font: 400 12px/18px var(--sans); }
+/* The SQL reads below the three columns (full width), never over the query identity it belongs to. */
+.selected-query > .query-sql { grid-column: 1 / -1; padding: 8px 16px 14px; border-top: 1px solid var(--border-soft); border-right: 0; }
+.query-receipt { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; padding: 0 2px; color: var(--muted); font: 400 12px/18px var(--sans); }
+.queries-empty { margin: 18px; }
+.queries-empty p { color: var(--muted); }
+@media (max-width: 1100px) {
+  .queries-workspace { min-width: 1080px; }
+}
+.query-filters .query-statement-filter { display: flex; align-items: center; gap: 6px; height: 34px; color: var(--text); font: 400 13px/19.5px var(--sans); white-space: nowrap; }
+.query-filters .query-statement-filter input { width: 16px; height: 16px; padding: 0; margin: 0; accent-color: var(--accent); }
+.query-statement-filter-evidence { margin: 0; padding: 7px 14px; color: var(--muted); border-bottom: 1px solid var(--border-soft); font: 400 12px/18px var(--sans); }

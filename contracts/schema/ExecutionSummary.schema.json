@@ -1,0 +1,303 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExecutionSummary",
+  "type": "object",
+  "required": [
+    "cumulative_operator_time",
+    "nodes",
+    "query_total_time",
+    "reasons",
+    "recipe_id",
+    "result_rows",
+    "state"
+  ],
+  "properties": {
+    "cumulative_operator_time": {
+      "$ref": "#/definitions/SummaryValue"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PlanNodeSummary"
+      }
+    },
+    "query_total_time": {
+      "description": "`Summary.Total` as reported by the FE; independent of operator time.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SummaryValue"
+        }
+      ]
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recipe_id": {
+      "type": "string"
+    },
+    "result_rows": {
+      "description": "`RESULT_SINK.PushRowNum`: rows returned to the client.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SummaryValue"
+        }
+      ]
+    },
+    "state": {
+      "$ref": "#/definitions/ExecutionSummaryState"
+    }
+  },
+  "definitions": {
+    "BoundedInterval": {
+      "type": "object",
+      "required": [
+        "lower",
+        "lower_inclusive",
+        "upper",
+        "upper_inclusive"
+      ],
+      "properties": {
+        "lower": {
+          "$ref": "#/definitions/CanonicalNumber"
+        },
+        "lower_inclusive": {
+          "type": "boolean"
+        },
+        "upper": {
+          "$ref": "#/definitions/CanonicalNumber"
+        },
+        "upper_inclusive": {
+          "type": "boolean"
+        }
+      }
+    },
+    "CanonicalNumber": {
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/NumberKind"
+        },
+        "scale": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "value": {
+          "description": "Base-10 only: JSON numbers are never used for counters.",
+          "type": "string"
+        }
+      }
+    },
+    "ExecutionSummaryState": {
+      "type": "string",
+      "enum": [
+        "available",
+        "unavailable"
+      ]
+    },
+    "HotspotTier": {
+      "description": "Official thresholds: share > 30% is most consuming, > 15% second. `Boundary` (product contract): the official reading and the text precision interval of the share disagree about one of those thresholds, so the tier is not decidable; the time-share rules report the same input as `suspected` at that boundary.",
+      "type": "string",
+      "enum": [
+        "most_consuming",
+        "second_most_consuming",
+        "boundary",
+        "none",
+        "unknown"
+      ]
+    },
+    "NumberKind": {
+      "type": "string",
+      "enum": [
+        "integer",
+        "decimal"
+      ]
+    },
+    "PlanNodeOperatorSummary": {
+      "type": "object",
+      "required": [
+        "operator_time",
+        "operator_type",
+        "pull_rows",
+        "push_rows",
+        "role",
+        "source_refs"
+      ],
+      "properties": {
+        "fragment_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operator_time": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "operator_type": {
+          "type": "string"
+        },
+        "pull_rows": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "push_rows": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "role": {
+          "$ref": "#/definitions/SummaryOperatorRole"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PlanNodeSummary": {
+      "type": "object",
+      "required": [
+        "hotspot",
+        "node_id",
+        "operators",
+        "output_rows",
+        "plan_node_id",
+        "reasons",
+        "total_time"
+      ],
+      "properties": {
+        "fragment_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hotspot": {
+          "$ref": "#/definitions/HotspotTier"
+        },
+        "node_id": {
+          "description": "Joins `GraphView.nodes[].node_id`.",
+          "type": "string"
+        },
+        "operators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PlanNodeOperatorSummary"
+          }
+        },
+        "output_rows": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "plan_node_id": {
+          "type": "string"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "time_share_basis_points": {
+          "description": "Share of `QueryCumulativeOperatorTime` in basis points (1/100 percent).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "time_share_display": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total_time": {
+          "$ref": "#/definitions/SummaryValue"
+        }
+      }
+    },
+    "SummaryOperatorRole": {
+      "type": "string",
+      "enum": [
+        "native",
+        "subordinate"
+      ]
+    },
+    "SummaryValue": {
+      "description": "One backend-computed value. `Unavailable` never carries a number, so a missing metric can not be read as zero.\n\n`Exact` means the value equals the official 3.5.14 `ANALYZE PROFILE` reading of the same Profile text (`RuntimeProfileParser` parses the printed counters too). When a counter was printed with less precision than the runtime value (e.g. `28.802ms` is truncated to the microsecond), `bounds` is the interval in `canonical_unit` that contains the runtime value; `None` means every input was printed losslessly.",
+      "type": "object",
+      "required": [
+        "reasons",
+        "source_refs",
+        "state"
+      ],
+      "properties": {
+        "bounds": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BoundedInterval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_number": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "display_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/SummaryValueState"
+        }
+      }
+    },
+    "SummaryValueState": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "unavailable"
+      ]
+    }
+  }
+}

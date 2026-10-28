@@ -1,0 +1,80 @@
+[0mSummary[0m
+    [0mQueryId: 783fd80c-cd4a-11f1-9981-f6fd30addd57[0m
+    [0mVersion: 3.5.14-23a56ec[0m
+    [0mState: Finished[0m
+    [0mTotalTime: 46ms[0m
+        [0mExecutionTime: 16.438ms [Scan: 7.628ms (46.40%), Network: 971.044us (5.91%), ResultDeliverTime: 0ns (0.00%), ScheduleTime: 13.879ms (84.43%)][0m
+        [0mCollectProfileTime: 2ms[0m
+        [0mFrontendProfileMergeTime: 5.726ms[0m
+    [0mQueryPeakMemoryUsage: ?, QueryAllocatedMemoryUsage: 3.113 MB[0m
+    [0mTop Most Time-consuming Nodes:[0m
+        [1m[31m1. OLAP_SCAN (id=0) [MV]: 8.356ms (80.29%)[0m
+        [0m2. MERGE_EXCHANGE (id=4) [GATHER]: 1.376ms (13.23%)[0m
+        [0m3. TOP_N (id=3) [ROW_NUMBER, TOP-N]: 233.736us (2.25%)[0m
+        [0m4. RESULT_SINK: 219.421us (2.11%)[0m
+        [0m5. AGGREGATION (id=1) [finalize, update]: 211.296us (2.03%)[0m
+        [0m6. PROJECT (id=2) : 10.577us (0.10%)[0m
+    [0mTop Most Memory-consuming Nodes:[0m
+    [0mNonDefaultVariables:[0m
+        [0menable_adaptive_sink_dop: false -> true[0m
+        [0menable_profile: false -> true[0m
+[0mFragment 0[0m
+│   [0mBackendNum: 1[0m
+│   [0mInstancePeakMemoryUsage: 78.608 KB, InstanceAllocatedMemoryUsage: 87.522 KB[0m
+│   [0mPrepareTime: ?[0m
+└──[0mRESULT_SINK[0m
+   │   [0mTotalTime: 219.421us (2.11%) [CPUTime: 219.421us][0m
+   │   [0mOutputRows: 10[0m
+   │   [0mSinkType: MYSQL_PROTOCAL[0m
+   └──[0mMERGE_EXCHANGE (id=4) [GATHER][0m
+          [0mEstimates: [row: 10, cpu: ?, memory: ?, network: ?, cost: 8403360.0][0m
+          [0mTotalTime: 1.376ms (13.23%) [CPUTime: 405.690us, NetworkTime: 971.044us][0m
+          [0mOutputRows: 10[0m
+          [0mPeakMemory: ?, AllocatedMemory: ?[0m
+          [0mSubordinateOperators: [0m
+              [0mLOCAL_EXCHANGE [Passthrough][0m
+[0m
+[0mFragment 1[0m
+│   [0mBackendNum: 1[0m
+│   [0mInstancePeakMemoryUsage: 1.159 MB, InstanceAllocatedMemoryUsage: 3.028 MB[0m
+│   [0mPrepareTime: ?[0m
+└──[0mDATA_STREAM_SINK (id=4)[0m
+   │   [0mPartitionType: UNPARTITIONED[0m
+   └──[0mTOP_N (id=3) [ROW_NUMBER, TOP-N][0m
+      │   [0mEstimates: [row: 10, cpu: ?, memory: ?, network: ?, cost: 8401120.0][0m
+      │   [0mTotalTime: 233.736us (2.25%) [CPUTime: 233.736us][0m
+      │   [0mOutputRows: 10[0m
+      │   [0mPeakMemory: ?, AllocatedMemory: ?[0m
+      │   [0mOrderByExprs: [<slot 7> 7: sum, <slot 3> 3: s_cust][0m
+      │   [0mSubordinateOperators: [0m
+      │       [0mGROUP_EXCHANGE[0m
+      │       [0mLOCAL_EXCHANGE [Passthrough][0m
+      └──[0mPROJECT (id=2) [0m
+         │   [0mEstimates: [row: ?, cpu: ?, memory: ?, network: ?, cost: ?][0m
+         │   [0mTotalTime: 10.577us (0.10%) [CPUTime: 10.577us][0m
+         │   [0mOutputRows: 200[0m
+         │   [0mExpression: [9: s_cust, 14: sum, 15: sum][0m
+         └──[0mAGGREGATION (id=1) [finalize, update][0m
+            │   [0mEstimates: [row: 25000, cpu: ?, memory: ?, network: ?, cost: 5600000.0][0m
+            │   [0mTotalTime: 211.296us (2.03%) [CPUTime: 211.296us][0m
+            │   [0mOutputRows: 200[0m
+            │   [0mPeakMemory: ?, AllocatedMemory: ?[0m
+            │   [0mAggExprs: [sum(11: amount), sum(12: qty)][0m
+            │   [0mGroupingExprs: [9: s_cust][0m
+            │   [0mSubordinateOperators: [0m
+            │       [0mAGGREGATE_BLOCKING[0m
+            └──[1m[31mOLAP_SCAN (id=0) [MV][0m
+                   [1m[31mEstimates: [row: 100000, cpu: ?, memory: ?, network: ?, cost: 1400000.0][0m
+                   [1m[31mTotalTime: 8.356ms (80.29%) [CPUTime: 728.103us, ScanTime: 7.628ms][0m
+                   [1m[31mOutputRows: 2.000K (2000)[0m
+                   [1m[31mTable: : mv_sales_cust_day[0m
+                   [1m[31mSubordinateOperators: [0m
+                       [1m[31mCHUNK_ACCUMULATE[0m
+                       [1m[31mNOOP[0m
+                       [1m[31mOLAP_SCAN_PREPARE[0m
+                   [1m[31mDetail Timers: [ScanTime = IOTaskExecTime + IOTaskWaitTime][0m
+                       [1m[31mIOTaskExecTime: 7.433ms [min=7.398ms, max=7.467ms][0m
+                           [1m[31mSegmentInit: 6.066ms [min=6.065ms, max=6.067ms][0m
+                               [1m[31mColumnIteratorInit: 5.528ms [min=5.476ms, max=5.580ms][0m
+                       [1m[31mIOTaskWaitTime: 121.927us [min=82.317us, max=161.537us][0m
+[0m

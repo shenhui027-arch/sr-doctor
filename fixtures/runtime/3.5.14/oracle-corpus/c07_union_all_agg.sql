@@ -1,0 +1,1 @@
+SELECT k % 10 AS bucket, COUNT(*) AS cnt FROM (SELECT s_cust AS k FROM sales WHERE s_qty = 1 UNION ALL SELECT r_cust AS k FROM returns UNION ALL SELECT e_cust AS k FROM events WHERE e_type = 'click') u GROUP BY k % 10;

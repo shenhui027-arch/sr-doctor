@@ -1,0 +1,158 @@
+PLAN COST
+  CPU: 1.0463263173027225E7
+  Memory: 90368.1740234375
+
+PLAN FRAGMENT 0(F04)
+  Output Exprs:11: expr | 12: month | 13: count | 15: GROUPING
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  11:MERGING-EXCHANGE
+     distribution type: GATHER
+     cardinality: 115
+     column statistics: 
+     * expr-->[-4.0, 4.0, 0.0, 4.0, 8.0] ESTIMATE
+     * month-->[1.0, 12.0, 0.0, 1.0, 12.0] ESTIMATE
+     * count-->[0.0, 796971.5082685794, 0.0, 8.0, 115.330078125] ESTIMATE
+     * GROUPING_ID-->[0.0, 3.0, 0.0, 8.0, 4.0] ESTIMATE
+     * GROUPING-->[0.0, 3.0, 0.0, 8.0, 4.0] ESTIMATE
+
+PLAN FRAGMENT 1(F03)
+
+  Input Partition: HASH_PARTITIONED: 11: expr, 12: month, 14: GROUPING_ID, 15: GROUPING
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 11
+
+  10:SORT
+  |  order by: [15, BIGINT, true] ASC, [11, INT, true] ASC, [12, TINYINT, true] ASC
+  |  offset: 0
+  |  hasNullableGenerateChild: true
+  |  cardinality: 115
+  |  column statistics: 
+  |  * expr-->[-4.0, 4.0, 0.0, 4.0, 8.0] ESTIMATE
+  |  * month-->[1.0, 12.0, 0.0, 1.0, 12.0] ESTIMATE
+  |  * count-->[0.0, 796971.5082685794, 0.0, 8.0, 115.330078125] ESTIMATE
+  |  * GROUPING_ID-->[0.0, 3.0, 0.0, 8.0, 4.0] ESTIMATE
+  |  * GROUPING-->[0.0, 3.0, 0.0, 8.0, 4.0] ESTIMATE
+  |  
+  9:Project
+  |  output columns:
+  |  11 <-> [11: expr, INT, true]
+  |  12 <-> [12: month, TINYINT, false]
+  |  13 <-> [13: count, BIGINT, false]
+  |  15 <-> [15: GROUPING, BIGINT, false]
+  |  hasNullableGenerateChild: true
+  |  cardinality: 115
+  |  column statistics: 
+  |  * expr-->[-4.0, 4.0, 0.0, 4.0, 8.0] ESTIMATE
+  |  * month-->[1.0, 12.0, 0.0, 1.0, 12.0] ESTIMATE
+  |  * count-->[0.0, 796971.5082685794, 0.0, 8.0, 115.330078125] ESTIMATE
+  |  * GROUPING-->[0.0, 3.0, 0.0, 8.0, 4.0] ESTIMATE
+  |  
+  8:AGGREGATE (merge finalize)
+  |  aggregate: count[([13: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false]
+  |  group by: [11: expr, INT, true], [12: month, TINYINT, false], [14: GROUPING_ID, BIGINT, false], [15: GROUPING, BIGINT, false]
+  |  hasNullableGenerateChild: true
+  |  cardinality: 115
+  |  column statistics: 
+  |  * expr-->[-4.0, 4.0, 0.0, 4.0, 8.0] ESTIMATE
+  |  * month-->[1.0, 12.0, 0.0, 1.0, 12.0] ESTIMATE
+  |  * count-->[0.0, 796971.5082685794, 0.0, 8.0, 115.330078125] ESTIMATE
+  |  * GROUPING_ID-->[0.0, 3.0, 0.0, 8.0, 4.0] ESTIMATE
+  |  * GROUPING-->[0.0, 3.0, 0.0, 8.0, 4.0] ESTIMATE
+  |  
+  7:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [11: expr, INT, true], [12: month, TINYINT, false], [14: GROUPING_ID, BIGINT, false], [15: GROUPING, BIGINT, false]
+     cardinality: 115
+
+PLAN FRAGMENT 2(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 11: expr, 12: month, 14: GROUPING_ID, 15: GROUPING
+  OutPut Exchange Id: 07
+
+  6:AGGREGATE (update serialize)
+  |  STREAMING
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false]
+  |  group by: [11: expr, INT, true], [12: month, TINYINT, false], [14: GROUPING_ID, BIGINT, false], [15: GROUPING, BIGINT, false]
+  |  hasNullableGenerateChild: true
+  |  cardinality: 115
+  |  column statistics: 
+  |  * expr-->[-4.0, 4.0, 0.0, 4.0, 8.0] ESTIMATE
+  |  * month-->[1.0, 12.0, 0.0, 1.0, 12.0] ESTIMATE
+  |  * count-->[0.0, 796971.5082685794, 0.0, 8.0, 115.330078125] ESTIMATE
+  |  * GROUPING_ID-->[0.0, 3.0, 0.0, 8.0, 4.0] ESTIMATE
+  |  * GROUPING-->[0.0, 3.0, 0.0, 8.0, 4.0] ESTIMATE
+  |  
+  5:REPEAT_NODE
+  |  repeat: repeat 3 lines [[], [11], [12], [11, 12]]
+  |  cardinality: 796972
+  |  column statistics: 
+  |  * s_date-->[1.7040672E9, 1.7355168E9, 0.0, 4.0, 364.0] ESTIMATE
+  |  * s_prod-->[1.0, 5000.0, 0.0, 4.0, 5019.0] ESTIMATE
+  |  * p_id-->[1.0, 5000.0, 0.0, 4.0, 5019.0] ESTIMATE
+  |  * p_category-->[0.0, 39.0, 0.0, 4.0, 40.0] ESTIMATE
+  |  * expr-->[-4.0, 4.0, 0.0, 4.0, 8.0] ESTIMATE
+  |  * month-->[1.0, 12.0, 0.0, 1.0, 12.0] ESTIMATE
+  |  * GROUPING_ID-->[0.0, 3.0, 0.0, 8.0, 4.0] ESTIMATE
+  |  * GROUPING-->[0.0, 3.0, 0.0, 8.0, 4.0] ESTIMATE
+  |  
+  4:Project
+  |  output columns:
+  |  11 <-> [8: p_category, INT, false] % 4
+  |  12 <-> month[([2: s_date, DATE, false]); args: DATE; result: TINYINT; args nullable: false; result nullable: false]
+  |  cardinality: 199243
+  |  column statistics: 
+  |  * expr-->[-4.0, 4.0, 0.0, 4.0, 8.0] ESTIMATE
+  |  * month-->[1.0, 12.0, 0.0, 1.0, 12.0] ESTIMATE
+  |  
+  3:HASH JOIN
+  |  join op: INNER JOIN (BROADCAST)
+  |  equal join conjunct: [4: s_prod, INT, false] = [7: p_id, INT, false]
+  |  build runtime filters:
+  |  - filter_id = 0, build_expr = (7: p_id), remote = false
+  |  output columns: 2, 8
+  |  can local shuffle: false
+  |  cardinality: 199243
+  |  column statistics: 
+  |  * s_date-->[1.7040672E9, 1.7355168E9, 0.0, 4.0, 364.0] ESTIMATE
+  |  * s_prod-->[1.0, 5000.0, 0.0, 4.0, 5019.0] ESTIMATE
+  |  * p_id-->[1.0, 5000.0, 0.0, 4.0, 5019.0] ESTIMATE
+  |  * p_category-->[0.0, 39.0, 0.0, 4.0, 40.0] ESTIMATE
+  |  * expr-->[-4.0, 4.0, 0.0, 4.0, 8.0] ESTIMATE
+  |  * month-->[1.0, 12.0, 0.0, 1.0, 12.0] ESTIMATE
+  |  
+  |----2:EXCHANGE
+  |       distribution type: BROADCAST
+  |       cardinality: 5000
+  |    
+  0:OlapScanNode
+     table: sales, rollup: sales
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10279,10281,10283,10285,10287,10289,10291,10293
+     actualRows=0, avgRowSize=8.0
+     cardinality: 200000
+     probe runtime filters:
+     - filter_id = 0, probe_expr = (4: s_prod)
+     column statistics: 
+     * s_date-->[1.7040672E9, 1.7355168E9, 0.0, 4.0, 364.0] ESTIMATE
+     * s_prod-->[1.0, 5000.0, 0.0, 4.0, 5019.0] ESTIMATE
+
+PLAN FRAGMENT 3(F01)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 02
+
+  1:OlapScanNode
+     table: products, rollup: products
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=2/2
+     tabletList=10271,10273
+     actualRows=0, avgRowSize=8.0
+     cardinality: 5000
+     column statistics: 
+     * p_id-->[1.0, 5000.0, 0.0, 4.0, 5019.0] ESTIMATE
+     * p_category-->[0.0, 39.0, 0.0, 4.0, 40.0] ESTIMATE

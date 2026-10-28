@@ -1,0 +1,979 @@
+{
+  "compatible_pack_ids": [
+    "starrocks-3.5.14"
+  ],
+  "hash_contract": {
+    "manifest_hash": "canonical object excluding manifest_hash",
+    "receipt_reference": "semantic_manifest_hash",
+    "semantic_manifest_hash": "canonical object excluding manifest_hash and semantic_manifest_hash"
+  },
+  "ir_schema_range": "1.x",
+  "manifest_hash": "01047013d50d4eee3ef23358063c7974c2d22b19a958d36b37f0980e1f1668c7",
+  "registry_requirements": [
+    "sr3514-registry@0.3.2"
+  ],
+  "rules": [
+    {
+      "absolute_floor": {
+        "input": "subject_operator_time_ns",
+        "source": "product_decision_ruleset_0.1.5",
+        "suppress_below_ns": 100000000
+      },
+      "applicability": "SCAN plan nodes (*_SCAN); detected 3.5.14 level_1 final merged profile; exact execution-summary node time from typed inputs and non-zero denominator",
+      "category": "operator_time_distribution",
+      "confidence_policy": "exact complete; text precision interval, partial graph or verified-derived source stage is partial; threshold intersections are suspected",
+      "evaluator_id": "sr3514.operator_time_share",
+      "evaluator_version": "1",
+      "finding_policy": {
+        "bucket_severity": {
+          "attention_15": "moderate",
+          "attention_30": "high"
+        },
+        "confidence": {
+          "bounded_definite": "medium",
+          "exact_definite": "high",
+          "suspected": "low"
+        }
+      },
+      "formula_source": "StarRocks 3.5.14 ExplainAnalyzer NodeInfo time and computeTimeUsage, read from execution summary sr3514.explain_analyzer.node_info.v1",
+      "golden_case_ids": [
+        "scan_time_positive",
+        "scan_time_negative",
+        "scan_time_boundary",
+        "scan_time_missing",
+        "scan_time_version",
+        "scan_time_graph_degraded"
+      ],
+      "limitations": [
+        "operator active time is not query wall time",
+        "parallel and asynchronous operators may overlap"
+      ],
+      "recommendation_template": {
+        "expected_changes": [
+          {
+            "direction": "decrease",
+            "metric_id": "ScanTime"
+          },
+          {
+            "direction": "decrease",
+            "metric_id": "OperatorTotalTime"
+          }
+        ],
+        "expected_direction": "reduce selected scan time share after one controlled manual change",
+        "kind": "optimization_target",
+        "limitations": [
+          "partition definitions and table statistics are not read; pruning conclusions rest on the Profile counters"
+        ],
+        "next_step": "Check partition pruning and predicate pushdown on this table before changing the query",
+        "recommendation_id": "rec.scan.reduce_read@v1",
+        "result_effect": "unchanged",
+        "risk": "scan time share needs manual investigation; it does not prove pruning or I/O root cause",
+        "risk_level": "low",
+        "steps": [
+          {
+            "detail": "Check that WHERE constrains the partition column directly, without wrapping it in a function or cast",
+            "evidence_metric_ids": [
+              "ScanTime"
+            ],
+            "title": "Confirm filters reach the partition and bucket columns"
+          },
+          {
+            "detail": "A scan that outputs far more rows than its consumer keeps points at a filter applied after the scan",
+            "evidence_metric_ids": [
+              "OutputRows"
+            ],
+            "title": "Compare rows read with rows the query keeps"
+          }
+        ],
+        "title": "Reduce what the scan reads",
+        "validation_steps": [
+          "inspect predicates, partition pruning, index, rows, bytes and I/O context",
+          "re-profile after one controlled manual change"
+        ]
+      },
+      "rule_id": "SR3514.SCAN_TIME_SHARE",
+      "severity_policy": "product_decision_v0.1",
+      "subject_kinds": [
+        "operator_group"
+      ],
+      "threshold_source": "StarRocks 3.5.14 ExplainAnalyzer display thresholds; strict >15% and >30%",
+      "thresholds": [
+        ">15%",
+        ">30%"
+      ],
+      "typed_inputs": [
+        "OperatorTotalTime",
+        "ScanTime",
+        "QueryCumulativeOperatorTime"
+      ],
+      "version": "0.3.0"
+    },
+    {
+      "absolute_floor": {
+        "input": "subject_operator_time_ns",
+        "source": "product_decision_ruleset_0.1.5",
+        "suppress_below_ns": 100000000
+      },
+      "applicability": "JOIN allowlist plan nodes; detected 3.5.14 level_1 final merged profile; exact execution-summary node time from typed inputs and non-zero denominator",
+      "category": "operator_time_distribution",
+      "confidence_policy": "exact complete; text precision interval, partial graph or verified-derived source stage is partial; threshold intersections are suspected",
+      "evaluator_id": "sr3514.operator_time_share",
+      "evaluator_version": "1",
+      "finding_policy": {
+        "bucket_severity": {
+          "attention_15": "moderate",
+          "attention_30": "high"
+        },
+        "confidence": {
+          "bounded_definite": "medium",
+          "exact_definite": "high",
+          "suspected": "low"
+        }
+      },
+      "formula_source": "StarRocks 3.5.14 ExplainAnalyzer NodeInfo time and computeTimeUsage, read from execution summary sr3514.explain_analyzer.node_info.v1",
+      "golden_case_ids": [
+        "join_time_positive",
+        "join_time_negative",
+        "join_time_boundary",
+        "join_time_missing",
+        "join_time_version",
+        "join_time_graph_degraded"
+      ],
+      "limitations": [
+        "operator active time is not query wall time",
+        "parallel and asynchronous operators may overlap"
+      ],
+      "recommendation_template": {
+        "expected_changes": [
+          {
+            "direction": "decrease",
+            "metric_id": "PushRowNum"
+          },
+          {
+            "direction": "decrease",
+            "metric_id": "OperatorTotalTime"
+          }
+        ],
+        "expected_direction": "reduce selected join time share after one controlled manual change",
+        "kind": "optimization_target",
+        "limitations": [
+          "join keys, table statistics and join hints are not read"
+        ],
+        "next_step": "Filter the larger input as early as possible upstream before tuning the join itself",
+        "recommendation_id": "rec.join.reduce_input@v1",
+        "result_effect": "unchanged",
+        "risk": "join time share needs manual investigation; it does not prove a join root cause",
+        "risk_level": "medium",
+        "steps": [
+          {
+            "detail": "Confirm predicates on the larger side are pushed below the join",
+            "evidence_metric_ids": [
+              "PushRowNum"
+            ],
+            "title": "Check filters on the larger input"
+          },
+          {
+            "detail": "Output far larger than input means the join condition multiplies rows",
+            "evidence_metric_ids": [
+              "PushRowNum",
+              "PullRowNum"
+            ],
+            "title": "Compare join input and output rows"
+          },
+          {
+            "detail": "Broadcasting a large build side to every instance costs memory and network; a shuffle may fit better",
+            "evidence_metric_ids": [
+              "OperatorTotalTime"
+            ],
+            "title": "Review the distribution mode"
+          }
+        ],
+        "title": "Reduce the rows entering this join",
+        "validation_steps": [
+          "inspect join conditions, build/probe, distribution, rows, memory and spill context",
+          "re-profile after one controlled manual change"
+        ]
+      },
+      "rule_id": "SR3514.JOIN_TIME_SHARE",
+      "severity_policy": "product_decision_v0.1",
+      "subject_kinds": [
+        "operator_group"
+      ],
+      "threshold_source": "StarRocks 3.5.14 ExplainAnalyzer display thresholds; strict >15% and >30%",
+      "thresholds": [
+        ">15%",
+        ">30%"
+      ],
+      "typed_inputs": [
+        "OperatorTotalTime",
+        "QueryCumulativeOperatorTime"
+      ],
+      "version": "0.3.0"
+    },
+    {
+      "absolute_floor": {
+        "input": "subject_operator_time_ns",
+        "source": "product_decision_ruleset_0.1.5",
+        "suppress_below_ns": 100000000
+      },
+      "applicability": "AGGREGATE allowlist plan nodes; detected 3.5.14 level_1 final merged profile; exact execution-summary node time from typed inputs and non-zero denominator",
+      "category": "operator_time_distribution",
+      "confidence_policy": "exact complete; text precision interval, partial graph or verified-derived source stage is partial; threshold intersections are suspected",
+      "evaluator_id": "sr3514.operator_time_share",
+      "evaluator_version": "1",
+      "finding_policy": {
+        "bucket_severity": {
+          "attention_15": "moderate",
+          "attention_30": "high"
+        },
+        "confidence": {
+          "bounded_definite": "medium",
+          "exact_definite": "high",
+          "suspected": "low"
+        }
+      },
+      "formula_source": "StarRocks 3.5.14 ExplainAnalyzer NodeInfo time and computeTimeUsage, read from execution summary sr3514.explain_analyzer.node_info.v1",
+      "golden_case_ids": [
+        "aggregate_time_positive",
+        "aggregate_time_negative",
+        "aggregate_time_boundary",
+        "aggregate_time_missing",
+        "aggregate_time_version",
+        "aggregate_time_graph_degraded"
+      ],
+      "limitations": [
+        "operator active time is not query wall time",
+        "parallel and asynchronous operators may overlap"
+      ],
+      "recommendation_template": {
+        "expected_changes": [
+          {
+            "direction": "decrease",
+            "metric_id": "PushRowNum"
+          },
+          {
+            "direction": "decrease",
+            "metric_id": "OperatorTotalTime"
+          }
+        ],
+        "expected_direction": "reduce selected aggregate time share after one controlled manual change",
+        "kind": "optimization_target",
+        "limitations": [
+          "grouping key cardinality is not read"
+        ],
+        "next_step": "Filter before aggregating, then check that every grouping key is needed",
+        "recommendation_id": "rec.aggregate.reduce_groups@v1",
+        "result_effect": "unchanged",
+        "risk": "aggregate time share needs manual investigation; it does not prove an aggregation root cause",
+        "risk_level": "medium",
+        "steps": [
+          {
+            "detail": "Confirm filters run before the aggregation rather than in HAVING",
+            "evidence_metric_ids": [
+              "PushRowNum"
+            ],
+            "title": "Check the aggregation input"
+          },
+          {
+            "detail": "Output close to input means the grouping keys barely reduce the data",
+            "evidence_metric_ids": [
+              "PushRowNum",
+              "PullRowNum"
+            ],
+            "title": "Check the number of groups"
+          }
+        ],
+        "title": "Reduce the rows and groups this aggregation handles",
+        "validation_steps": [
+          "inspect grouping, stages, input/output rows, memory and spill context",
+          "re-profile after one controlled manual change"
+        ]
+      },
+      "rule_id": "SR3514.AGGREGATE_TIME_SHARE",
+      "severity_policy": "product_decision_v0.1",
+      "subject_kinds": [
+        "operator_group"
+      ],
+      "threshold_source": "StarRocks 3.5.14 ExplainAnalyzer display thresholds; strict >15% and >30%",
+      "thresholds": [
+        ">15%",
+        ">30%"
+      ],
+      "typed_inputs": [
+        "OperatorTotalTime",
+        "QueryCumulativeOperatorTime"
+      ],
+      "version": "0.3.0"
+    },
+    {
+      "absolute_floor": {
+        "input": "subject_operator_time_ns",
+        "source": "product_decision_ruleset_0.1.5",
+        "suppress_below_ns": 100000000
+      },
+      "applicability": "EXCHANGE plan nodes (*EXCHANGE*); detected 3.5.14 level_1 final merged profile; exact execution-summary node time from typed inputs and non-zero denominator",
+      "category": "operator_time_distribution",
+      "confidence_policy": "exact complete; text precision interval, partial graph or verified-derived source stage is partial; threshold intersections are suspected",
+      "evaluator_id": "sr3514.operator_time_share",
+      "evaluator_version": "1",
+      "finding_policy": {
+        "bucket_severity": {
+          "attention_15": "moderate",
+          "attention_30": "high"
+        },
+        "confidence": {
+          "bounded_definite": "medium",
+          "exact_definite": "high",
+          "suspected": "low"
+        }
+      },
+      "formula_source": "StarRocks 3.5.14 ExplainAnalyzer NodeInfo time and computeTimeUsage, read from execution summary sr3514.explain_analyzer.node_info.v1",
+      "golden_case_ids": [
+        "exchange_time_positive",
+        "exchange_time_negative",
+        "exchange_time_boundary",
+        "exchange_time_missing",
+        "exchange_time_version",
+        "exchange_time_graph_degraded"
+      ],
+      "limitations": [
+        "operator active time is not query wall time",
+        "parallel and asynchronous operators may overlap"
+      ],
+      "recommendation_template": {
+        "expected_changes": [
+          {
+            "direction": "decrease",
+            "metric_id": "BytesSent"
+          },
+          {
+            "direction": "decrease",
+            "metric_id": "NetworkTime"
+          }
+        ],
+        "expected_direction": "reduce selected exchange time share after one controlled manual change",
+        "kind": "optimization_target",
+        "limitations": [
+          "cluster topology and network load are not read"
+        ],
+        "next_step": "Drop rows and columns before the exchange, then review its distribution",
+        "recommendation_id": "rec.exchange.reduce_transfer@v1",
+        "result_effect": "unchanged",
+        "risk": "exchange time share needs manual investigation; it does not prove a network root cause",
+        "risk_level": "low",
+        "steps": [
+          {
+            "detail": "Compare the rows and bytes sent with what the consumer actually needs",
+            "evidence_metric_ids": [
+              "BytesSent",
+              "PushRowNum"
+            ],
+            "title": "Check what is sent"
+          },
+          {
+            "detail": "A broadcast copies data to every instance; a shuffle or colocate join may move less",
+            "evidence_metric_ids": [
+              "NetworkTime"
+            ],
+            "title": "Review the distribution"
+          }
+        ],
+        "title": "Reduce the data this exchange sends",
+        "validation_steps": [
+          "inspect distribution, transferred rows/bytes, upstream/downstream and network context",
+          "re-profile after one controlled manual change"
+        ]
+      },
+      "rule_id": "SR3514.EXCHANGE_NETWORK_TIME_SHARE",
+      "severity_policy": "product_decision_v0.1",
+      "subject_kinds": [
+        "operator_group"
+      ],
+      "threshold_source": "StarRocks 3.5.14 ExplainAnalyzer display thresholds; strict >15% and >30%",
+      "thresholds": [
+        ">15%",
+        ">30%"
+      ],
+      "typed_inputs": [
+        "OperatorTotalTime",
+        "NetworkTime",
+        "QueryCumulativeOperatorTime"
+      ],
+      "version": "0.3.0"
+    },
+    {
+      "applicability": "registered QuerySpillBytes observation",
+      "category": "spill_observation",
+      "confidence_policy": "interval containing zero is suspected",
+      "evaluator_id": "sr3514.spill_observed",
+      "evaluator_version": "1",
+      "finding_policy": {
+        "confidence": {
+          "bounded_definite": "medium",
+          "exact_definite": "high",
+          "suspected": "low"
+        },
+        "severity": "moderate"
+      },
+      "formula_source": "registered QuerySpillBytes observation",
+      "golden_case_ids": [
+        "spill_positive",
+        "spill_negative",
+        "spill_boundary",
+        "spill_missing",
+        "spill_version",
+        "spill_graph_degraded"
+      ],
+      "limitations": [
+        "spill presence alone does not prove the root cause"
+      ],
+      "recommendation_template": {
+        "expected_changes": [
+          {
+            "direction": "decrease",
+            "metric_id": "QuerySpillBytes"
+          }
+        ],
+        "expected_direction": "reduce spill observations after one controlled manual change",
+        "kind": "investigation",
+        "limitations": [
+          "memory limits and concurrent load are not read"
+        ],
+        "next_step": "Check the memory of the spilling operators before changing memory limits",
+        "recommendation_id": "rec.spill.find_cause@v1",
+        "result_effect": "unchanged",
+        "risk": "spill presence alone does not prove the root cause",
+        "risk_level": "medium",
+        "steps": [
+          {
+            "detail": "Join, aggregate and sort operators spill when their state exceeds the memory limit",
+            "evidence_metric_ids": [
+              "QuerySpillBytes"
+            ],
+            "title": "Find the spilling operators"
+          },
+          {
+            "detail": "Drop rows or columns entering the spilling operator first",
+            "evidence_metric_ids": [],
+            "title": "Reduce what those operators hold"
+          }
+        ],
+        "title": "Find what spilled to disk",
+        "validation_steps": [
+          "inspect memory and operator context",
+          "re-profile after one controlled manual change"
+        ]
+      },
+      "rule_id": "SR3514.SPILL_OBSERVED",
+      "severity_policy": "product_decision_v0.1",
+      "subject_kinds": [
+        "query",
+        "operator_group"
+      ],
+      "threshold_source": "product decision: exact >0 or conservative lower bound >0",
+      "thresholds": [
+        ">0 exact or bounds.lower >0"
+      ],
+      "typed_inputs": [
+        "QuerySpillBytes"
+      ],
+      "version": "0.1.0"
+    },
+    {
+      "applicability": "JOIN allowlist plan nodes; complete graph with exact explicit official Topology PlanChild parent_to_child closure; exact execution-summary OutputRows of the node and every direct child",
+      "category": "runtime_row_flow_amplification",
+      "confidence_policy": "only exact complete typed evidence is eligible",
+      "evaluator_id": "sr3514.row_flow_amplification",
+      "evaluator_version": "1",
+      "finding_policy": {
+        "confidence": {
+          "bounded_definite": "medium",
+          "exact_definite": "medium",
+          "suspected": "low"
+        },
+        "severity": "moderate"
+      },
+      "formula_source": "registered StarRocks 3.5.14 OutputRows recipes, read per plan node from execution summary sr3514.explain_analyzer.node_info.v1",
+      "golden_case_ids": [
+        "row_flow_positive",
+        "row_flow_negative",
+        "row_flow_boundary",
+        "row_flow_missing",
+        "row_flow_version",
+        "row_flow_graph_degraded"
+      ],
+      "limitations": [
+        "row amplification is an investigation signal and does not prove a join root cause"
+      ],
+      "recommendation_template": {
+        "expected_changes": [
+          {
+            "direction": "decrease",
+            "metric_id": "OutputRows"
+          }
+        ],
+        "expected_direction": "reduce observed row amplification after one controlled manual change",
+        "kind": "investigation",
+        "limitations": [
+          "key uniqueness is not checked by the product"
+        ],
+        "next_step": "Confirm that join keys the query treats as unique really are unique",
+        "recommendation_id": "rec.join.check_amplification@v1",
+        "result_effect": "may_change",
+        "risk": "observed row amplification does not prove bad SQL or statistics",
+        "risk_level": "medium",
+        "steps": [
+          {
+            "detail": "Output many times its inputs means duplicate keys on at least one side",
+            "evidence_metric_ids": [
+              "OutputRows"
+            ],
+            "title": "Compare output with input rows"
+          },
+          {
+            "detail": "Count duplicate join keys on each side with a separate read-only query",
+            "evidence_metric_ids": [],
+            "title": "Check key uniqueness"
+          }
+        ],
+        "title": "Check why this join multiplies rows",
+        "validation_steps": [
+          "inspect join condition, cardinality and distribution",
+          "re-profile after one controlled manual change"
+        ]
+      },
+      "rule_id": "SR3514.ROW_FLOW_AMPLIFICATION",
+      "severity_policy": "product_decision_v0.1",
+      "subject_kinds": [
+        "operator_group"
+      ],
+      "threshold_source": "product_decision_v0.1: strict parent_output_rows / sum(direct_child_output_rows) > 10",
+      "thresholds": [
+        ">10"
+      ],
+      "typed_inputs": [
+        "OutputRows"
+      ],
+      "version": "0.2.0"
+    },
+    {
+      "absolute_floor": {
+        "input": "subject_operator_time_ns",
+        "source": "product_decision_ruleset_0.1.5",
+        "suppress_below_ns": 100000000
+      },
+      "applicability": "other plan nodes (not SCAN/JOIN/AGGREGATE/EXCHANGE); detected 3.5.14 level_1 final merged profile; exact execution-summary node time from typed inputs and non-zero denominator",
+      "category": "operator_time_distribution",
+      "confidence_policy": "exact complete; text precision interval, partial graph or verified-derived source stage is partial; threshold intersections are suspected",
+      "evaluator_id": "sr3514.operator_time_share",
+      "evaluator_version": "1",
+      "finding_policy": {
+        "bucket_severity": {
+          "attention_15": "moderate",
+          "attention_30": "high"
+        },
+        "confidence": {
+          "bounded_definite": "medium",
+          "exact_definite": "high",
+          "suspected": "low"
+        }
+      },
+      "formula_source": "StarRocks 3.5.14 ExplainAnalyzer NodeInfo time and computeTimeUsage, read from execution summary sr3514.explain_analyzer.node_info.v1",
+      "golden_case_ids": [
+        "node_time_positive",
+        "node_time_negative",
+        "node_time_boundary",
+        "node_time_missing",
+        "node_time_version",
+        "node_time_graph_degraded"
+      ],
+      "limitations": [
+        "operator active time is not query wall time",
+        "parallel and asynchronous operators may overlap"
+      ],
+      "recommendation_template": {
+        "expected_changes": [
+          {
+            "direction": "decrease",
+            "metric_id": "OperatorTotalTime"
+          }
+        ],
+        "expected_direction": "reduce selected plan node time share after one controlled manual change",
+        "kind": "optimization_target",
+        "limitations": [
+          "the time share names no cause; the operator's internal counters are not analysed"
+        ],
+        "next_step": "Compare its input and output rows with the operators around it",
+        "recommendation_id": "rec.node.explain_cost@v1",
+        "result_effect": "unchanged",
+        "risk": "plan node time share needs manual investigation; it does not prove a root cause",
+        "risk_level": "low",
+        "steps": [
+          {
+            "detail": "A large input or unexpected growth points at the plan upstream",
+            "evidence_metric_ids": [
+              "PushRowNum",
+              "PullRowNum"
+            ],
+            "title": "Compare input and output rows"
+          },
+          {
+            "detail": "Use the raw structure view to see which fragment and pipeline it runs in",
+            "evidence_metric_ids": [
+              "OperatorTotalTime"
+            ],
+            "title": "Check its place in the plan"
+          }
+        ],
+        "title": "Find why this operator takes the most time",
+        "validation_steps": [
+          "inspect the operator, its input/output rows and upstream/downstream context",
+          "re-profile after one controlled manual change"
+        ]
+      },
+      "rule_id": "SR3514.NODE_TIME_SHARE",
+      "severity_policy": "product_decision_v0.1",
+      "subject_kinds": [
+        "operator_group"
+      ],
+      "threshold_source": "StarRocks 3.5.14 ExplainAnalyzer display thresholds; strict >15% and >30%",
+      "thresholds": [
+        ">15%",
+        ">30%"
+      ],
+      "typed_inputs": [
+        "OperatorTotalTime",
+        "QueryCumulativeOperatorTime"
+      ],
+      "version": "0.3.0"
+    },
+    {
+      "applicability": "every execution-summary plan node with runtime operators; detected 3.5.14 level_1 final merged profile; typed OperatorTotalTime base with a complete __MIN_OF_/__MAX_OF_ pair and min <= base <= max (AVG-merged time counter)",
+      "category": "runtime_skew",
+      "confidence_policy": "exact complete; text precision interval, partial graph or verified-derived source stage is partial; boundary intersections are suspected",
+      "evaluator_id": "sr3514.operator_time_skew",
+      "evaluator_version": "1",
+      "finding_policy": {
+        "confidence": {
+          "bounded_definite": "medium",
+          "exact_definite": "medium",
+          "suspected": "low"
+        },
+        "severity": "moderate"
+      },
+      "formula_source": "StarRocks 3.5.14 RuntimeProfile.mergeIsomorphicProfiles (time counters AVG-merged with per-driver MIN/MAX); docs best_practices/query_tuning/query_profile_tuning_recipes.md \"Data skew\": wide gap between maximum and minimum OperatorTotalTime",
+      "golden_case_ids": [
+        "skew_positive",
+        "skew_negative",
+        "skew_boundary",
+        "skew_missing",
+        "skew_version",
+        "skew_graph_degraded"
+      ],
+      "limitations": [
+        "merged MIN/MAX describe drivers or instances, not tablets or keys; skew does not prove its cause",
+        "a single driver prints no MIN/MAX and is never skewed"
+      ],
+      "recommendation_template": {
+        "expected_changes": [
+          {
+            "direction": "decrease",
+            "metric_id": "OperatorTotalTime"
+          }
+        ],
+        "expected_direction": "reduce the slowest-driver to mean ratio after one controlled manual change",
+        "kind": "investigation",
+        "limitations": [
+          "per-key distribution is not read; MIN/MAX describe instances, not keys"
+        ],
+        "next_step": "Find the key value that sends most rows to the slowest instance",
+        "recommendation_id": "rec.skew.balance_instances@v1",
+        "result_effect": "unchanged",
+        "risk": "driver time skew needs manual investigation; it does not prove data skew on a specific key",
+        "risk_level": "medium",
+        "steps": [
+          {
+            "detail": "A maximum far above the mean means a few instances do most of the work",
+            "evidence_metric_ids": [
+              "OperatorTotalTime"
+            ],
+            "title": "Compare the slowest and the average instance"
+          },
+          {
+            "detail": "Look for a hot value such as NULL or a default in the shuffle or bucket key",
+            "evidence_metric_ids": [],
+            "title": "Check the distribution key"
+          }
+        ],
+        "title": "Balance the work across instances",
+        "validation_steps": [
+          "inspect bucket/partition distribution, join/group keys and per-driver input rows",
+          "re-profile after one controlled manual change"
+        ]
+      },
+      "rule_id": "SR3514.OPERATOR_TIME_SKEW",
+      "severity_policy": "product_decision_v0.1",
+      "subject_kinds": [
+        "operator_group"
+      ],
+      "threshold_source": "product_decision_ruleset_0.2.0: strict __MAX_OF_OperatorTotalTime / merged mean > 2 on some operator of the node; suppressed when that operator max is under 100 ms",
+      "thresholds": [
+        ">2 max/mean",
+        ">=100ms max operator time"
+      ],
+      "typed_inputs": [
+        "OperatorTotalTime"
+      ],
+      "version": "0.1.0"
+    },
+    {
+      "applicability": "JOIN allowlist plan nodes with a *_JOIN_PROBE operator; detected 3.5.14 level_1 final merged profile; exact SUM-merged probe PushRowNum and PullRowNum",
+      "category": "join_fanout",
+      "confidence_policy": "exact complete; text precision interval, partial graph or verified-derived source stage is partial; boundary intersections are suspected",
+      "evaluator_id": "sr3514.join_probe_fanout",
+      "evaluator_version": "1",
+      "finding_policy": {
+        "confidence": {
+          "bounded_definite": "medium",
+          "exact_definite": "medium",
+          "suspected": "low"
+        },
+        "severity": "moderate"
+      },
+      "formula_source": "StarRocks 3.5.14 pipeline operator CommonMetrics PushRowNum/PullRowNum of HASH_JOIN_PROBE / NESTLOOP_JOIN_PROBE (count counters SUM-merged, RuntimeProfile.mergeIsomorphicProfiles); docs query_profile_tuning_recipes.md Join section",
+      "golden_case_ids": [
+        "fanout_positive",
+        "fanout_negative",
+        "fanout_boundary",
+        "fanout_missing",
+        "fanout_version",
+        "fanout_graph_degraded"
+      ],
+      "limitations": [
+        "fan-out is an investigation signal; a many-to-many join may be intended",
+        "runtime filters and LIMIT can change probe rows"
+      ],
+      "recommendation_template": {
+        "expected_changes": [
+          {
+            "direction": "decrease",
+            "metric_id": "PullRowNum"
+          },
+          {
+            "direction": "decrease",
+            "metric_id": "OperatorTotalTime"
+          }
+        ],
+        "expected_direction": "reduce probe output per input row after one controlled manual change",
+        "kind": "investigation",
+        "limitations": [
+          "build-side key duplication is not read"
+        ],
+        "next_step": "Check whether the build side holds duplicate keys the query does not need",
+        "recommendation_id": "rec.join.reduce_fanout@v1",
+        "result_effect": "unchanged",
+        "risk": "join fan-out does not prove a wrong join condition",
+        "risk_level": "medium",
+        "steps": [
+          {
+            "detail": "Each probe row matching many build rows multiplies the output",
+            "evidence_metric_ids": [
+              "PushRowNum",
+              "PullRowNum"
+            ],
+            "title": "Compare probe output with probe input"
+          },
+          {
+            "detail": "Count duplicate join keys on the build side with a separate read-only query",
+            "evidence_metric_ids": [],
+            "title": "Check duplicate build keys"
+          }
+        ],
+        "title": "Reduce the rows the join probe produces",
+        "validation_steps": [
+          "inspect join keys, key duplication and the join condition",
+          "re-profile after one controlled manual change"
+        ]
+      },
+      "rule_id": "SR3514.JOIN_PROBE_FANOUT",
+      "severity_policy": "product_decision_v0.1",
+      "subject_kinds": [
+        "operator_group"
+      ],
+      "threshold_source": "product_decision_ruleset_0.2.0: strict probe PullRowNum / PushRowNum > 10; suppressed under 100000 output rows",
+      "thresholds": [
+        ">10 probe output/input",
+        ">=100000 probe output rows"
+      ],
+      "typed_inputs": [
+        "PushRowNum",
+        "PullRowNum"
+      ],
+      "version": "0.1.0"
+    },
+    {
+      "applicability": "EXCHANGE plan nodes identified as broadcast: the explicit Topology parent is a JOIN whose operators print DistributionMode BROADCAST and this is its only child exchange whose EXCHANGE_SINK operators print PartType UNPARTITIONED (product derivation; 3.5.14 prints no BROADCAST PartType); typed SUM-merged BytesSent",
+      "category": "exchange_volume",
+      "confidence_policy": "exact complete; text precision interval, partial graph or verified-derived source stage is partial; boundary intersections are suspected",
+      "evaluator_id": "sr3514.broadcast_exchange_bytes",
+      "evaluator_version": "1",
+      "finding_policy": {
+        "confidence": {
+          "bounded_definite": "medium",
+          "exact_definite": "medium",
+          "suspected": "low"
+        },
+        "severity": "moderate"
+      },
+      "formula_source": "StarRocks 3.5.14 HASH_JOIN UniqueMetrics DistributionMode, EXCHANGE_SINK UniqueMetrics PartType and BytesSent; docs query_profile_tuning_recipes.md \"Accidental broadcast\": join type BROADCAST with huge BytesSent",
+      "golden_case_ids": [
+        "broadcast_positive",
+        "broadcast_negative",
+        "broadcast_boundary",
+        "broadcast_missing",
+        "broadcast_version",
+        "broadcast_graph_degraded"
+      ],
+      "limitations": [
+        "local pass-through bytes (BytesPassThrough) are not network bytes and are not counted",
+        "BytesSent is printed rounded; the rule uses its precision interval"
+      ],
+      "recommendation_template": {
+        "expected_changes": [
+          {
+            "direction": "decrease",
+            "metric_id": "BytesSent"
+          }
+        ],
+        "expected_direction": "reduce broadcast bytes after one controlled manual change",
+        "kind": "investigation",
+        "limitations": [
+          "broadcast_row_limit and table statistics are not read"
+        ],
+        "next_step": "Shrink the broadcast side first; if it stays large, consider a shuffle join",
+        "recommendation_id": "rec.exchange.shrink_broadcast@v1",
+        "result_effect": "unchanged",
+        "risk": "a large broadcast does not prove that a shuffle join would be faster",
+        "risk_level": "low",
+        "steps": [
+          {
+            "detail": "Every instance receives the full broadcast input",
+            "evidence_metric_ids": [
+              "BytesSent"
+            ],
+            "title": "Check the broadcast size"
+          },
+          {
+            "detail": "Drop unused rows and columns before the join",
+            "evidence_metric_ids": [
+              "PushRowNum"
+            ],
+            "title": "Filter or project the broadcast side"
+          }
+        ],
+        "title": "Avoid broadcasting a large input",
+        "validation_steps": [
+          "inspect build-side size, statistics, broadcast_row_limit and join hints",
+          "re-profile after one controlled manual change"
+        ]
+      },
+      "rule_id": "SR3514.BROADCAST_EXCHANGE_BYTES",
+      "severity_policy": "product_decision_v0.1",
+      "subject_kinds": [
+        "operator_group"
+      ],
+      "threshold_source": "product_decision_ruleset_0.2.0: strict BROADCAST BytesSent > 100 MiB (104857600 bytes)",
+      "thresholds": [
+        ">100MiB BytesSent"
+      ],
+      "typed_inputs": [
+        "BytesSent"
+      ],
+      "version": "0.1.0"
+    },
+    {
+      "applicability": "plan nodes with AGGREGATE_STREAMING_SINK and AGGREGATE_STREAMING_SOURCE operators; detected 3.5.14 level_1 final merged profile; exact SUM-merged sink PushRowNum and source PullRowNum",
+      "category": "aggregation_efficiency",
+      "confidence_policy": "exact complete; text precision interval, partial graph or verified-derived source stage is partial; boundary intersections are suspected",
+      "evaluator_id": "sr3514.streaming_preagg_ineffective",
+      "evaluator_version": "1",
+      "finding_policy": {
+        "confidence": {
+          "bounded_definite": "medium",
+          "exact_definite": "medium",
+          "suspected": "low"
+        },
+        "severity": "moderate"
+      },
+      "formula_source": "StarRocks 3.5.14 streaming pre-aggregation operators PushRowNum/PullRowNum; docs query_profile_tuning_recipes.md \"Partial aggregation degraded\"",
+      "golden_case_ids": [
+        "preagg_positive",
+        "preagg_negative",
+        "preagg_boundary",
+        "preagg_missing",
+        "preagg_version",
+        "preagg_graph_degraded"
+      ],
+      "limitations": [
+        "an adaptive pass-through may be the right choice for high-cardinality keys",
+        "the rule does not see AggComputeTime or upstream BytesSent"
+      ],
+      "recommendation_template": {
+        "expected_changes": [
+          {
+            "direction": "decrease",
+            "metric_id": "PullRowNum"
+          }
+        ],
+        "expected_direction": "reduce rows leaving the pre-aggregation after one controlled manual change",
+        "kind": "investigation",
+        "limitations": [
+          "grouping key cardinality is not read"
+        ],
+        "next_step": "Check whether the grouping keys repeat enough for pre-aggregation to help",
+        "recommendation_id": "rec.aggregate.review_preagg@v1",
+        "result_effect": "unchanged",
+        "risk": "an ineffective pre-aggregation does not prove that forcing it would be faster",
+        "risk_level": "low",
+        "steps": [
+          {
+            "detail": "Output close to input means the keys barely reduce data before the shuffle",
+            "evidence_metric_ids": [
+              "PushRowNum",
+              "PullRowNum"
+            ],
+            "title": "Compare pre-aggregation output with input"
+          },
+          {
+            "detail": "Count distinct grouping keys with a separate read-only query; nearly unique keys cannot be pre-aggregated",
+            "evidence_metric_ids": [],
+            "title": "Check grouping key cardinality"
+          }
+        ],
+        "title": "Review the streaming pre-aggregation",
+        "validation_steps": [
+          "inspect GROUP BY key cardinality and streaming_preaggregation_mode",
+          "re-profile after one controlled manual change"
+        ]
+      },
+      "rule_id": "SR3514.STREAMING_PREAGG_INEFFECTIVE",
+      "severity_policy": "product_decision_v0.1",
+      "subject_kinds": [
+        "operator_group"
+      ],
+      "threshold_source": "product_decision_ruleset_0.2.0: streaming output rows >= 90% of input rows; suppressed under 1000000 input rows",
+      "thresholds": [
+        ">=90% streaming output/input",
+        ">=1000000 streaming input rows"
+      ],
+      "typed_inputs": [
+        "PushRowNum",
+        "PullRowNum"
+      ],
+      "version": "0.1.0"
+    }
+  ],
+  "ruleset_id": "doctor-v0.1",
+  "semantic_manifest_hash": "84667b9b849fbda0a82933cf908b9884429cb85cee2c69cb7cd0c4fd91374784",
+  "version": "0.3.0"
+}

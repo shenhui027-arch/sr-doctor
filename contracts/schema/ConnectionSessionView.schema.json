@@ -1,0 +1,190 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConnectionSessionView",
+  "type": "object",
+  "required": [
+    "capabilities",
+    "connection_id",
+    "idle_timeout_seconds",
+    "limitations",
+    "state",
+    "tls_mode"
+  ],
+  "properties": {
+    "capabilities": {
+      "$ref": "#/definitions/ConnectionCapabilityReport"
+    },
+    "connection_id": {
+      "type": "string"
+    },
+    "detected_version": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/VersionEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "idle_timeout_seconds": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "state": {
+      "$ref": "#/definitions/ConnectionSessionState"
+    },
+    "time_zone": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TimeZoneEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tls_mode": {
+      "$ref": "#/definitions/TlsMode"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "ConnectionCapabilityReport": {
+      "type": "object",
+      "required": [
+        "audit",
+        "explain_costs",
+        "plan_advisor",
+        "profile_fetch",
+        "profile_list",
+        "time_zone",
+        "version_probe"
+      ],
+      "properties": {
+        "audit": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "audit_statement_filter": {
+          "description": "`isQuery` (TINYINT) and `stmt` were both probed in this session, so the explicit statement-class filter can be applied without a fallback.",
+          "default": "unknown",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ConnectionCapabilityState"
+            }
+          ]
+        },
+        "audit_user_filter": {
+          "default": "unknown",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ConnectionCapabilityState"
+            }
+          ]
+        },
+        "explain_costs": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "plan_advisor": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "profile_fetch": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "profile_list": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "time_zone": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        },
+        "version_probe": {
+          "$ref": "#/definitions/ConnectionCapabilityState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectionCapabilityState": {
+      "type": "string",
+      "enum": [
+        "available",
+        "unavailable",
+        "forbidden",
+        "unknown"
+      ]
+    },
+    "ConnectionSessionState": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "unsupported",
+        "expired",
+        "closed",
+        "failed"
+      ]
+    },
+    "TimeZoneEvidence": {
+      "type": "object",
+      "required": [
+        "current_utc_offset_seconds",
+        "effective_time_zone",
+        "session_time_zone",
+        "source_ref",
+        "system_time_zone"
+      ],
+      "properties": {
+        "current_utc_offset_seconds": {
+          "description": "Observed offset at connection time. Historical rows are never converted with this value because daylight-saving rules may differ at row time.",
+          "type": "integer",
+          "format": "int32"
+        },
+        "effective_time_zone": {
+          "description": "Session zone unless it is `SYSTEM`, then the server-reported system zone.",
+          "type": "string"
+        },
+        "session_time_zone": {
+          "description": "Effective time zone of the exact StarRocks session used by the connector.",
+          "type": "string"
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "system_time_zone": {
+          "description": "FE host time zone reported by StarRocks. This resolves a session value of `SYSTEM` without guessing from the application host.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TlsMode": {
+      "description": "`plaintext` reaches any host the user names (unencrypted, explicit choice); `docker_loopback_plaintext` is the literal-loopback test fixture mode.",
+      "type": "string",
+      "enum": [
+        "verify_full",
+        "docker_loopback_plaintext",
+        "plaintext"
+      ]
+    },
+    "VersionEvidence": {
+      "type": "object",
+      "required": [
+        "source_ref",
+        "value"
+      ],
+      "properties": {
+        "source_ref": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

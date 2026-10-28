@@ -1,0 +1,85 @@
+PLAN COST
+  CPU: 3631305.563678184
+  Memory: 799857.5919996001
+
+PLAN FRAGMENT 0(F02)
+  Output Exprs:8: count | 9: max
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  7:AGGREGATE (merge finalize)
+  |  aggregate: count[([8: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false], max[([9: max, DECIMAL128(38,2), true]); args: DECIMAL128; result: DECIMAL128(38,2); args nullable: true; result nullable: true]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 39991.99959998, 0.0, 8.0, 1.0] ESTIMATE
+  |  * max-->[0.0, 397.37653184954786, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  6:EXCHANGE
+     distribution type: GATHER
+     cardinality: 1
+
+PLAN FRAGMENT 1(F01)
+
+  Input Partition: HASH_PARTITIONED: 3: s_cust
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 06
+
+  5:AGGREGATE (update serialize)
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false], max[([7: sum(6: s_amount), DECIMAL128(38,2), true]); args: DECIMAL128; result: DECIMAL128(38,2); args nullable: true; result nullable: true]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 39991.99959998, 0.0, 8.0, 1.0] ESTIMATE
+  |  * max-->[0.0, 397.37653184954786, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  4:Project
+  |  output columns:
+  |  7 <-> [7: sum(6: s_amount), DECIMAL128(38,2), true]
+  |  cardinality: 39992
+  |  column statistics: 
+  |  * sum(6: s_amount)-->[0.0, 397.37653184954786, 0.0, 8.0, 10063.0] ESTIMATE
+  |  
+  3:ANALYTIC
+  |  functions: [, sum[([6: s_amount, DECIMAL64(12,2), false]); args: DECIMAL64; result: DECIMAL128(38,2); args nullable: false; result nullable: true], ]
+  |  partition by: [3: s_cust, INT, false]
+  |  order by: [1: s_id, BIGINT, false] ASC
+  |  window: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  |  cardinality: 39992
+  |  column statistics: 
+  |  * s_id-->[1.0, 200000.0, 0.0, 8.0, 39991.99959998] ESTIMATE
+  |  * s_cust-->[1.0, 4000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * sum(6: s_amount)-->[0.0, 397.37653184954786, 0.0, 8.0, 10063.0] ESTIMATE
+  |  
+  2:SORT
+  |  order by: [3, INT, false] ASC, [1, BIGINT, false] ASC
+  |  analytic partition by: [3: s_cust, INT, false]
+  |  offset: 0
+  |  cardinality: 39992
+  |  column statistics: 
+  |  * s_id-->[1.0, 200000.0, 0.0, 8.0, 39991.99959998] ESTIMATE
+  |  * s_cust-->[1.0, 4000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 10063.0] ESTIMATE
+  |  
+  1:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [3: s_cust, INT, false]
+     cardinality: 39992
+
+PLAN FRAGMENT 2(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 3: s_cust
+  OutPut Exchange Id: 01
+
+  0:OlapScanNode
+     table: sales, rollup: sales
+     preAggregation: on
+     Predicates: [3: s_cust, INT, false] < 4000
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10161,10163,10165,10167,10169,10171,10173,10175
+     actualRows=0, avgRowSize=20.0
+     cardinality: 39992
+     column statistics: 
+     * s_id-->[1.0, 200000.0, 0.0, 8.0, 39991.99959998] ESTIMATE
+     * s_cust-->[1.0, 4000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * s_amount-->[0.0, 99.99, 0.0, 8.0, 10063.0] ESTIMATE

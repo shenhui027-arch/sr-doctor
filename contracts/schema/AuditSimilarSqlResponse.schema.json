@@ -1,0 +1,1097 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuditSimilarSqlResponse",
+  "type": "object",
+  "required": [
+    "cluster_identity",
+    "clusters",
+    "connection_id",
+    "coverage",
+    "dimensions",
+    "independent",
+    "limitations",
+    "schema_version",
+    "scope",
+    "structure_version",
+    "top",
+    "unavailable"
+  ],
+  "properties": {
+    "audit_timestamp_time_zone": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TimeZoneEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "cluster_identity": {
+      "$ref": "#/definitions/AuditClusterIdentity"
+    },
+    "clusters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SimilarSqlCluster"
+      }
+    },
+    "connection_id": {
+      "type": "string"
+    },
+    "coverage": {
+      "$ref": "#/definitions/SimilarSqlCoverage"
+    },
+    "dimensions": {
+      "$ref": "#/definitions/SimilarSqlDimensions"
+    },
+    "independent": {
+      "description": "Members with a structure but no similar peer, plus detached members.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SimilarSqlMember"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "schema_version": {
+      "$ref": "#/definitions/AuditWorkloadVersion"
+    },
+    "scope": {
+      "$ref": "#/definitions/AuditScope"
+    },
+    "structure_version": {
+      "type": "string"
+    },
+    "top": {
+      "$ref": "#/definitions/AuditTopWindow"
+    },
+    "unavailable": {
+      "description": "Members whose structure could not be extracted; never clustered.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SimilarSqlMember"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AuditAggregateFact": {
+      "type": "object",
+      "required": [
+        "aggregation",
+        "metric"
+      ],
+      "properties": {
+        "aggregation": {
+          "$ref": "#/definitions/AuditAggregation"
+        },
+        "metric": {
+          "$ref": "#/definitions/AuditMetricFact"
+        },
+        "source_nonnegative_count": {
+          "description": "Source-side nonnegative numeric rows, not a second parser verdict.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditAggregation": {
+      "type": "string",
+      "enum": [
+        "sum",
+        "max"
+      ]
+    },
+    "AuditClusterIdentity": {
+      "oneOf": [
+        {
+          "description": "No native cross-connection cluster identity has been established.",
+          "type": "object",
+          "required": [
+            "connection_id",
+            "detected_version",
+            "state"
+          ],
+          "properties": {
+            "connection_id": {
+              "type": "string"
+            },
+            "detected_version": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "session_scoped"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditErrorProportion": {
+      "description": "Exact numerator/denominator facts for a family's source ERR proportion. Decimal strings deliberately avoid a lossy percentage or JSON number.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "denominator",
+            "numerator",
+            "state"
+          ],
+          "properties": {
+            "denominator": {
+              "type": "string"
+            },
+            "numerator": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "exact"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "denominator",
+            "numerator",
+            "state"
+          ],
+          "properties": {
+            "denominator": {
+              "type": "string"
+            },
+            "numerator": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_applicable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditErrorProportionUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditErrorProportionInvalidReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "invalid"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditErrorProportionInvalidReason": {
+      "type": "string",
+      "enum": [
+        "error_count_invalid",
+        "execution_count_invalid",
+        "numerator_exceeds_denominator"
+      ]
+    },
+    "AuditErrorProportionUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "legacy_field_absent",
+        "error_count_missing",
+        "execution_count_missing"
+      ]
+    },
+    "AuditFingerprintCoverage": {
+      "type": "object",
+      "required": [
+        "eligible_event_count",
+        "family_count",
+        "fingerprinted_event_count",
+        "partial_event_count",
+        "read_event_count",
+        "read_limit",
+        "source",
+        "unavailable"
+      ],
+      "properties": {
+        "eligible_event_count": {
+          "description": "Canonical executions in the scope with a complete context and no valid native digest. Executions missing context are not eligible.",
+          "type": "string"
+        },
+        "family_count": {
+          "type": "string"
+        },
+        "fingerprinted_event_count": {
+          "type": "string"
+        },
+        "partial_event_count": {
+          "description": "Truncated statements: read, not grouped, not ranked.",
+          "type": "string"
+        },
+        "read_event_count": {
+          "type": "string"
+        },
+        "read_limit": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "source": {
+          "$ref": "#/definitions/AuditFingerprintSourceCoverage"
+        },
+        "unavailable": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditFingerprintUnavailableCount"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditFingerprintPartialReason": {
+      "type": "string",
+      "enum": [
+        "read_limit"
+      ]
+    },
+    "AuditFingerprintSourceCoverage": {
+      "oneOf": [
+        {
+          "description": "Every eligible execution in the window was read.",
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "complete"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Only the newest `read_limit` eligible executions were read.",
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditFingerprintPartialReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "partial"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditFingerprintUnavailableCount": {
+      "type": "object",
+      "required": [
+        "count",
+        "reason"
+      ],
+      "properties": {
+        "count": {
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/definitions/ProductSqlFingerprintUnavailableReason"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditMetricFact": {
+      "type": "object",
+      "required": [
+        "input",
+        "metric_id",
+        "state"
+      ],
+      "properties": {
+        "canonical_number": {
+          "description": "Decimal text only; never encode audit counters as a JSON number.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "$ref": "#/definitions/AuditMetricInput"
+        },
+        "metric_id": {
+          "$ref": "#/definitions/AuditMetricId"
+        },
+        "parser_state": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ParseState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/AuditMetricState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditMetricId": {
+      "type": "string",
+      "enum": [
+        "query_time",
+        "pending_time",
+        "scan_bytes",
+        "scan_rows",
+        "cpu_cost",
+        "memory_cost",
+        "return_rows"
+      ]
+    },
+    "AuditMetricInput": {
+      "description": "Lossless transport input. `Text(\"0\")` is deliberately distinct from SQL NULL and remains decimal text so JavaScript never receives a lossy number.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "sql_null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditOptionalFactUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "AuditMetricState": {
+      "description": "This is a result state, not a second parser. The core AuditLoader adapter must map its one typed-parser outcome and audit-only negative policy here.",
+      "type": "string",
+      "enum": [
+        "exact",
+        "missing",
+        "invalid",
+        "negative_sentinel",
+        "overflow",
+        "precision_unsafe",
+        "unavailable"
+      ]
+    },
+    "AuditOptionalFactUnavailableReason": {
+      "description": "The existing fixed schema probe did not prove an optional AuditLoader source column. This is deliberately distinct from a present SQL NULL.",
+      "type": "string",
+      "enum": [
+        "source_column_absent",
+        "conflicting_source_rows"
+      ]
+    },
+    "AuditScope": {
+      "type": "object",
+      "required": [
+        "statement_filter",
+        "window"
+      ],
+      "properties": {
+        "catalog": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "database": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "native_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resource_group": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditTerminalState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "statement_filter": {
+          "description": "Explicit, user-visible statement-class filter. It is part of the scope so every Audit read (window cards, Top tables, families, concurrency, SQL lookup) uses the same population; hidden rows stay countable.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditStatementFilter"
+            }
+          ]
+        },
+        "user": {
+          "description": "Optional exact AuditLoader source-user filter. The source column is capability-probed; a requested value never falls back to an unfiltered read when that column is absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "window": {
+          "$ref": "#/definitions/AuditWindow"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditStatementFilter": {
+      "description": "Product-owned statement-class filter over AuditLoader rows.\n\n`ExcludeDoctorAndNonQuery` keeps only rows whose FE-reported `isQuery` is exactly 1 (official 3.5.14 `ConnectContext.isQueryStmt`: a `QueryStatement` or EXECUTE of a prepared query; statements that fail to parse keep the initial `true`) and whose `stmt` does not start with this product's fixed statement marker. SET/SHOW/DDL/DML rows, rows with a NULL `isQuery`, and this tool's own statements are hidden but counted.",
+      "type": "string",
+      "enum": [
+        "all",
+        "exclude_doctor_and_non_query"
+      ]
+    },
+    "AuditTerminalState": {
+      "type": "string",
+      "enum": [
+        "finished",
+        "error"
+      ]
+    },
+    "AuditTopWindow": {
+      "type": "object",
+      "required": [
+        "full_window_count",
+        "requested_limit",
+        "returned_count",
+        "truncated"
+      ],
+      "properties": {
+        "full_window_count": {
+          "type": "string"
+        },
+        "requested_limit": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "returned_count": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "truncated": {
+          "description": "Based on the server's full-window count, not rows.len() == limit.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditWindow": {
+      "type": "object",
+      "required": [
+        "end_seconds",
+        "start_seconds"
+      ],
+      "properties": {
+        "end_seconds": {
+          "description": "Exclusive Unix second. Adjacent windows therefore cannot overlap.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "start_seconds": {
+          "description": "Inclusive Unix second. This is a `u32`, never a lossy JavaScript `u64`.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditWorkloadVersion": {
+      "type": "string",
+      "enum": [
+        "audit-workload.v1"
+      ]
+    },
+    "CanonicalNumber": {
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/NumberKind"
+        },
+        "scale": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "value": {
+          "description": "Base-10 only: JSON numbers are never used for counters.",
+          "type": "string"
+        }
+      }
+    },
+    "NumberKind": {
+      "type": "string",
+      "enum": [
+        "integer",
+        "decimal"
+      ]
+    },
+    "ParseState": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "missing",
+        "invalid",
+        "partial",
+        "overflow"
+      ]
+    },
+    "ProductSqlFingerprintUnavailableReason": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "statement_sql_null",
+            "empty_statement",
+            "unbalanced_parentheses",
+            "multiple_statements"
+          ]
+        },
+        {
+          "description": "The statement read returned no row for this execution.",
+          "type": "string",
+          "enum": [
+            "statement_not_read"
+          ]
+        },
+        {
+          "description": "Duplicate audit rows of one execution disagree on `stmt`.",
+          "type": "string",
+          "enum": [
+            "conflicting_source_rows"
+          ]
+        },
+        {
+          "description": "Unterminated quote, comment or identifier, or a character outside the fixed-version lexer (for example `#`).",
+          "type": "string",
+          "enum": [
+            "lexical_error"
+          ]
+        },
+        {
+          "description": "Only SELECT / WITH / INSERT / UPDATE / DELETE get an official digest.",
+          "type": "string",
+          "enum": [
+            "unsupported_statement"
+          ]
+        },
+        {
+          "description": "The official digest replaces 16+ flattened AND/OR terms with their column set; this product does not reproduce that rule.",
+          "type": "string",
+          "enum": [
+            "massive_compound_predicate"
+          ]
+        }
+      ]
+    },
+    "SimilarSqlBasis": {
+      "description": "The explained basis. Lists are sorted and hold only enabled dimensions' facts; a disabled dimension is an empty list plus `false` in `dimensions`.",
+      "type": "object",
+      "required": [
+        "joins",
+        "predicate_columns",
+        "tables"
+      ],
+      "properties": {
+        "joins": {
+          "description": "e.g. `INNER JOIN customers.id = orders.cid`; empty when there is no join.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "predicate_columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "SimilarSqlCluster": {
+      "type": "object",
+      "required": [
+        "aggregates",
+        "basis",
+        "catalog",
+        "cluster_key",
+        "database",
+        "error_count",
+        "error_proportion",
+        "execution_count",
+        "members",
+        "refined"
+      ],
+      "properties": {
+        "aggregates": {
+          "description": "Summed over members; `source_nonnegative_count` says how many executions carried each metric.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditAggregateFact"
+          }
+        },
+        "basis": {
+          "$ref": "#/definitions/SimilarSqlBasis"
+        },
+        "catalog": {
+          "type": "string"
+        },
+        "cluster_key": {
+          "type": "string"
+        },
+        "database": {
+          "type": "string"
+        },
+        "error_count": {
+          "type": "string"
+        },
+        "error_proportion": {
+          "$ref": "#/definitions/AuditErrorProportion"
+        },
+        "execution_count": {
+          "type": "string"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SimilarSqlMember"
+          }
+        },
+        "refined": {
+          "description": "Split by predicate columns at the user's request.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SimilarSqlCoverage": {
+      "type": "object",
+      "required": [
+        "clustered_member_count",
+        "exact_families",
+        "fingerprint",
+        "independent_member_count",
+        "member_count",
+        "unavailable_member_count"
+      ],
+      "properties": {
+        "clustered_member_count": {
+          "type": "string"
+        },
+        "exact_families": {
+          "$ref": "#/definitions/SimilarSqlFamilySource"
+        },
+        "fingerprint": {
+          "$ref": "#/definitions/AuditFingerprintCoverage"
+        },
+        "independent_member_count": {
+          "type": "string"
+        },
+        "member_count": {
+          "type": "string"
+        },
+        "unavailable_member_count": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SimilarSqlDimensions": {
+      "type": "object",
+      "required": [
+        "join",
+        "predicates",
+        "tables"
+      ],
+      "properties": {
+        "join": {
+          "type": "boolean"
+        },
+        "predicates": {
+          "type": "boolean"
+        },
+        "tables": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SimilarSqlFamilySource": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "complete"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Only the first `read` exact families by the requested sort were read.",
+          "type": "object",
+          "required": [
+            "in_window",
+            "read",
+            "state"
+          ],
+          "properties": {
+            "in_window": {
+              "type": "string"
+            },
+            "read": {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "partial"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "SimilarSqlMember": {
+      "type": "object",
+      "required": [
+        "aggregates",
+        "catalog",
+        "database",
+        "detached",
+        "error_count",
+        "error_proportion",
+        "execution_count",
+        "member_key",
+        "source",
+        "structure"
+      ],
+      "properties": {
+        "aggregates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditAggregateFact"
+          }
+        },
+        "catalog": {
+          "type": "string"
+        },
+        "database": {
+          "type": "string"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "error_count": {
+          "type": "string"
+        },
+        "error_proportion": {
+          "$ref": "#/definitions/AuditErrorProportion"
+        },
+        "execution_count": {
+          "type": "string"
+        },
+        "member_key": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/definitions/SimilarSqlMemberSource"
+        },
+        "structure": {
+          "$ref": "#/definitions/SimilarSqlStructure"
+        },
+        "template": {
+          "description": "Literal-free template; for an official family, normalized from its most recent member's statement. `None` when it could not be made.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "SimilarSqlMemberSource": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "native_digest"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "official_digest"
+              ]
+            },
+            "native_digest": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Made by this product; not a StarRocks digest.",
+          "type": "object",
+          "required": [
+            "fingerprint",
+            "kind"
+          ],
+          "properties": {
+            "fingerprint": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "product_fingerprint"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "SimilarSqlStructure": {
+      "oneOf": [
+        {
+          "description": "The member's full basis, independent of the enabled dimensions.",
+          "type": "object",
+          "required": [
+            "basis",
+            "state"
+          ],
+          "properties": {
+            "basis": {
+              "$ref": "#/definitions/SimilarSqlBasis"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/SimilarSqlUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "SimilarSqlUnavailableReason": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "not_select",
+            "common_table_expression",
+            "set_operation",
+            "subquery",
+            "derived_table",
+            "unsupported_from_clause"
+          ]
+        },
+        {
+          "description": "The statement was truncated, unreadable, or not normalizable (A1 rules).",
+          "type": "string",
+          "enum": [
+            "template_unavailable"
+          ]
+        }
+      ]
+    },
+    "TimeZoneEvidence": {
+      "type": "object",
+      "required": [
+        "current_utc_offset_seconds",
+        "effective_time_zone",
+        "session_time_zone",
+        "source_ref",
+        "system_time_zone"
+      ],
+      "properties": {
+        "current_utc_offset_seconds": {
+          "description": "Observed offset at connection time. Historical rows are never converted with this value because daylight-saving rules may differ at row time.",
+          "type": "integer",
+          "format": "int32"
+        },
+        "effective_time_zone": {
+          "description": "Session zone unless it is `SYSTEM`, then the server-reported system zone.",
+          "type": "string"
+        },
+        "session_time_zone": {
+          "description": "Effective time zone of the exact StarRocks session used by the connector.",
+          "type": "string"
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "system_time_zone": {
+          "description": "FE host time zone reported by StarRocks. This resolves a session value of `SYSTEM` without guessing from the application host.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

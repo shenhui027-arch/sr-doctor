@@ -1,0 +1,308 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Finding",
+  "type": "object",
+  "required": [
+    "category",
+    "confidence",
+    "confidence_reasons",
+    "evidence",
+    "evidence_completeness",
+    "evidence_completeness_reasons",
+    "finding_id",
+    "limitations",
+    "recommendation",
+    "related_finding_refs",
+    "rule_id",
+    "rule_trace_ref",
+    "rule_version",
+    "severity"
+  ],
+  "properties": {
+    "category": {
+      "type": "string"
+    },
+    "confidence": {
+      "$ref": "#/definitions/FindingConfidence"
+    },
+    "confidence_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_completeness": {
+      "$ref": "#/definitions/EvidenceCompleteness"
+    },
+    "evidence_completeness_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "finding_id": {
+      "type": "string"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "measurements": {
+      "description": "What the rule measured on its subject, in the rule's own terms (a skew ratio, a fan-out ratio, bytes sent, a time share). Empty when the rule publishes no measurement; the browser never derives one.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FindingMeasurement"
+      }
+    },
+    "recommendation": {
+      "$ref": "#/definitions/Recommendation"
+    },
+    "related_finding_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rule_id": {
+      "type": "string"
+    },
+    "rule_trace_ref": {
+      "type": "string"
+    },
+    "rule_version": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string"
+    },
+    "subject_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "definitions": {
+    "EvidenceCompleteness": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "ExpectedChangeDirection": {
+      "type": "string",
+      "enum": [
+        "decrease",
+        "increase"
+      ]
+    },
+    "ExpectedMetricChange": {
+      "type": "object",
+      "required": [
+        "direction",
+        "metric_id"
+      ],
+      "properties": {
+        "direction": {
+          "$ref": "#/definitions/ExpectedChangeDirection"
+        },
+        "metric_id": {
+          "description": "A registered metric id of the finding's subject.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "FindingConfidence": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "FindingMeasurement": {
+      "description": "One value a rule evaluator computed from the typed inputs it compared. The text is formatted by the backend; bounded inputs give an interval.",
+      "type": "object",
+      "required": [
+        "display_text",
+        "input_refs",
+        "measurement_id"
+      ],
+      "properties": {
+        "display_text": {
+          "type": "string"
+        },
+        "input_refs": {
+          "description": "Metric cells (`MetricCell.metric_cell_ref`) the value was computed from.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "measurement_id": {
+          "description": "Stable identifier, e.g. `slowest_over_mean_driver_time`.",
+          "type": "string"
+        },
+        "operator_type": {
+          "description": "Physical operator the value belongs to when narrower than the plan node.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threshold_text": {
+          "description": "The rule's trigger condition on this value (e.g. `> 2×`); absent for context values that are not compared.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Recommendation": {
+      "type": "object",
+      "required": [
+        "expected_changes",
+        "expected_direction",
+        "kind",
+        "limitations",
+        "next_step",
+        "recommendation_id",
+        "result_effect",
+        "risk",
+        "risk_level",
+        "steps",
+        "title",
+        "validation_steps"
+      ],
+      "properties": {
+        "expected_changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExpectedMetricChange"
+          }
+        },
+        "expected_direction": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/RecommendationKind"
+        },
+        "limitations": {
+          "description": "What the recommendation did not check (the finding's own limitations describe its measurement instead).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "next_step": {
+          "description": "What to do first, in one sentence.",
+          "type": "string"
+        },
+        "recommendation_id": {
+          "description": "Stable id of the recommendation text, e.g. `rec.scan.reduce_read@v1`.",
+          "type": "string"
+        },
+        "result_effect": {
+          "description": "Whether a correct change is expected to keep the query result.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RecommendationResultEffect"
+            }
+          ]
+        },
+        "risk": {
+          "type": "string"
+        },
+        "risk_level": {
+          "$ref": "#/definitions/RecommendationRiskLevel"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RecommendationStep"
+          }
+        },
+        "title": {
+          "description": "Short action title; the finding category names the problem instead.",
+          "type": "string"
+        },
+        "validation_steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "RecommendationKind": {
+      "oneOf": [
+        {
+          "description": "Points at where the cost is (time-share rules).",
+          "type": "string",
+          "enum": [
+            "optimization_target"
+          ]
+        },
+        {
+          "description": "A concrete check for an observed signal (spill, skew, fan-out…).",
+          "type": "string",
+          "enum": [
+            "investigation"
+          ]
+        }
+      ]
+    },
+    "RecommendationResultEffect": {
+      "type": "string",
+      "enum": [
+        "unchanged",
+        "may_change"
+      ]
+    },
+    "RecommendationRiskLevel": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "RecommendationStep": {
+      "type": "object",
+      "required": [
+        "detail",
+        "evidence_refs",
+        "title"
+      ],
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "description": "Exact metric cells (`MetricCell.metric_cell_ref`) of the finding's own subject that this step reads; empty when none is printed.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

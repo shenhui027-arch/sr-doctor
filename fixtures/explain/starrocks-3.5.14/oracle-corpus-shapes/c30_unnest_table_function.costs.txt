@@ -1,0 +1,87 @@
+PLAN COST
+  CPU: 125731.75
+  Memory: 18240.0
+
+PLAN FRAGMENT 0(F02)
+  Output Exprs:5: part | 7: count
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  7:MERGING-EXCHANGE
+     distribution type: GATHER
+     limit: 5
+     cardinality: 5
+     column statistics: 
+     * part-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+     * count-->[0.0, 1250.0, 0.0, 8.0, 625.0] ESTIMATE
+
+PLAN FRAGMENT 1(F01)
+
+  Input Partition: HASH_PARTITIONED: 5: part
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 07
+
+  6:TOP-N
+  |  order by: [7, BIGINT, false] DESC, [5, VARCHAR, true] ASC
+  |  offset: 0
+  |  limit: 5
+  |  cardinality: 5
+  |  column statistics: 
+  |  * part-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[0.0, 1250.0, 0.0, 8.0, 625.0] ESTIMATE
+  |  
+  5:AGGREGATE (merge finalize)
+  |  aggregate: count[([7: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false]
+  |  group by: [5: part, VARCHAR, true]
+  |  cardinality: 625
+  |  column statistics: 
+  |  * part-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[0.0, 1250.0, 0.0, 8.0, 625.0] ESTIMATE
+  |  
+  4:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [5: part, VARCHAR, true]
+     cardinality: 1250
+
+PLAN FRAGMENT 2(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 5: part
+  OutPut Exchange Id: 04
+
+  3:AGGREGATE (update serialize)
+  |  STREAMING
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false]
+  |  group by: [5: part, VARCHAR, true]
+  |  cardinality: 1250
+  |  column statistics: 
+  |  * part-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  2:TableValueFunction
+  |  tableFunctionName: unnest
+  |  columns: [unnest]
+  |  returnTypes: [VARCHAR]
+  |  cardinality: 2500
+  |  column statistics: 
+  |  * part-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  1:Project
+  |  output columns:
+  |  6 <-> split[([2: c_name, VARCHAR(32), false], '_'); args: VARCHAR,VARCHAR; result: ARRAY<VARCHAR>; args nullable: false; result nullable: true]
+  |  cardinality: 2500
+  |  column statistics: 
+  |  * split-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  0:OlapScanNode
+     table: customers, rollup: customers
+     preAggregation: on
+     Predicates: [3: c_region, INT, false] < 3
+     partitionsRatio=1/1, tabletsRatio=4/4
+     tabletList=10259,10261,10263,10265
+     actualRows=0, avgRowSize=14.4447
+     cardinality: 2500
+     column statistics: 
+     * c_name-->[-Infinity, Infinity, 0.0, 9.4447, 2500.0] ESTIMATE
+     * c_region-->[0.0, 3.0, 0.0, 4.0, 25.0] ESTIMATE
+     * split-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN

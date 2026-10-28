@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RunningProfileCandidateListRequest",
+  "description": "A bounded ProfileList-only observation. `at_limit` reports the remote ProfileList cap before Running filtering; `local_truncated` reports the independent caller cap after filtering. Neither is a coverage claim.",
+  "type": "object",
+  "required": [
+    "connection_id",
+    "limit"
+  ],
+  "properties": {
+    "connection_id": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0.0
+    },
+    "statement_filter": {
+      "description": "Hides this tool's own marked statements from the Running list. An omitted field keeps the earlier unfiltered request semantics (`all`).",
+      "default": "all",
+      "allOf": [
+        {
+          "$ref": "#/definitions/AuditStatementFilter"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AuditStatementFilter": {
+      "description": "Product-owned statement-class filter over AuditLoader rows.\n\n`ExcludeDoctorAndNonQuery` keeps only rows whose FE-reported `isQuery` is exactly 1 (official 3.5.14 `ConnectContext.isQueryStmt`: a `QueryStatement` or EXECUTE of a prepared query; statements that fail to parse keep the initial `true`) and whose `stmt` does not start with this product's fixed statement marker. SET/SHOW/DDL/DML rows, rows with a NULL `isQuery`, and this tool's own statements are hidden but counted.",
+      "type": "string",
+      "enum": [
+        "all",
+        "exclude_doctor_and_non_query"
+      ]
+    }
+  }
+}

@@ -1,0 +1,196 @@
+<div align="center">
+
+# SR Doctor for StarRocks
+
+[简体中文](README.md) · **English** · [繁體中文](README.zh-TW.md)
+
+**A workbench for StarRocks query Profile diagnosis and SQL quality monitoring**
+
+<sub>An independent community tool, not an official StarRocks product, and not affiliated with or endorsed by the StarRocks project. StarRocks is a trademark of its project owner; see [Trademarks](#trademarks).</sub>
+
+See where a slow query spends its time and why, and keep finding the SQL that is getting slower.<br>
+Every conclusion comes with evidence; when the evidence is not enough, it says so.
+
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![StarRocks](https://img.shields.io/badge/StarRocks-3.1～4.1-1f55e0.svg)](docs/guide/faq.md)
+[![Backend](https://img.shields.io/badge/backend-Rust%20%2F%20Axum-b7410e.svg)](docs/development/architecture.md)
+[![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
+[![Status](https://img.shields.io/badge/v1.0-local%20verified%20·%20production%20pending-orange.svg)](#project-status)
+
+[Quick start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) · [Docs](#documentation) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+
+<img src="docs/assets/screenshots/02-doctor.png" alt="Doctor workspace: execution structure, findings by severity and their evidence" width="900">
+
+</div>
+
+> The product UI is bilingual (English and Simplified Chinese). The detailed guides under `docs/` are written in Simplified Chinese.
+
+## Why
+
+A StarRocks Query Profile holds a great deal: dozens of fragments, hundreds of operators, thousands of counters. Reading a conclusion out of it usually takes experience, and the conclusion is hard to check. SR Doctor turns this into a workbench whose results are **evidence-based and verifiable**:
+
+- **Official semantics only**: metric units, operator merging and time share follow the official StarRocks source code, not guesses. StarRocks 3.1 and later is supported with one 3.5.14 baseline rule set plus per-release deltas found by auditing the official source.
+- **Every conclusion is traceable**: findings carry evidence, confidence, limitations and the location in the raw Profile; the execution structure only draws relations it can prove.
+- **Missing means missing**: missing data, parse failures, too few samples and incomparable versions are labelled as such, never turned into `0` or a forced conclusion.
+- **Read-only by default, easy to deploy**: one command on a Linux server, and the team uses it from a browser; connect to StarRocks with IP, port, user and password.
+
+## Quick start
+
+On a Linux server with Docker and Compose:
+
+```bash
+git clone https://github.com/shenhui027-arch/sr-doctor.git
+cd sr-doctor
+docker compose up -d --build
+docker compose exec doctor cat /etc/sr-doctor/access-token   # generated on first start
+```
+
+Then:
+
+1. Open `http://<server>:8000` in a browser and enter the access token;
+2. Click **Connect** and enter the StarRocks FE IP, port (default `9030`), user and password;
+3. Pick an audit record or a Profile under **Queries** to see its diagnosis.
+
+No cluster? **Import a Profile** on the first page to analyze a JSON or text Profile offline.
+
+> For status, backup and upgrade commands, use `./deploy.sh`, which wraps the same `compose.yaml`. No internet access on the server? Run `./deploy.sh package` on a connected machine, copy the offline package to the server, extract it and run `./deploy.sh`. Other ways to run it (local process, SSH tunnel, HTTPS reverse proxy) are in the [deployment guide (Chinese)](docs/guide/deployment.md).
+
+## Features
+
+### Profile diagnosis
+
+| Capability | What it does |
+|---|---|
+| Import and fetch | Import JSON/text Profiles offline, or connect read-only and fetch them from the audit history, the Profile list or running queries |
+| Real execution structure | Fragment and operator topology; explicit, verified-derived and partial relations are kept apart and no edge is invented |
+| Findings | Ordered by severity, each with evidence, confidence, limitations and a recommendation; no health score |
+| Operators and metrics | Every counter goes through one typed metric parser; the raw Profile and its provenance are always one click away |
+| Recommendations | Each links its finding, operator and source evidence, with investigation steps and a verification plan; SQL is never changed automatically |
+| Before / after | Measured changes as intervals; a zero baseline gives only the absolute change; differing semantics are marked "not comparable" |
+| SQL workspace | A fixed `EXPLAIN COSTS` topology; with "Runtime Top" explicitly enabled, one restricted `SELECT`/`WITH` can be run and its Profile analyzed |
+| Export | Redacted analysis and comparison reports |
+
+### SQL quality monitoring (v1.0)
+
+| Capability | What it does |
+|---|---|
+| Fingerprints and clusters | The official digest when present, otherwise a normalized fingerprint marked "unofficial"; similar-SQL clusters show why they were merged and can be split |
+| History and collection | Bounded incremental reads of the audit log while connected: one connection, a fixed period, row and timeout limits; over budget it skips and marks "partial" |
+| Trends and regressions | Hourly medians with a baseline band; too few samples, version or rule changes and collection gaps are labelled, never interpolated |
+| In-app alerts | Raised only by regression checks, with severity, confidence and evidence completeness shown separately |
+| Governance queue | New → triaged → in progress → pending verification → closed; an item closes only when a before/after comparison confirms the improvement |
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/01-first-run.png" alt="First run"><br><sub><b>First run</b>: import a Profile offline or connect read-only</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/03-recommendations.png" alt="Recommendations"><br><sub><b>Recommendations</b>: linked to findings, operators and source evidence</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/04-compare.png" alt="Before / after"><br><sub><b>Before / after</b>: measured intervals, finding changes and incomparable items</sub></td>
+    <td><img src="docs/assets/screenshots/06-queries-audit.png" alt="Audit history"><br><sub><b>Audit history</b>: similar SQL grouped by the official digest</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/assets/screenshots/11-topology.png" alt="Execution structure"><br><sub><b>Execution structure</b>: fragment containers, operator category colours, nodes with findings outlined in red, upstream output rows and join probe/build inputs on the edges</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/07-trends.png" alt="Template trends"><br><sub><b>Template trends</b>: hourly medians and the baseline band</sub></td>
+    <td><img src="docs/assets/screenshots/08-collection.png" alt="Collection and history"><br><sub><b>Collection and history</b>: watermarks, read budget and coverage</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/09-alerts.png" alt="Alerts"><br><sub><b>Alerts</b>: regression checks and their evidence</sub></td>
+    <td><img src="docs/assets/screenshots/10-governance.png" alt="Governance queue"><br><sub><b>Governance queue</b>: pin a baseline, close after verification</sub></td>
+  </tr>
+</table>
+
+<sub>All screenshots are of the running product (UI in Chinese). Offline pages use the official 3.5.14 corpus in this repository; connected and monitoring pages use a local Docker StarRocks 3.5.14 fixture with a real test workload plus a stretch of history labelled as synthetic. None of it is production data.</sub>
+
+## How it works
+
+```mermaid
+flowchart LR
+    B[Browser] -->|access token → session cookie| API[doctor-api<br>Rust / Axum]
+    API --> CORE[Diagnosis core<br>IR · metric parser · rules · compare]
+    CORE --> VP[VersionPack<br>3.5.14 baseline + release deltas]
+    API -->|read-only MySQL protocol| SR[(StarRocks FE)]
+    API --> H[(SQLite history<br>redacted templates and aggregates only)]
+```
+
+One process serves both the pages and the API; the frontend renders what the backend returns and never parses Profiles or recomputes metrics itself. See the [architecture overview (Chinese)](docs/development/architecture.md).
+
+## Security and boundaries
+
+- **Read-only connections**: no DDL/DML, multi-statements or `EXPLAIN ANALYZE`; SQL and settings are never changed automatically.
+- **Credentials never touch disk**: StarRocks passwords live only in a short-lived in-memory session; they are never returned to the page or logged.
+- **Redacted history**: only redacted templates, fingerprints and hourly aggregates, kept 30 days by default; no SQL literals, raw Profiles or passwords.
+- **Access control**: a server deployment refuses to start without an access token; writes also require same-origin and a CSRF token. All users share one token; there are no accounts or roles.
+- **Transport**: plaintext by default to any reachable host, clearly labelled in the UI; TLS verify-full when the FE has SSL enabled.
+
+The full security model and how to report a vulnerability are in [SECURITY.md](SECURITY.md).
+
+## Supported StarRocks versions
+
+Every line from **3.1** on is supported; the audit currently reaches 4.1. There is one rule set (the 3.5.14 baseline); other releases apply deltas found by auditing the official source release by release, and every line has been checked node by node against the official `ANALYZE PROFILE` on official images.
+
+| Line | Status | Notes |
+|---|---|---|
+| 3.1 (3.1.0–3.1.17) | ✅ Supported | No Plan Advisor; the early spellings of 3.1.0–3.1.3 (counter format, unnumbered operators, output-rows recipe, missing query counters) are handled per the official source |
+| 3.2 (3.2.0–3.2.16) | ✅ Supported | No Plan Advisor; 3.2.9 and earlier lack some query-level memory counters, shown as unavailable |
+| 3.3 (3.3.0–3.3.22) | ✅ Supported | No Plan Advisor; an official merge defect in 3.3.0–3.3.11 computes maxima wrongly, so `__MAX_OF_` counters are not used as evidence there |
+| 3.4 (3.4.0–3.4.10) | ✅ Supported | 3.4.0–3.4.1 have the same merge defect |
+| 3.5 (3.5.0–3.5.21) | ✅ Supported | The 3.5.14 semantic baseline is on this line |
+| 4.0 (4.0.0–4.0.17) | ✅ Supported | 4.0.17 takes query CPU and spill as the max per BE, then sums over BEs; handled |
+| 4.1 (4.1.0–4.1.7) | ✅ Supported | Same as above (4.1.7) |
+| New lines (4.2 on) and newer patches of supported lines | ⏳ After audit | Registered only after a source audit and an official-image smoke test; until then no nearby rules are borrowed and metrics are unavailable |
+| 2.5, 3.0 | ❌ Not supported | See below |
+
+**Why 2.5 and 3.0 are no longer supported:**
+
+- **No official semantics to rely on**: the official operator time-share and output-rows algorithm (`ExplainAnalyzer`) arrives in 3.1. 2.5 and 3.0 Profiles also print no topology and carry no final-snapshot or merge markers. An execution graph, time share or health conclusion would have to be derived by us, with no official `ANALYZE PROFILE` to check it against. That breaks this project's rule: official semantics only, and missing means missing.
+- **Long out of maintenance**: the last 3.0 patch is 3.0.9 (2023-12) and the last 2.5 patch is 2.5.22 (2024-06).
+- **Cost out of proportion**: their text Profile layout (execution section header, query state spelling, unnumbered operators) differs from 3.1 on, which needs a separate parser branch for readings that cannot reach a conclusion.
+
+Connecting to 2.5 or 3.0 shows "unsupported version" and reads no audit or Profile; an imported Profile from them is marked as an unsupported version, with every metric unavailable and no numeric conclusion. 3.1–3.4 are no longer maintained by StarRocks either, but they carry the official semantics and have been verified node by node, so they stay supported.
+
+## Project status
+
+| | Status |
+|---|---|
+| Latest release | v1.0 in development (`main`). From v1.0, servers are deployed with Docker |
+| `main` (v1.0) | SQL quality monitoring stages A–D developed and accepted locally; all 19 issues from the project-wide audit fixed |
+| Local verification | Local CI passes; on fixed-digest official `starrocks/*:3.5.14` Docker fixtures, the fingerprint, collection, trends, alerts and governance, multi-BE, release-audit and TLS verify-full E2E tests pass |
+| Production acceptance | **Pending**: the G1 read-only production pilot and G2 real-workload calibration have not been done, so it is not claimed to be production-safe; remote clusters are not collected by default and alert thresholds are marked as on trial |
+| Supported versions | StarRocks **3.1 and later** (audited 3.1–4.1); 2.5 and 3.0 are not supported. See [Supported StarRocks versions](#supported-starrocks-versions) |
+
+Later plans (multiple users and permissions, outbound notifications) are outside v1.0.
+
+## Documentation
+
+The guides are in Simplified Chinese.
+
+| I want to… | Read |
+|---|---|
+| Run it in five minutes | [Quick start](docs/guide/quick-start.md) |
+| Deploy to a server, install offline, set up HTTPS | [Deployment](docs/guide/deployment.md) |
+| Look up a setting | [Configuration](docs/guide/configuration.md) |
+| Learn each page | [User guide](docs/guide/user-guide.md) |
+| Solve a common problem | [FAQ](docs/guide/faq.md) |
+| Develop and run the tests | [Development guide](docs/development/README.md) · [Contributing](CONTRIBUTING.md) |
+| Read the design specs and contracts | [Documentation hub](docs/README.md) |
+
+## Contributing
+
+Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first: the repository uses a local CI script (`scripts/ci/local-ci.ps1`) that must pass before merging, and changes to the parser, the execution structure or security boundaries need tests.
+
+## Acknowledgements and clean-room note
+
+The information architecture of the UI drew on the visible interaction habits of community Profile tools (see [product scope and baselines (Chinese)](docs/00-product-scope-and-baselines.md#22-社区工具只观察可见行为)). The code, parser, rules and thresholds are our own, with the official StarRocks 3.5.14 source and documentation as the semantic reference; the repository contains no source, screenshots or brand assets of reference projects. StarRocks is a trademark of its respective owner.
+
+## Trademarks
+
+StarRocks is a trademark of the StarRocks project, a Series of LF Projects, LLC; see [lfprojects.org/policies](https://lfprojects.org/policies/). SR Doctor is an independent, unofficial tool and is not affiliated with, sponsored or endorsed by the StarRocks project, LF Projects, LLC or the Linux Foundation. "for StarRocks" in its name only says which database it works with.
+
+## License
+
+[Apache License 2.0](LICENSE); see also [NOTICE](NOTICE).

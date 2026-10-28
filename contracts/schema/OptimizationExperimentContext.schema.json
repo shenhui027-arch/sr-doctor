@@ -1,0 +1,276 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OptimizationExperimentContext",
+  "type": "object",
+  "required": [
+    "candidate_profile_responsibility",
+    "candidate_profile_state",
+    "correlation",
+    "experiment_id",
+    "limitations",
+    "validation_steps"
+  ],
+  "properties": {
+    "candidate_profile_responsibility": {
+      "$ref": "#/definitions/CandidateProfileResponsibility"
+    },
+    "candidate_profile_state": {
+      "$ref": "#/definitions/CandidateProfileState"
+    },
+    "correlation": {
+      "$ref": "#/definitions/CorrelationEvidence"
+    },
+    "experiment_id": {
+      "type": "string"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "plan_comparison": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/PlanComparison"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "validation_steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AnalysisReceipt": {
+      "type": "object",
+      "required": [
+        "components"
+      ],
+      "properties": {
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReceiptComponent"
+          }
+        }
+      }
+    },
+    "CandidateProfileResponsibility": {
+      "type": "string",
+      "enum": [
+        "user_external_rerun"
+      ]
+    },
+    "CandidateProfileState": {
+      "type": "string",
+      "enum": [
+        "awaiting_user_external_rerun",
+        "fetched_after_user_external_rerun"
+      ]
+    },
+    "ConnectedSchemaVersion": {
+      "type": "string",
+      "enum": [
+        "0.1"
+      ]
+    },
+    "CorrelationEvidence": {
+      "type": "object",
+      "required": [
+        "baseline_analysis_key",
+        "baseline_analysis_receipt",
+        "baseline_origin",
+        "baseline_source_hash",
+        "baseline_source_kind",
+        "candidate_explain_snapshot_id",
+        "candidate_origin",
+        "candidate_plan_hash",
+        "source_refs"
+      ],
+      "properties": {
+        "baseline_analysis_key": {
+          "type": "string"
+        },
+        "baseline_analysis_receipt": {
+          "$ref": "#/definitions/AnalysisReceipt"
+        },
+        "baseline_origin": {
+          "$ref": "#/definitions/InputOrigin"
+        },
+        "baseline_source_hash": {
+          "type": "string"
+        },
+        "baseline_source_kind": {
+          "$ref": "#/definitions/SourceKind"
+        },
+        "candidate_explain_snapshot_id": {
+          "type": "string"
+        },
+        "candidate_origin": {
+          "$ref": "#/definitions/InputOrigin"
+        },
+        "candidate_plan_hash": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "InputOrigin": {
+      "type": "string",
+      "enum": [
+        "offline_import",
+        "connected_profile_fetch",
+        "candidate_profile_user_external_rerun",
+        "connected_explain",
+        "connected_sql_runtime"
+      ]
+    },
+    "PlanComparison": {
+      "type": "object",
+      "required": [
+        "correlation",
+        "limitations",
+        "runtime_delta_state",
+        "schema_version",
+        "state",
+        "structure_delta"
+      ],
+      "properties": {
+        "correlation": {
+          "$ref": "#/definitions/CorrelationEvidence"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "runtime_delta_state": {
+          "description": "Profile/Explain never has a runtime delta until a candidate Profile exists.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RuntimeDeltaState"
+            }
+          ]
+        },
+        "schema_version": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "state": {
+          "$ref": "#/definitions/PlanComparisonState"
+        },
+        "structure_delta": {
+          "$ref": "#/definitions/StructureDelta"
+        }
+      },
+      "additionalProperties": false
+    },
+    "PlanComparisonState": {
+      "type": "string",
+      "enum": [
+        "comparable",
+        "partially_comparable",
+        "not_comparable"
+      ]
+    },
+    "ReceiptComponent": {
+      "type": "object",
+      "required": [
+        "id",
+        "manifest_hash",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "manifest_hash": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "RuntimeDeltaState": {
+      "type": "string",
+      "enum": [
+        "not_comparable_missing_runtime_profile"
+      ]
+    },
+    "SourceKind": {
+      "type": "string",
+      "enum": [
+        "json_profile",
+        "text_profile"
+      ]
+    },
+    "StructureDelta": {
+      "type": "object",
+      "required": [
+        "added",
+        "changed",
+        "edge_delta",
+        "matches",
+        "removed",
+        "state",
+        "unresolved"
+      ],
+      "properties": {
+        "added": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "edge_delta": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "matches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "removed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "type": "string"
+        },
+        "unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

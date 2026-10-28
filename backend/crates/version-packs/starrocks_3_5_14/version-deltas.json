@@ -1,0 +1,125 @@
+{
+  "schema_version": "2",
+  "baseline_release": "3.5.14",
+  "baseline_commit": "23a56ec517db763ea9bc7ee50b19357acdee0303",
+  "method": "One rule set. Supported releases start at 3.1, the first line that ships the official ExplainAnalyzer semantics, and run through every audited later line; 2.5 and 3.0 are not supported. Each supported release is the 3.5.14 baseline plus the deltas below, found by fingerprinting the source in scripts/version-audit/watchlist.json at every release tag and reading the commits that changed it. A release outside every audited range never borrows a nearby line.",
+  "audit": {
+    "script": "scripts/version-audit/audit-starrocks-versions.mjs",
+    "report": "fixtures/version-audit/version-audit.md",
+    "upstream_repo": "https://github.com/StarRocks/starrocks"
+  },
+  "lines": [
+    { "line": "3.1", "audited_from": "3.1.0", "audited_to": "3.1.17", "smoke_release": "3.1.17", "smoke_commit": "67ae3b71e62ceca4f5de616c712603292d92b268" },
+    { "line": "3.2", "audited_from": "3.2.0", "audited_to": "3.2.16", "smoke_release": "3.2.16", "smoke_commit": "8dea52d2e60983810b5af36e72602ba1b5da084b" },
+    { "line": "3.3", "audited_from": "3.3.0", "audited_to": "3.3.22", "smoke_release": "3.3.22", "smoke_commit": "753696f2cee378dc7942f843c984e0199c97e267" },
+    { "line": "3.4", "audited_from": "3.4.0", "audited_to": "3.4.10", "smoke_release": "3.4.10", "smoke_commit": "965be759154f297a1b9d66bef0ae5ba07da603a9" },
+    { "line": "3.5", "audited_from": "3.5.0", "audited_to": "3.5.21", "smoke_release": "3.5.21", "smoke_commit": "85fccf873515031718239f579d9e8afd9129f38d" },
+    { "line": "4.0", "audited_from": "4.0.0", "audited_to": "4.0.17", "smoke_release": "4.0.17", "smoke_commit": "818b93c5e9af5767dcd78e7b556004324805562e" },
+    { "line": "4.1", "audited_from": "4.1.0", "audited_to": "4.1.7", "smoke_release": "4.1.7", "smoke_commit": "b81ff9cc465a5f2e5e53104d87a59b349808abd9" }
+  ],
+  "deltas": [
+    {
+      "id": "text_counter_format_legacy",
+      "area": "profile_text_format",
+      "ranges": [["3.1.0", "3.1.0"]],
+      "effect": { "text_counter_format": "legacy_unpadded" },
+      "summary": "Text counters before 3.1.1: the fraction of ms/us is the unpadded integer remainder of the next unit (\"1.5ms\" is 1 ms + 5 us); bytes use two decimals and strict > unit thresholds; a zero byte counter has no unit.",
+      "evidence": [
+        { "path": "fe/fe-core/src/main/java/com/starrocks/common/util/RuntimeProfile.java", "symbol": "printCounter(long, TUnit)", "commit": "83f1854f6d", "pr": "#28813" },
+        { "path": "fe/fe-core/src/main/java/com/starrocks/common/util/DebugUtil.java", "symbol": "getByteUint", "commit": "83f1854f6d", "pr": "#28813" }
+      ],
+      "decision": "adopt"
+    },
+    {
+      "id": "text_structure_negative_id_operator_header",
+      "area": "profile_text_structure",
+      "ranges": [["3.1.0", "3.1.2"]],
+      "effect": { "text_structure": { "operator_header": "legacy_negative_ids" } },
+      "summary": "Before 3.1.3 an operator with a negative plan node id is not named `NAME (plan_node_id=N)`: an id in (-100, -1] (a sink in the plan) prints the upper-case name alone, and an id at or below -100 (an operator outside the plan, such as a local exchange) prints `NAME (pseudo_plan_node_id=N)`. The bare id is not always -1 (2.5 uses -99 for the result sink) and a pseudo id names no plan node, so the product records no plan node id for either.",
+      "evidence": [
+        { "path": "be/src/exec/pipeline/operator.cpp", "symbol": "Operator::Operator profile_name", "commit": "0860c17ebe", "pr": "#30274" },
+        { "path": "be/src/exec/pipeline/operator.h", "symbol": "s_pseudo_plan_node_id_upper_bound" }
+      ],
+      "decision": "adopt"
+    },
+    {
+      "id": "counter_min_max_type_absent",
+      "area": "profile_merge",
+      "ranges": [["3.1.0", "3.2.16"]],
+      "effect": { "counter_strategy": "without_min_max_type" },
+      "summary": "TCounterMinMaxType arrives in 3.3; earlier strategies have no min_max_type and every counter keeps min/max (the thrift default MIN_MAX_ALL).",
+      "evidence": [{ "path": "gensrc/thrift/RuntimeProfile.thrift", "symbol": "TCounterMinMaxType", "commit": "a1bc923a31", "pr": "#33579" }],
+      "decision": "adopt"
+    },
+    {
+      "id": "merged_max_from_min_defect",
+      "area": "profile_merge",
+      "ranges": [["3.3.0", "3.3.11"], ["3.4.0", "3.4.1"]],
+      "effect": { "merged_max_unreliable": true },
+      "summary": "An upstream defect computed __MAX_OF_ from the counters' min values when BEs report min/max themselves. The merged maximum is not evidence in these releases.",
+      "evidence": [{ "path": "fe/fe-core/src/main/java/com/starrocks/common/util/RuntimeProfile.java", "symbol": "mergeIsomorphicProfiles", "commit": "ceb2be96f0", "pr": "#56616", "note": "fixed in 3.3.12 and 3.4.2" }],
+      "decision": "adopt"
+    },
+    {
+      "id": "query_summary_instance_sum_peak_memory",
+      "area": "query_summary",
+      "ranges": [["3.3.2", "3.3.5"]],
+      "effect": { "instance_report_sum_metrics_add": ["QuerySumMemoryUsage"] },
+      "summary": "QuerySumMemoryUsage summed the BE value once per fragment instance; fixed in 3.3.6 (max per BE, then sum).",
+      "evidence": [{ "path": "fe/fe-core/src/main/java/com/starrocks/qe/scheduler/QueryRuntimeProfile.java", "symbol": "buildQueryProfile", "commit": "18f941a6ba", "pr": "#52023" }],
+      "decision": "adopt"
+    },
+    {
+      "id": "query_summary_per_be_cpu_spill",
+      "area": "query_summary",
+      "ranges": [["4.0.17", "4.0.17"], ["4.1.7", "4.1.7"]],
+      "effect": { "instance_report_sum_metrics_remove": ["QueryCumulativeCpuTime", "QuerySpillBytes"] },
+      "summary": "QueryCumulativeCpuTime and QuerySpillBytes take the max per BE, then sum over BEs; the baseline's once-per-instance repetition no longer applies.",
+      "evidence": [{ "path": "fe/fe-core/src/main/java/com/starrocks/qe/scheduler/QueryRuntimeProfile.java", "symbol": "buildQueryProfile", "commit": "5576f9b668", "pr": "#79774" }, { "path": "fe/fe-core/src/main/java/com/starrocks/qe/scheduler/QueryRuntimeProfile.java", "symbol": "buildQueryProfile", "commit": "88c6537284", "pr": "#79774" }],
+      "decision": "adopt"
+    },
+    {
+      "id": "official_output_rows_recipe_differs",
+      "area": "time_semantics",
+      "ranges": [["3.1.0", "3.1.3"]],
+      "effect": { "output_rows_recipe": "unavailable" },
+      "summary": "searchOutputRows arrives in 3.1.4; 3.1.0–3.1.3 picked output rows differently, so the baseline output-row recipes are not official there.",
+      "evidence": [{ "path": "fe/fe-core/src/main/java/com/starrocks/sql/ExplainAnalyzer.java", "symbol": "searchOutputRows", "commit": "a5188cfbe1", "pr": "#31380" }],
+      "decision": "adopt"
+    },
+    {
+      "id": "plan_advisor_unavailable",
+      "area": "sql_interface",
+      "ranges": [["3.1.0", "3.3.22"]],
+      "effect": { "capability": { "plan_advisor": false } },
+      "summary": "SHOW PLAN ADVISOR arrives in 3.4.",
+      "evidence": [{ "path": "fe/fe-core/src/main/java/com/starrocks/qe/feedback/PlanAdvisorExecutor.java", "symbol": "file (absent)" }],
+      "decision": "adopt"
+    },
+    {
+      "id": "profile_time_session_zone",
+      "area": "sql_interface",
+      "ranges": [["3.5.17", "3.5.21"], ["4.0.10", "4.0.17"], ["4.1.1", "4.1.7"]],
+      "effect": { "profile_list_time_zone": "session" },
+      "summary": "Profile START_TIME/END_TIME are shown in the session time zone instead of the FE system zone.",
+      "evidence": [{ "path": "fe/fe-core/src/main/java/com/starrocks/common/util/ProfileManager.java", "symbol": "START_TIME/END_TIME", "commit": "97cf27d872f", "pr": "#71429" }],
+      "decision": "adopt"
+    }
+  ],
+  "absent_metrics": [
+    { "metric": "QueryCumulativeScanTime", "ranges": [["3.1.0", "3.1.2"]] },
+    { "metric": "QueryCumulativeNetworkTime", "ranges": [["3.1.0", "3.1.2"]] },
+    { "metric": "QueryPeakMemoryUsagePerNode", "ranges": [["3.1.0", "3.2.9"], ["3.3.0", "3.3.1"]] },
+    { "metric": "QuerySumMemoryUsage", "ranges": [["3.1.0", "3.2.9"], ["3.3.0", "3.3.1"]] },
+    { "metric": "QueryPeakScheduleTime", "ranges": [["3.1.0", "3.1.2"]] },
+    { "metric": "FrontendProfileMergeTime", "ranges": [["3.1.0", "3.1.2"]] },
+    { "metric": "QuerySpillBytes", "ranges": [["3.1.0", "3.1.1"]] },
+    { "metric": "OutputChunkBytes", "ranges": [["3.1.0", "3.4.2"]] }
+  ],
+  "notes": [
+    "Audit event fields change in almost every line; the connector probes the AuditLoader table schema at connect time instead of trusting a version.",
+    "Text info strings with a blank value print as \"- key\" in some releases and \"- key: \" in others; the text adapter accepts both.",
+    "ExplainAnalyzer.computeTimeUsage and sumUpMetric changed between 3.1.0 and 3.1.3 only by refactoring (no semantic change); they equal the baseline from 3.1.4.",
+    "2.5 and 3.0 were audited in task 26 and partly adapted in tasks 27 and 32, then dropped on 2026-10-28 (task 34): they have no official ExplainAnalyzer, topology or final/merged markers, so analysis there would rest on product guesses with no official oracle."
+  ]
+}

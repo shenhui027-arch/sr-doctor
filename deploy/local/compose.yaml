@@ -1,0 +1,33 @@
+# Single-machine container for a quick look (for example Docker Desktop on
+# Windows): loopback only, no sign-in, no history store. From the repository root:
+#
+#   docker compose -f deploy/local/compose.yaml up -d --build
+#
+# Then open http://127.0.0.1:8000. Server deployments use the root compose.yaml.
+name: sr-doctor-local
+
+services:
+  doctor:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: sr-doctor:local
+    # The default bridge needs no network of its own (busy hosts run out of address pools).
+    network_mode: bridge
+    environment:
+      DOCTOR_DEPLOYMENT_MODE: docker-loopback-published
+      DOCTOR_PUBLIC_PORT: "${DOCTOR_PORT:-8000}"
+      DOCTOR_FRONTEND_DIST: /app/frontend
+      # The container filesystem is read-only, so the history store is off here;
+      # trends, alerts and governance need the server deployment or a local process.
+      DOCTOR_HISTORY: "off"
+    ports:
+      - "127.0.0.1:${DOCTOR_PORT:-8000}:8000"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped

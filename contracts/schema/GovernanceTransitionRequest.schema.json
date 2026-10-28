@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GovernanceTransitionRequest",
+  "type": "object",
+  "required": [
+    "item_id",
+    "to"
+  ],
+  "properties": {
+    "item_id": {
+      "type": "string"
+    },
+    "note": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "to": {
+      "$ref": "#/definitions/GovernanceState"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "GovernanceState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "new",
+            "triaged",
+            "in_progress",
+            "wont_fix"
+          ]
+        },
+        {
+          "description": "Entered only by recording a change; left only by a comparator result or by going back to work / not handling it.",
+          "type": "string",
+          "enum": [
+            "pending_verification"
+          ]
+        },
+        {
+          "description": "Entered only by a comparator result of `improved`.",
+          "type": "string",
+          "enum": [
+            "closed"
+          ]
+        }
+      ]
+    }
+  }
+}

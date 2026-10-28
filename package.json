@@ -1,0 +1,18 @@
+{
+  "name": "starrocks-profile-doctor-contracts",
+  "private": true,
+  "version": "0.7.0",
+  "type": "module",
+  "scripts": {
+    "contracts:generate": "cargo run -q -p doctor-core --bin refresh_contract_receipts && cargo run -q -p doctor-contracts --bin export_contracts",
+    "contracts:check-generated": "cargo run -q -p doctor-core --bin refresh_contract_receipts -- --check && cargo run -q -p doctor-contracts --bin export_contracts -- --check",
+    "contracts:typecheck": "tsc -p contracts/tsconfig.json",
+    "contracts:test": "npm run contracts:check-generated && npm run contracts:typecheck && node contracts/scripts/contracts-test.mjs",
+    "test:e2e": "node tests/e2e/browser-e2e.mjs"
+  },
+  "devDependencies": {
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
+    "typescript": "5.9.3"
+  }
+}

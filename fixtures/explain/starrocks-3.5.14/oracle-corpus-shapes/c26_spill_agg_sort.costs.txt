@@ -1,0 +1,73 @@
+PLAN COST
+  CPU: 1.3436416E7
+  Memory: 3354624.0
+
+PLAN FRAGMENT 0(F01)
+  Output Exprs:3: s_cust | 7: count | 8: sum
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  4:MERGING-EXCHANGE
+     distribution type: GATHER
+     cardinality: 19968
+     column statistics: 
+     * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * count-->[1.0, 19968.0, 0.0, 8.0, 1.0] ESTIMATE
+     * sum-->[0.0, 197.2535388263189, 0.0, 16.0, 10122.0] ESTIMATE
+     * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * count-->[1.0, 19968.0, 0.0, 8.0, 1.0] ESTIMATE
+     * sum-->[0.0, 197.2535388263189, 0.0, 16.0, 10122.0] ESTIMATE
+
+PLAN FRAGMENT 1(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 04
+
+  3:SORT
+  |  order by: [8, DECIMAL128(38,2), true] DESC, [3, INT, false] ASC
+  |  offset: 0
+  |  cardinality: 19968
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * count-->[1.0, 19968.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[0.0, 197.2535388263189, 0.0, 16.0, 10122.0] ESTIMATE
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * count-->[1.0, 19968.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[0.0, 197.2535388263189, 0.0, 16.0, 10122.0] ESTIMATE
+  |  
+  2:Project
+  |  output columns:
+  |  3 <-> [9: s_cust, INT, false]
+  |  7 <-> [14: count, BIGINT, true]
+  |  8 <-> [15: sum, DECIMAL128(38,2), true]
+  |  cardinality: 19968
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * count-->[1.0, 19968.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[0.0, 197.2535388263189, 0.0, 16.0, 10122.0] ESTIMATE
+  |  
+  1:AGGREGATE (update finalize)
+  |  aggregate: sum[([13: cnt, BIGINT, false]); args: BIGINT; result: BIGINT; args nullable: false; result nullable: true], sum[([11: amount, DECIMAL128(38,2), true]); args: DECIMAL128; result: DECIMAL128(38,2); args nullable: true; result nullable: true]
+  |  group by: [9: s_cust, INT, false]
+  |  cardinality: 19968
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * count-->[1.0, 19968.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[0.0, 197.2535388263189, 0.0, 16.0, 10122.0] ESTIMATE
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * count-->[1.0, 19968.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[0.0, 197.2535388263189, 0.0, 16.0, 10122.0] ESTIMATE
+  |  
+  0:OlapScanNode
+     table: mv_sales_cust_day, rollup: mv_sales_cust_day
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=2/2
+     tabletList=10361,10363
+     actualRows=0, avgRowSize=28.0
+     MaterializedView: true
+     cardinality: 200000
+     column statistics: 
+     * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * amount-->[0.0, 99.99, 0.0, 16.0, 10122.0] ESTIMATE
+     * cnt-->[1.0, 1.0, 0.0, 8.0, 1.0] ESTIMATE

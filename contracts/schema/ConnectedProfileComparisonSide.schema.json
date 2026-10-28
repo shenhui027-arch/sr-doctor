@@ -1,0 +1,264 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConnectedProfileComparisonSide",
+  "description": "Provenance for one server-fetched side of a connected Profile comparison.",
+  "type": "object",
+  "required": [
+    "input_origin",
+    "query"
+  ],
+  "properties": {
+    "input_origin": {
+      "$ref": "#/definitions/InputOrigin"
+    },
+    "query": {
+      "$ref": "#/definitions/ConnectedQueryRef"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "ConnectedPlanCheckAction": {
+      "description": "The available arm must carry a session-owned capability reference. The unavailable arm cannot carry one, so invalid state/reference matrices are rejected by the wire contract rather than interpreted in the browser.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "plan_sql_ref",
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "plan_sql_ref": {
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/definitions/PlanCheckAvailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/PlanCheckUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ConnectedProfileFetchAction": {
+      "description": "A Profile action is never an availability claim about the remote cache: `available` means the bounded fetch may be attempted for this row.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/ProfileFetchAvailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/ProfileFetchUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ConnectedQueryRef": {
+      "type": "object",
+      "required": [
+        "connection_id",
+        "plan_check",
+        "profile_fetch",
+        "query_id",
+        "source_refs",
+        "status",
+        "timestamp_state"
+      ],
+      "properties": {
+        "connection_id": {
+          "type": "string"
+        },
+        "database": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "discovery_generation": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "discovery_source": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/QueryDiscoverySource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed_at_local": {
+          "description": "Original bounded wall-clock text returned by Audit/ProfileList.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed_at_utc": {
+          "description": "RFC 3339 text avoids a JavaScript-unsafe epoch-millisecond integer. `None` is required when a fetch response has only a query ID and no independently observed timestamp; the API must not invent UTC.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_check": {
+          "$ref": "#/definitions/ConnectedPlanCheckAction"
+        },
+        "profile_fetch": {
+          "$ref": "#/definitions/ConnectedProfileFetchAction"
+        },
+        "query_id": {
+          "type": "string"
+        },
+        "query_time_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "resource_group": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string"
+        },
+        "timestamp_state": {
+          "$ref": "#/definitions/ConnectedTimestampState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectedTimestampState": {
+      "description": "Records what the timestamp can prove. AuditLoader emits a wall-clock DATETIME without an origin offset, so a reader-session conversion is an interpretation rather than evidence of the producer's original instant.",
+      "type": "string",
+      "enum": [
+        "reader_session_interpreted",
+        "raw_wall_time_only",
+        "unavailable"
+      ]
+    },
+    "InputOrigin": {
+      "type": "string",
+      "enum": [
+        "offline_import",
+        "connected_profile_fetch",
+        "candidate_profile_user_external_rerun",
+        "connected_explain",
+        "connected_sql_runtime"
+      ]
+    },
+    "PlanCheckAvailableReason": {
+      "type": "string",
+      "enum": [
+        "statement_retained"
+      ]
+    },
+    "PlanCheckUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "statement_missing_or_not_select",
+        "query_metadata_unavailable",
+        "query_id_invalid",
+        "query_id_duplicate"
+      ]
+    },
+    "ProfileFetchAvailableReason": {
+      "type": "string",
+      "enum": [
+        "can_be_attempted",
+        "profile_fetched"
+      ]
+    },
+    "ProfileFetchUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "query_id_invalid",
+        "query_id_duplicate",
+        "query_not_finished"
+      ]
+    },
+    "QueryDiscoverySource": {
+      "type": "string",
+      "enum": [
+        "audit",
+        "profile_list"
+      ]
+    }
+  }
+}

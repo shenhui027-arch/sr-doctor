@@ -1,0 +1,172 @@
+{
+  "schema": "sr-doctor.oracle-corpus.v1",
+  "purpose": "official StarRocks 3.5.14 FE black-box answers (get_query_profile + ANALYZE PROFILE) for synthetic data",
+  "server_version": "3.5.14-23a56ec",
+  "topology": {
+    "kind": "split_fe_be",
+    "frontends": 1,
+    "backends_alive": 3,
+    "fe_image": "starrocks/fe-ubuntu:3.5.14@sha256:3d786dba52ea5e72a5815c438b8c45e041c647730f69c6728783f900e6798127",
+    "be_image": "starrocks/be-ubuntu:3.5.14@sha256:ab6eb2aea5b323bddbb59e04c65dde436a3ff07e9018c92caa67d3f564a6a732",
+    "tablets_per_backend": {
+      "customers": {
+        "be_10001": 1,
+        "be_10002": 1,
+        "be_10003": 2
+      },
+      "events": {
+        "be_10001": 1,
+        "be_10002": 1,
+        "be_10003": 2
+      },
+      "mv_sales_cust_day": {
+        "be_10001": 2,
+        "be_10002": 1,
+        "be_10003": 1
+      },
+      "products": {
+        "be_10001": 1,
+        "be_10002": 1
+      },
+      "returns": {
+        "be_10001": 2,
+        "be_10002": 1,
+        "be_10003": 1
+      },
+      "sales": {
+        "be_10001": 2,
+        "be_10002": 3,
+        "be_10003": 3
+      }
+    }
+  },
+  "session": [
+    "SET enable_profile=true",
+    "SET pipeline_profile_level=1"
+  ],
+  "dataset_file": "dataset.sql",
+  "dataset_sha256": "95dd9da77e2d4e737c614bebd6cde07ab3e00058075c783904b29119695ded00",
+  "table_rows": {
+    "returns": 20000,
+    "events": 100000,
+    "customers": 20000,
+    "products": 5000,
+    "sales": 200000
+  },
+  "capture_utc": "2026-10-21T15:09:00Z",
+  "supplementary_datasets": [
+    {
+      "dataset_file": "dataset-shapes.sql",
+      "dataset_sha256": "6c534f6dc234655e03b8f7b9c83538fb977f748a1d509baded221c292028d791",
+      "table_rows": {
+        "mv_sales_cust_day": 200000,
+        "sales_parquet": 50000
+      }
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "c25_spill_hash_join",
+      "oracle_statement": "EXPLAIN ANALYZE",
+      "analyze_profile_refusal": "ERROR 1064 (HY000) at line 1: For input string: \"3074457345618258400.000\"",
+      "sql_file": "c25_spill_hash_join.sql",
+      "sql_sha256": "cb8b9f124800c7f92f7748f8c4e18050b4505dccfbf44af3e52962448f22f2cc",
+      "profile_file": "c25_spill_hash_join.profile.txt",
+      "profile_sha256": "290081b51d6b2c3192d4bc87f38ec15c4b88b8cf872f27ecfefe0845647fec8e",
+      "analyze_file": "c25_spill_hash_join.analyze.txt",
+      "analyze_sha256": "5fe4a3d6f7bf100630721aa439df484151c44f53ba7f206b6d65e7cabac1d99e",
+      "query_id": "3166fa08-cd61-11f1-aa66-fa07fa775cf5",
+      "captured_utc": "2026-10-21T15:08:01Z"
+    },
+    {
+      "case_id": "c26_spill_agg_sort",
+      "oracle_statement": "EXPLAIN ANALYZE",
+      "analyze_profile_refusal": "ERROR 1064 (HY000) at line 1: For input string: \"-1.000\"",
+      "sql_file": "c26_spill_agg_sort.sql",
+      "sql_sha256": "fc278df10be9264621fe09d9479cc3db846423cd264a21877efd375101ec6fb1",
+      "profile_file": "c26_spill_agg_sort.profile.txt",
+      "profile_sha256": "edf857bcce49c278a1b8ce1df27285423835dfe33ecfe189f42764215c6f538e",
+      "analyze_file": "c26_spill_agg_sort.analyze.txt",
+      "analyze_sha256": "61a1bf9773806b27f6117940d588a80afac3c7de64f9b1f2c681bcd361ad9361",
+      "query_id": "35a5400b-cd61-11f1-aa66-fa07fa775cf5",
+      "captured_utc": "2026-10-21T15:08:09Z"
+    },
+    {
+      "case_id": "c27_assert_num_rows",
+      "sql_file": "c27_assert_num_rows.sql",
+      "sql_sha256": "8047ab238c4654219bcad474538eac21fa80ad0b413ad6e2998527dec8b2637a",
+      "profile_file": "c27_assert_num_rows.profile.txt",
+      "profile_sha256": "74ce7d5eb5535a4cc52c7a6c8fc68e786ab4cf044ac65d2fc2f4235421a73cd5",
+      "analyze_file": "c27_assert_num_rows.analyze.txt",
+      "analyze_sha256": "3e9235a9b4c662b39c00dcf8dd6ef29ced37d936f4db253595f37dadaff8598a",
+      "query_id": "3a7d2dfc-cd61-11f1-aa66-fa07fa775cf5",
+      "captured_utc": "2026-10-21T15:08:14Z"
+    },
+    {
+      "case_id": "c28_rollup_repeat",
+      "sql_file": "c28_rollup_repeat.sql",
+      "sql_sha256": "72e8d9ed2ea5c989a11c15e69ba49075403c35bb12e4b58849162b94c85ac933",
+      "profile_file": "c28_rollup_repeat.profile.txt",
+      "profile_sha256": "d15acf6f57e4c49528fbb8b47ba0cf44e9d3dbeee1f6415f05505a7c24560b34",
+      "analyze_file": "c28_rollup_repeat.analyze.txt",
+      "analyze_sha256": "3bc21ec5d7edb26b4bcef3e933570f944260bb036c7a27a39c19f1a34327da53",
+      "query_id": "3dacea2d-cd61-11f1-aa66-fa07fa775cf5",
+      "captured_utc": "2026-10-21T15:08:22Z"
+    },
+    {
+      "case_id": "c29_cube_repeat",
+      "sql_file": "c29_cube_repeat.sql",
+      "sql_sha256": "01c36b5f0c921468c476ab89c75153aa86b8eea64772e77a6fab95275b8c03f7",
+      "profile_file": "c29_cube_repeat.profile.txt",
+      "profile_sha256": "92b3a2bb140fe438466e066db8191d8e777b86b96ce04c9aa80c68ad65286216",
+      "analyze_file": "c29_cube_repeat.analyze.txt",
+      "analyze_sha256": "f00b1862a105f79ed4e003d652dda30114e48ac8953ebf85ab92320bcd0e1fd3",
+      "query_id": "425b3010-cd61-11f1-aa66-fa07fa775cf5",
+      "captured_utc": "2026-10-21T15:08:29Z"
+    },
+    {
+      "case_id": "c30_unnest_table_function",
+      "sql_file": "c30_unnest_table_function.sql",
+      "sql_sha256": "48e5ecf0012b520ddfbf8a47476f3117c668a7b6f9f3cecf257354150463df10",
+      "profile_file": "c30_unnest_table_function.profile.txt",
+      "profile_sha256": "ac02d99638893f7aac79117f673aeda6aa0a823610f223a75bb0132927a339d6",
+      "analyze_file": "c30_unnest_table_function.analyze.txt",
+      "analyze_sha256": "ebfd8e85828698d9bca2b02e4026cf7817a5f0035322b38fef2a96961f204e9e",
+      "query_id": "46331321-cd61-11f1-aa66-fa07fa775cf5",
+      "captured_utc": "2026-10-21T15:08:35Z"
+    },
+    {
+      "case_id": "c31_intersect_set_op",
+      "sql_file": "c31_intersect_set_op.sql",
+      "sql_sha256": "5f239e992fc95ab56bb185587a73217872caa5e0efc952bdeee9d1895bd384af",
+      "profile_file": "c31_intersect_set_op.profile.txt",
+      "profile_sha256": "26a2e7fde6315b61c0b92f55fa7f834b6226d7439543bdb86e3059e8e164a8aa",
+      "analyze_file": "c31_intersect_set_op.analyze.txt",
+      "analyze_sha256": "4d91d97f84b06a49dca55e980d82766e0d125e6339f869ff832e6056f276df75",
+      "query_id": "4a21b280-cd61-11f1-aa66-fa07fa775cf5",
+      "captured_utc": "2026-10-21T15:08:43Z"
+    },
+    {
+      "case_id": "c32_files_local_parquet",
+      "sql_file": "c32_files_local_parquet.sql",
+      "sql_sha256": "d8ac1b27552a9cf587b55358469e46cc05a65bca693c5d681e59f43e6b83a301",
+      "profile_file": "c32_files_local_parquet.profile.txt",
+      "profile_sha256": "db5b12c178c2216f6fcbc3cf9bc72c1f31667266bd1b5dd1f4062ec839b27c3b",
+      "analyze_file": "c32_files_local_parquet.analyze.txt",
+      "analyze_sha256": "bbd282c9923533da919f47afeddf686879be8b9b74f02cfd87c6d676e88420f6",
+      "query_id": "4f31c780-cd61-11f1-aa66-fa07fa775cf5",
+      "captured_utc": "2026-10-21T15:08:55Z"
+    },
+    {
+      "case_id": "c33_mv_rewrite_rollup",
+      "sql_file": "c33_mv_rewrite_rollup.sql",
+      "sql_sha256": "01be600ab3faf343956ab5912c67190ebae793e9969426c8dd38f2ce73314aea",
+      "profile_file": "c33_mv_rewrite_rollup.profile.txt",
+      "profile_sha256": "5f6f4aa185285715bd424274110239da371003b19c8536a4e49a04e28385d6bb",
+      "analyze_file": "c33_mv_rewrite_rollup.analyze.txt",
+      "analyze_sha256": "c370c558f84d122ac78a8fd417bd578474a4194a5ad336d34090e1e69d2772be",
+      "query_id": "560118a2-cd61-11f1-aa66-fa07fa775cf5",
+      "captured_utc": "2026-10-21T15:09:00Z"
+    }
+  ]
+}

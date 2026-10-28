@@ -1,0 +1,118 @@
+PLAN COST
+  CPU: 4800233.783631418
+  Memory: 25.6
+
+PLAN FRAGMENT 0(F04)
+  Output Exprs:12: count | 13: sum
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  11:AGGREGATE (merge finalize)
+  |  aggregate: count[([12: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false], sum[([13: sum, DECIMAL128(38,2), true]); args: DECIMAL64; result: DECIMAL128(38,2); args nullable: true; result nullable: true]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 10.01602564102564, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[0.0, 99.99, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  10:EXCHANGE
+     distribution type: GATHER
+     cardinality: 1
+
+PLAN FRAGMENT 1(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 10
+
+  9:AGGREGATE (update serialize)
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false], sum[([6: s_amount, DECIMAL64(12,2), false]); args: DECIMAL64; result: DECIMAL128(38,2); args nullable: false; result nullable: true]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 10.01602564102564, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[0.0, 99.99, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  8:Project
+  |  output columns:
+  |  6 <-> [6: s_amount, DECIMAL64(12,2), false]
+  |  cardinality: 10
+  |  column statistics: 
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 10.01602564102564] ESTIMATE
+  |  
+  7:HASH JOIN
+  |  join op: INNER JOIN (BROADCAST)
+  |  equal join conjunct: [3: s_cust, INT, false] = [7: c_id, INT, true]
+  |  build runtime filters:
+  |  - filter_id = 0, build_expr = (7: c_id), remote = false
+  |  output columns: 6
+  |  can local shuffle: true
+  |  cardinality: 10
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 1.0] ESTIMATE
+  |  * s_amount-->[0.0, 99.99, 0.0, 8.0, 10.01602564102564] ESTIMATE
+  |  * c_id-->[1.0, 20000.0, 0.0, 4.0, 1.0] ESTIMATE
+  |  
+  |----6:EXCHANGE
+  |       distribution type: BROADCAST
+  |       cardinality: 1
+  |    
+  0:OlapScanNode
+     table: sales, rollup: sales
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10279,10281,10283,10285,10287,10289,10291,10293
+     actualRows=0, avgRowSize=12.0
+     cardinality: 200000
+     probe runtime filters:
+     - filter_id = 0, probe_expr = (3: s_cust)
+     column statistics: 
+     * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * s_amount-->[0.0, 99.99, 0.0, 8.0, 10063.0] ESTIMATE
+
+PLAN FRAGMENT 2(F02)
+
+  Input Partition: UNPARTITIONED
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 06
+
+  5:SELECT
+  |  predicates: 7: c_id IS NOT NULL
+  |  cardinality: 1
+  |  column statistics: 
+  |  * c_id-->[1.0, 20000.0, 0.0, 4.0, 1.0] ESTIMATE
+  |  * c_name-->[-Infinity, Infinity, 0.0, 9.4447, 1.0] ESTIMATE
+  |  
+  4:ASSERT NUMBER OF ROWS
+  |  assert number of rows: LE 1
+  |  cardinality: 1
+  |  column statistics: 
+  |  * c_id-->[1.0, 20000.0, 0.0, 4.0, 1.0032605969400552] ESTIMATE
+  |  * c_name-->[-Infinity, Infinity, 0.0, 9.4447, 1.0032605969400552] ESTIMATE
+  |  
+  3:EXCHANGE
+     distribution type: GATHER
+     cardinality: 1
+
+PLAN FRAGMENT 3(F01)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 03
+
+  2:Project
+  |  output columns:
+  |  7 <-> [7: c_id, INT, false]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * c_id-->[1.0, 20000.0, 0.0, 4.0, 1.0032605969400552] ESTIMATE
+  |  
+  1:OlapScanNode
+     table: customers, rollup: customers
+     preAggregation: on
+     Predicates: [8: c_name, VARCHAR(32), false] = 'cust_77'
+     partitionsRatio=1/1, tabletsRatio=4/4
+     tabletList=10259,10261,10263,10265
+     actualRows=0, avgRowSize=13.4447
+     cardinality: 1
+     column statistics: 
+     * c_id-->[1.0, 20000.0, 0.0, 4.0, 1.0032605969400552] ESTIMATE
+     * c_name-->[-Infinity, Infinity, 0.0, 9.4447, 1.0032605969400552] ESTIMATE

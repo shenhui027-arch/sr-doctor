@@ -1,0 +1,2552 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AnalysisOutcome",
+  "type": "object",
+  "required": [
+    "report"
+  ],
+  "properties": {
+    "report": {
+      "$ref": "#/definitions/AnalysisSnapshotReport"
+    }
+  },
+  "definitions": {
+    "AnalysisReceipt": {
+      "type": "object",
+      "required": [
+        "components"
+      ],
+      "properties": {
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReceiptComponent"
+          }
+        }
+      }
+    },
+    "AnalysisSnapshotReport": {
+      "type": "object",
+      "required": [
+        "analysis_key",
+        "analysis_receipt",
+        "analysis_state",
+        "completeness",
+        "derived_metric_cells",
+        "diagnostics",
+        "facts_hash",
+        "findings",
+        "graph_view",
+        "input",
+        "operator_rows",
+        "profile_context",
+        "provenance_index",
+        "rule_evaluations",
+        "schema_version",
+        "source_view",
+        "version"
+      ],
+      "properties": {
+        "analysis_key": {
+          "type": "string"
+        },
+        "analysis_receipt": {
+          "$ref": "#/definitions/AnalysisReceipt"
+        },
+        "analysis_state": {
+          "$ref": "#/definitions/AnalysisState"
+        },
+        "completeness": {
+          "$ref": "#/definitions/CompletenessReport"
+        },
+        "derived_metric_cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MetricCell"
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        },
+        "execution_shape": {
+          "description": "Fragment / instance counts; Compare's parallelism gate reads only this.",
+          "default": {
+            "state": "unavailable",
+            "recipe_id": "sr3514.query_runtime_profile.instance_num.v1",
+            "fragment_count": null,
+            "instance_count": null,
+            "fragments": [],
+            "reasons": [
+              "retained_report_without_execution_shape"
+            ]
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ExecutionShape"
+            }
+          ]
+        },
+        "execution_summary": {
+          "description": "Per-plan-node reading built with the official ExplainAnalyzer recipe.",
+          "default": {
+            "state": "unavailable",
+            "recipe_id": "sr3514.explain_analyzer.node_info.v1",
+            "query_total_time": {
+              "state": "unavailable",
+              "canonical_number": null,
+              "canonical_unit": null,
+              "display_text": null,
+              "reasons": [
+                "retained_report_without_summary"
+              ],
+              "source_refs": [],
+              "bounds": null
+            },
+            "cumulative_operator_time": {
+              "state": "unavailable",
+              "canonical_number": null,
+              "canonical_unit": null,
+              "display_text": null,
+              "reasons": [
+                "retained_report_without_summary"
+              ],
+              "source_refs": [],
+              "bounds": null
+            },
+            "result_rows": {
+              "state": "unavailable",
+              "canonical_number": null,
+              "canonical_unit": null,
+              "display_text": null,
+              "reasons": [
+                "retained_report_without_summary"
+              ],
+              "source_refs": [],
+              "bounds": null
+            },
+            "nodes": [],
+            "reasons": [
+              "retained_report_without_summary"
+            ]
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ExecutionSummary"
+            }
+          ]
+        },
+        "facts_hash": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Finding"
+          }
+        },
+        "graph_view": {
+          "description": "The single execution graph: plan nodes and their typed relations.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/GraphView"
+            }
+          ]
+        },
+        "input": {
+          "$ref": "#/definitions/InputSummary"
+        },
+        "operator_rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OperatorRow"
+          }
+        },
+        "profile_context": {
+          "$ref": "#/definitions/ProfileContext"
+        },
+        "provenance_index": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "query_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/QuerySummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rule_evaluations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RuleEvaluation"
+          }
+        },
+        "schema_version": {
+          "type": "string"
+        },
+        "source_view": {
+          "$ref": "#/definitions/SourceView"
+        },
+        "version": {
+          "$ref": "#/definitions/VersionContext"
+        }
+      }
+    },
+    "AnalysisState": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial"
+      ]
+    },
+    "BoundedFidelity": {
+      "type": "string",
+      "enum": [
+        "rounded",
+        "truncated",
+        "interval"
+      ]
+    },
+    "BoundedInterval": {
+      "type": "object",
+      "required": [
+        "lower",
+        "lower_inclusive",
+        "upper",
+        "upper_inclusive"
+      ],
+      "properties": {
+        "lower": {
+          "$ref": "#/definitions/CanonicalNumber"
+        },
+        "lower_inclusive": {
+          "type": "boolean"
+        },
+        "upper": {
+          "$ref": "#/definitions/CanonicalNumber"
+        },
+        "upper_inclusive": {
+          "type": "boolean"
+        }
+      }
+    },
+    "CanonicalNumber": {
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/NumberKind"
+        },
+        "scale": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "value": {
+          "description": "Base-10 only: JSON numbers are never used for counters.",
+          "type": "string"
+        }
+      }
+    },
+    "Compatibility": {
+      "type": "string",
+      "enum": [
+        "compatible",
+        "partial",
+        "incompatible",
+        "inconclusive"
+      ]
+    },
+    "CompatibilityCheck": {
+      "type": "object",
+      "required": [
+        "check_id",
+        "domain",
+        "source_refs",
+        "state"
+      ],
+      "properties": {
+        "check_id": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "expected": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/CompatibilityCheckState"
+        }
+      }
+    },
+    "CompatibilityCheckState": {
+      "type": "string",
+      "enum": [
+        "matched",
+        "missing",
+        "unknown",
+        "conflict"
+      ]
+    },
+    "CompletenessReport": {
+      "type": "object",
+      "required": [
+        "graph",
+        "metrics",
+        "provenance",
+        "summary",
+        "version"
+      ],
+      "properties": {
+        "graph": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        },
+        "metrics": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        },
+        "provenance": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        },
+        "summary": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        },
+        "version": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        }
+      }
+    },
+    "CompletenessState": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "Diagnostic": {
+      "type": "object",
+      "required": [
+        "affected_ids",
+        "code",
+        "details",
+        "message_id",
+        "recoverability",
+        "severity",
+        "source_refs",
+        "stage"
+      ],
+      "properties": {
+        "affected_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "code": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "recoverability": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stage": {
+          "type": "string"
+        }
+      }
+    },
+    "DimensionCompleteness": {
+      "type": "object",
+      "required": [
+        "present_count",
+        "reasons",
+        "state"
+      ],
+      "properties": {
+        "expected_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "present_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/CompletenessState"
+        }
+      }
+    },
+    "DirectionSemantics": {
+      "type": "string",
+      "enum": [
+        "upstream_to_downstream",
+        "parent_to_child",
+        "dependency_precedes"
+      ]
+    },
+    "EdgeSource": {
+      "type": "string",
+      "enum": [
+        "explicit",
+        "verified_derived"
+      ]
+    },
+    "EvidenceCompleteness": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "ExecutionShape": {
+      "type": "object",
+      "required": [
+        "fragments",
+        "reasons",
+        "recipe_id",
+        "state"
+      ],
+      "properties": {
+        "fragment_count": {
+          "description": "Distinct `Fragment N:` sections; `None` when they can not be counted.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "fragments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FragmentInstanceCount"
+          }
+        },
+        "instance_count": {
+          "description": "Sum of every fragment's `InstanceNum`; `None` unless all are exact.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recipe_id": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/definitions/ExecutionShapeState"
+        }
+      }
+    },
+    "ExecutionShapeState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "unavailable"
+          ]
+        },
+        {
+          "description": "Fragment count and every fragment's `InstanceNum` are exact.",
+          "type": "string",
+          "enum": [
+            "complete"
+          ]
+        },
+        {
+          "description": "Fragments are known but at least one `InstanceNum` is missing or invalid.",
+          "type": "string",
+          "enum": [
+            "partial"
+          ]
+        }
+      ]
+    },
+    "ExecutionSummary": {
+      "type": "object",
+      "required": [
+        "cumulative_operator_time",
+        "nodes",
+        "query_total_time",
+        "reasons",
+        "recipe_id",
+        "result_rows",
+        "state"
+      ],
+      "properties": {
+        "cumulative_operator_time": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PlanNodeSummary"
+          }
+        },
+        "query_total_time": {
+          "description": "`Summary.Total` as reported by the FE; independent of operator time.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SummaryValue"
+            }
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recipe_id": {
+          "type": "string"
+        },
+        "result_rows": {
+          "description": "`RESULT_SINK.PushRowNum`: rows returned to the client.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SummaryValue"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/ExecutionSummaryState"
+        }
+      }
+    },
+    "ExecutionSummaryState": {
+      "type": "string",
+      "enum": [
+        "available",
+        "unavailable"
+      ]
+    },
+    "ExpectedChangeDirection": {
+      "type": "string",
+      "enum": [
+        "decrease",
+        "increase"
+      ]
+    },
+    "ExpectedMetricChange": {
+      "type": "object",
+      "required": [
+        "direction",
+        "metric_id"
+      ],
+      "properties": {
+        "direction": {
+          "$ref": "#/definitions/ExpectedChangeDirection"
+        },
+        "metric_id": {
+          "description": "A registered metric id of the finding's subject.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Finding": {
+      "type": "object",
+      "required": [
+        "category",
+        "confidence",
+        "confidence_reasons",
+        "evidence",
+        "evidence_completeness",
+        "evidence_completeness_reasons",
+        "finding_id",
+        "limitations",
+        "recommendation",
+        "related_finding_refs",
+        "rule_id",
+        "rule_trace_ref",
+        "rule_version",
+        "severity"
+      ],
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "confidence": {
+          "$ref": "#/definitions/FindingConfidence"
+        },
+        "confidence_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_completeness": {
+          "$ref": "#/definitions/EvidenceCompleteness"
+        },
+        "evidence_completeness_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "finding_id": {
+          "type": "string"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "measurements": {
+          "description": "What the rule measured on its subject, in the rule's own terms (a skew ratio, a fan-out ratio, bytes sent, a time share). Empty when the rule publishes no measurement; the browser never derives one.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FindingMeasurement"
+          }
+        },
+        "recommendation": {
+          "$ref": "#/definitions/Recommendation"
+        },
+        "related_finding_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rule_id": {
+          "type": "string"
+        },
+        "rule_trace_ref": {
+          "type": "string"
+        },
+        "rule_version": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "subject_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "FindingConfidence": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "FindingMeasurement": {
+      "description": "One value a rule evaluator computed from the typed inputs it compared. The text is formatted by the backend; bounded inputs give an interval.",
+      "type": "object",
+      "required": [
+        "display_text",
+        "input_refs",
+        "measurement_id"
+      ],
+      "properties": {
+        "display_text": {
+          "type": "string"
+        },
+        "input_refs": {
+          "description": "Metric cells (`MetricCell.metric_cell_ref`) the value was computed from.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "measurement_id": {
+          "description": "Stable identifier, e.g. `slowest_over_mean_driver_time`.",
+          "type": "string"
+        },
+        "operator_type": {
+          "description": "Physical operator the value belongs to when narrower than the plan node.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threshold_text": {
+          "description": "The rule's trigger condition on this value (e.g. `> 2×`); absent for context values that are not compared.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "FragmentInstanceCount": {
+      "type": "object",
+      "required": [
+        "fragment_id",
+        "reasons",
+        "source_refs"
+      ],
+      "properties": {
+        "fragment_id": {
+          "type": "string"
+        },
+        "instance_num": {
+          "description": "FE `InstanceNum`; `None` when missing, ambiguous or invalid (never 0).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "GraphEdge": {
+      "type": "object",
+      "required": [
+        "direction_semantics",
+        "edge_id",
+        "evidence_refs",
+        "from",
+        "quality",
+        "relation",
+        "source",
+        "to"
+      ],
+      "properties": {
+        "derivation_recipe": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "direction_semantics": {
+          "$ref": "#/definitions/DirectionSemantics"
+        },
+        "edge_id": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "from": {
+          "type": "string"
+        },
+        "input_role": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/InputRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality": {
+          "$ref": "#/definitions/SourceQuality"
+        },
+        "relation": {
+          "$ref": "#/definitions/GraphRelation"
+        },
+        "restates_edge_id": {
+          "description": "Set on a `fragment_sink` edge whose relation an explicit `plan_child` edge (exchange -> sending fragment root) already states in the opposite direction. A renderer draws the referenced edge and skips this one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "$ref": "#/definitions/EdgeSource"
+        },
+        "source_ordinal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "to": {
+          "type": "string"
+        }
+      }
+    },
+    "GraphEntityKind": {
+      "type": "string",
+      "enum": [
+        "plan_node",
+        "operator_group",
+        "pipeline",
+        "fragment",
+        "sink"
+      ]
+    },
+    "GraphNode": {
+      "type": "object",
+      "required": [
+        "entity_kind",
+        "metric_observation_refs",
+        "native_operator_refs",
+        "node_id",
+        "source_quality",
+        "source_refs",
+        "subordinate_operator_refs"
+      ],
+      "properties": {
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entity_kind": {
+          "$ref": "#/definitions/GraphEntityKind"
+        },
+        "execution_state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fragment_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metric_observation_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "native_operator_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OrderedOperatorRef"
+          }
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "pipeline_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_node_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_node_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_ordinal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_quality": {
+          "$ref": "#/definitions/SourceQuality"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sql_facts": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/GraphSqlFact"
+          }
+        },
+        "sql_location": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GraphSqlLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subordinate_operator_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OrderedOperatorRef"
+          }
+        }
+      }
+    },
+    "GraphRelation": {
+      "type": "string",
+      "enum": [
+        "plan_child",
+        "fragment_sink",
+        "exchange_link",
+        "dependency",
+        "verified_data_flow"
+      ]
+    },
+    "GraphSqlFact": {
+      "type": "object",
+      "required": [
+        "kind",
+        "source_refs",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/GraphSqlFactKind"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "GraphSqlFactKind": {
+      "type": "string",
+      "enum": [
+        "table",
+        "fields",
+        "predicate",
+        "join_condition"
+      ]
+    },
+    "GraphSqlLocation": {
+      "description": "Request-local bounded source excerpt; never a reconstructed SQL expression.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "after",
+            "before",
+            "highlight",
+            "kind",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "after": {
+              "type": "string"
+            },
+            "before": {
+              "type": "string"
+            },
+            "highlight": {
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/definitions/GraphSqlFactKind"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "located"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "ambiguous"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "unsupported"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "GraphState": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "GraphView": {
+      "type": "object",
+      "required": [
+        "completeness",
+        "edges",
+        "nodes",
+        "root_node_ids",
+        "source_refs",
+        "state",
+        "topology_source",
+        "unconnected_node_ids",
+        "unresolved_relations"
+      ],
+      "properties": {
+        "completeness": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        },
+        "edges": {
+          "description": "This remains source ordered; canonicalization never sorts these edges by ID.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GraphEdge"
+          }
+        },
+        "nodes": {
+          "description": "This remains source ordered when the source relation is ordered.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GraphNode"
+          }
+        },
+        "root_node_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/GraphState"
+        },
+        "topology_source": {
+          "$ref": "#/definitions/TopologySource"
+        },
+        "unconnected_node_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unresolved_relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/UnresolvedRelation"
+          }
+        }
+      }
+    },
+    "HotspotTier": {
+      "description": "Official thresholds: share > 30% is most consuming, > 15% second. `Boundary` (product contract): the official reading and the text precision interval of the share disagree about one of those thresholds, so the tier is not decidable; the time-share rules report the same input as `suspected` at that boundary.",
+      "type": "string",
+      "enum": [
+        "most_consuming",
+        "second_most_consuming",
+        "boundary",
+        "none",
+        "unknown"
+      ]
+    },
+    "InputRole": {
+      "type": "string",
+      "enum": [
+        "probe",
+        "build",
+        "child",
+        "sink",
+        "source"
+      ]
+    },
+    "InputSummary": {
+      "type": "object",
+      "required": [
+        "adapter_evidence",
+        "byte_length",
+        "detected_kind",
+        "requested_kind",
+        "source_hash"
+      ],
+      "properties": {
+        "adapter_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "byte_length": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "detected_kind": {
+          "$ref": "#/definitions/SourceKind"
+        },
+        "filename": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "requested_kind": {
+          "$ref": "#/definitions/RequestedSourceKind"
+        },
+        "source_hash": {
+          "type": "string"
+        }
+      }
+    },
+    "LosslessFidelity": {
+      "type": "string",
+      "enum": [
+        "exact"
+      ]
+    },
+    "MergeState": {
+      "type": "string",
+      "enum": [
+        "merged",
+        "unmerged",
+        "unknown"
+      ]
+    },
+    "MetricCell": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "bounds",
+                "fidelity"
+              ],
+              "properties": {
+                "bounds": {
+                  "type": "null"
+                },
+                "fidelity": {
+                  "$ref": "#/definitions/LosslessFidelity"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "bounds",
+                "fidelity"
+              ],
+              "properties": {
+                "bounds": {
+                  "$ref": "#/definitions/BoundedInterval"
+                },
+                "fidelity": {
+                  "$ref": "#/definitions/BoundedFidelity"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "bounds",
+                "fidelity"
+              ],
+              "properties": {
+                "bounds": {
+                  "type": "null"
+                },
+                "fidelity": {
+                  "$ref": "#/definitions/UnknownFidelity"
+                }
+              }
+            }
+          ],
+          "required": [
+            "canonical_number",
+            "canonical_unit",
+            "state"
+          ],
+          "properties": {
+            "canonical_number": {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            "canonical_unit": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "exact"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "missing"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "invalid"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "partial"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "overflow"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "incompatible"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "bounds",
+            "canonical_number",
+            "canonical_unit",
+            "fidelity",
+            "state"
+          ],
+          "properties": {
+            "bounds": {
+              "type": "null"
+            },
+            "canonical_number": {
+              "type": "null"
+            },
+            "canonical_unit": {
+              "type": "null"
+            },
+            "fidelity": {
+              "type": "null"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ],
+      "required": [
+        "display_text",
+        "metric_cell_ref",
+        "metric_id",
+        "reasons",
+        "source_refs",
+        "subject_ref"
+      ],
+      "properties": {
+        "display_text": {
+          "type": "string"
+        },
+        "match_key": {
+          "description": "Structural identity of the counter inside its subject: physical operator (fragment, pipeline, type, plan node, operator id) plus the raw counter name, which separates base/MIN/MAX statistics. Present only when unique within the report, so Compare can pair it across two Profiles of one plan; absent means it can not be paired unambiguously.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metric_cell_ref": {
+          "type": "string"
+        },
+        "metric_id": {
+          "type": "string"
+        },
+        "order_rank": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "subject_ref": {
+          "type": "string"
+        }
+      }
+    },
+    "NumberKind": {
+      "type": "string",
+      "enum": [
+        "integer",
+        "decimal"
+      ]
+    },
+    "OperatorRow": {
+      "type": "object",
+      "required": [
+        "metric_cells",
+        "operator_ref",
+        "operator_type",
+        "source_refs"
+      ],
+      "properties": {
+        "metric_cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MetricCell"
+          }
+        },
+        "operator_ref": {
+          "type": "string"
+        },
+        "operator_type": {
+          "type": "string"
+        },
+        "plan_node_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "OrderedOperatorRef": {
+      "type": "object",
+      "required": [
+        "operator_ref",
+        "source_ordinal",
+        "source_refs",
+        "source_role"
+      ],
+      "properties": {
+        "operator_ref": {
+          "type": "string"
+        },
+        "source_ordinal": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_role": {
+          "$ref": "#/definitions/SourceRole"
+        }
+      }
+    },
+    "PackMatch": {
+      "type": "string",
+      "enum": [
+        "exact_pack",
+        "baseline_with_deltas",
+        "no_pack"
+      ]
+    },
+    "PlanNodeOperatorSummary": {
+      "type": "object",
+      "required": [
+        "operator_time",
+        "operator_type",
+        "pull_rows",
+        "push_rows",
+        "role",
+        "source_refs"
+      ],
+      "properties": {
+        "fragment_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operator_time": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "operator_type": {
+          "type": "string"
+        },
+        "pull_rows": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "push_rows": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "role": {
+          "$ref": "#/definitions/SummaryOperatorRole"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PlanNodeSummary": {
+      "type": "object",
+      "required": [
+        "hotspot",
+        "node_id",
+        "operators",
+        "output_rows",
+        "plan_node_id",
+        "reasons",
+        "total_time"
+      ],
+      "properties": {
+        "fragment_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hotspot": {
+          "$ref": "#/definitions/HotspotTier"
+        },
+        "node_id": {
+          "description": "Joins `GraphView.nodes[].node_id`.",
+          "type": "string"
+        },
+        "operators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PlanNodeOperatorSummary"
+          }
+        },
+        "output_rows": {
+          "$ref": "#/definitions/SummaryValue"
+        },
+        "plan_node_id": {
+          "type": "string"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "time_share_basis_points": {
+          "description": "Share of `QueryCumulativeOperatorTime` in basis points (1/100 percent).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "time_share_display": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total_time": {
+          "$ref": "#/definitions/SummaryValue"
+        }
+      }
+    },
+    "ProfileContext": {
+      "type": "object",
+      "required": [
+        "evidence_refs",
+        "limitations",
+        "merge_state",
+        "profile_level",
+        "query_state",
+        "snapshot_kind"
+      ],
+      "properties": {
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "merge_state": {
+          "$ref": "#/definitions/MergeState"
+        },
+        "profile_level": {
+          "$ref": "#/definitions/ProfileLevel"
+        },
+        "query_state": {
+          "$ref": "#/definitions/QueryState"
+        },
+        "snapshot_kind": {
+          "$ref": "#/definitions/SnapshotKind"
+        }
+      }
+    },
+    "ProfileLevel": {
+      "type": "string",
+      "enum": [
+        "level_1",
+        "level_2",
+        "unknown"
+      ]
+    },
+    "QueryState": {
+      "type": "string",
+      "enum": [
+        "finished",
+        "running",
+        "error",
+        "unknown"
+      ]
+    },
+    "QuerySummary": {
+      "type": "object",
+      "required": [
+        "limitations"
+      ],
+      "properties": {
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "query_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ReceiptComponent": {
+      "type": "object",
+      "required": [
+        "id",
+        "manifest_hash",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "manifest_hash": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "RecipeRef": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "Recommendation": {
+      "type": "object",
+      "required": [
+        "expected_changes",
+        "expected_direction",
+        "kind",
+        "limitations",
+        "next_step",
+        "recommendation_id",
+        "result_effect",
+        "risk",
+        "risk_level",
+        "steps",
+        "title",
+        "validation_steps"
+      ],
+      "properties": {
+        "expected_changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExpectedMetricChange"
+          }
+        },
+        "expected_direction": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/RecommendationKind"
+        },
+        "limitations": {
+          "description": "What the recommendation did not check (the finding's own limitations describe its measurement instead).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "next_step": {
+          "description": "What to do first, in one sentence.",
+          "type": "string"
+        },
+        "recommendation_id": {
+          "description": "Stable id of the recommendation text, e.g. `rec.scan.reduce_read@v1`.",
+          "type": "string"
+        },
+        "result_effect": {
+          "description": "Whether a correct change is expected to keep the query result.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RecommendationResultEffect"
+            }
+          ]
+        },
+        "risk": {
+          "type": "string"
+        },
+        "risk_level": {
+          "$ref": "#/definitions/RecommendationRiskLevel"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RecommendationStep"
+          }
+        },
+        "title": {
+          "description": "Short action title; the finding category names the problem instead.",
+          "type": "string"
+        },
+        "validation_steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "RecommendationKind": {
+      "oneOf": [
+        {
+          "description": "Points at where the cost is (time-share rules).",
+          "type": "string",
+          "enum": [
+            "optimization_target"
+          ]
+        },
+        {
+          "description": "A concrete check for an observed signal (spill, skew, fan-out…).",
+          "type": "string",
+          "enum": [
+            "investigation"
+          ]
+        }
+      ]
+    },
+    "RecommendationResultEffect": {
+      "type": "string",
+      "enum": [
+        "unchanged",
+        "may_change"
+      ]
+    },
+    "RecommendationRiskLevel": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "RecommendationStep": {
+      "type": "object",
+      "required": [
+        "detail",
+        "evidence_refs",
+        "title"
+      ],
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "description": "Exact metric cells (`MetricCell.metric_cell_ref`) of the finding's own subject that this step reads; empty when none is printed.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ReleaseDeltas": {
+      "type": "object",
+      "required": [
+        "delta_ids",
+        "deltas_hash",
+        "line",
+        "release"
+      ],
+      "properties": {
+        "delta_ids": {
+          "description": "Delta ids from `version-deltas.json` that apply, in file order.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deltas_hash": {
+          "type": "string"
+        },
+        "line": {
+          "description": "Its minor line, `x.y`.",
+          "type": "string"
+        },
+        "release": {
+          "description": "The reported release, `x.y.z`.",
+          "type": "string"
+        }
+      }
+    },
+    "RequestedSourceKind": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "json_profile",
+        "text_profile"
+      ]
+    },
+    "RuleEvaluation": {
+      "type": "object",
+      "required": [
+        "applicability_checks",
+        "comparisons",
+        "evidence_completeness",
+        "evidence_completeness_reasons",
+        "evidence_refs",
+        "input_observation_refs",
+        "limitations",
+        "missing_prerequisites",
+        "rule_id",
+        "rule_version",
+        "status",
+        "threshold_receipts"
+      ],
+      "properties": {
+        "applicability_checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "comparisons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_completeness": {
+          "$ref": "#/definitions/EvidenceCompleteness"
+        },
+        "evidence_completeness_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "finding_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input_observation_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_prerequisites": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rule_id": {
+          "type": "string"
+        },
+        "rule_version": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/RuleEvaluationStatus"
+        },
+        "subject_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threshold_receipts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "RuleEvaluationStatus": {
+      "type": "string",
+      "enum": [
+        "triggered",
+        "suspected",
+        "not_triggered",
+        "not_applicable",
+        "suppressed"
+      ]
+    },
+    "SelectedVersionPack": {
+      "type": "object",
+      "required": [
+        "manifest_hash",
+        "pack_id",
+        "product_pack_version",
+        "upstream_commit",
+        "upstream_release"
+      ],
+      "properties": {
+        "manifest_hash": {
+          "type": "string"
+        },
+        "pack_id": {
+          "type": "string"
+        },
+        "product_pack_version": {
+          "type": "string"
+        },
+        "release_deltas": {
+          "description": "A release other than the pack's own: the pack read with the audited deltas of that release (multi-version source audit). Absent for the pack's own release.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReleaseDeltas"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "upstream_commit": {
+          "type": "string"
+        },
+        "upstream_release": {
+          "type": "string"
+        }
+      }
+    },
+    "SnapshotKind": {
+      "type": "string",
+      "enum": [
+        "final",
+        "runtime",
+        "unknown"
+      ]
+    },
+    "SourceKind": {
+      "type": "string",
+      "enum": [
+        "json_profile",
+        "text_profile"
+      ]
+    },
+    "SourceLine": {
+      "type": "object",
+      "required": [
+        "line_no",
+        "source_ref",
+        "text"
+      ],
+      "properties": {
+        "line_no": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "SourceLineRef": {
+      "type": "object",
+      "required": [
+        "line_no",
+        "source_ref"
+      ],
+      "properties": {
+        "line_no": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_ref": {
+          "type": "string"
+        }
+      }
+    },
+    "SourceQuality": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "partial"
+      ]
+    },
+    "SourceRole": {
+      "type": "string",
+      "enum": [
+        "native",
+        "subordinate"
+      ]
+    },
+    "SourceToken": {
+      "type": "object",
+      "required": [
+        "kind",
+        "source_ref",
+        "text"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "SourceView": {
+      "type": "object",
+      "required": [
+        "json_tokens",
+        "limitations",
+        "plain_text_lines",
+        "source_kind",
+        "truncation_state"
+      ],
+      "properties": {
+        "json_tokens": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SourceToken"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "line_refs": {
+          "description": "The line of every text source reference in the report, from the adapter's typed locator. Names a reference whose line text is outside the safe allowlist above, so the browser never parses a reference.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SourceLineRef"
+          }
+        },
+        "plain_text_lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SourceLine"
+          }
+        },
+        "source_kind": {
+          "$ref": "#/definitions/SourceKind"
+        },
+        "truncation_state": {
+          "type": "string"
+        }
+      }
+    },
+    "SummaryOperatorRole": {
+      "type": "string",
+      "enum": [
+        "native",
+        "subordinate"
+      ]
+    },
+    "SummaryValue": {
+      "description": "One backend-computed value. `Unavailable` never carries a number, so a missing metric can not be read as zero.\n\n`Exact` means the value equals the official 3.5.14 `ANALYZE PROFILE` reading of the same Profile text (`RuntimeProfileParser` parses the printed counters too). When a counter was printed with less precision than the runtime value (e.g. `28.802ms` is truncated to the microsecond), `bounds` is the interval in `canonical_unit` that contains the runtime value; `None` means every input was printed losslessly.",
+      "type": "object",
+      "required": [
+        "reasons",
+        "source_refs",
+        "state"
+      ],
+      "properties": {
+        "bounds": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BoundedInterval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_number": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "display_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/SummaryValueState"
+        }
+      }
+    },
+    "SummaryValueState": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "unavailable"
+      ]
+    },
+    "SupportStatus": {
+      "type": "string",
+      "enum": [
+        "supported",
+        "parse_only",
+        "unsupported",
+        "unknown"
+      ]
+    },
+    "TopologySource": {
+      "type": "string",
+      "enum": [
+        "execution_topology",
+        "embedded_plan",
+        "verified_profile_relation",
+        "explain_costs",
+        "explain_logical",
+        "explain_verbose",
+        "none"
+      ]
+    },
+    "UnknownFidelity": {
+      "type": "string",
+      "enum": [
+        "unknown"
+      ]
+    },
+    "UnresolvedRelation": {
+      "type": "object",
+      "required": [
+        "reason",
+        "relation_ref",
+        "source_refs"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "relation_ref": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "VersionContext": {
+      "type": "object",
+      "required": [
+        "compatibility",
+        "compatibility_checks",
+        "detection_evidence",
+        "issues",
+        "pack_match",
+        "support_status",
+        "version_source"
+      ],
+      "properties": {
+        "compatibility": {
+          "$ref": "#/definitions/Compatibility"
+        },
+        "compatibility_checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CompatibilityCheck"
+          }
+        },
+        "detection_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/VersionEvidence"
+          }
+        },
+        "effective_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pack_match": {
+          "$ref": "#/definitions/PackMatch"
+        },
+        "reported_version": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/VersionEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selected_pack": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SelectedVersionPack"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "support_status": {
+          "$ref": "#/definitions/SupportStatus"
+        },
+        "user_declared_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version_source": {
+          "$ref": "#/definitions/VersionSource"
+        }
+      }
+    },
+    "VersionEvidence": {
+      "type": "object",
+      "required": [
+        "source_ref",
+        "value"
+      ],
+      "properties": {
+        "source_ref": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "VersionSource": {
+      "type": "string",
+      "enum": [
+        "detected",
+        "user_declared",
+        "unknown"
+      ]
+    }
+  }
+}

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>应用内告警</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Noto+Sans+SC:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F5F6F8;color:#151A22;font-family:Inter,"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#1F55E0;text-decoration:none}a:hover{color:#1743B8;text-decoration:underline}
+button,input,select{font:inherit}
+table{border-collapse:collapse}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #F5F6F8">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; min-height: 52px; padding: 8px 20px; background: #FFFFFF; border-bottom: 1px solid #DFE3E8">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1F55E0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 3 5-7"></path><circle cx="19.5" cy="5.5" r="1.8"></circle><path d="M3 21h18"></path></svg>
+<span style="font-weight: 600; font-size: 14px; letter-spacing: -0.01em">SR Doctor</span>
+<span style="font-size: 12px; color: #5D6675; padding-left: 10px; border-left: 1px solid #DFE3E8">Profile 诊断 · SQL 质量</span>
+</div>
+<nav aria-label="工作区" style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">1</span>查询</a>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">2</span>诊断</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">3</span>优化建议</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">4</span>对比</span>
+<span aria-hidden="true" style="width: 1px; height: 22px; margin: 0 8px; background: #DFE3E8"></span>
+<a href="Trends.dc.html" style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none">趋势</a>
+<a href="Alerts.dc.html" aria-current="page" style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; background: #EAF0FE; color: #1F55E0; font-weight: 600; text-decoration: none">告警<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #FDECEA; color: #B42318; font: 600 11px/1 'JetBrains Mono', monospace">{{newCount}}</span></a>
+<a href="Governance.dc.html" style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 6px; color: #3D4654; text-decoration: none">治理</a>
+</nav>
+<div style="margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<a href="Collection.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid #DFE3E8; border-radius: 17px; background: #FFFFFF; color: #151A22; font-size: 12px; text-decoration: none"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #1F55E0"></span>采集中<span style="font-family: 'JetBrains Mono', monospace; color: #5D6675">水位 14:05</span></a>
+<span style="display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid #DFE3E8; border-radius: 17px; background: #FFFFFF; font-size: 12px"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #18794E"></span>Demo / Mock cluster<span style="color: #5D6675">3.5.14 · 只读</span></span>
+</div>
+</header>
+
+<main style="width: 100%; max-width: 1440px; margin: 0 auto; padding: 16px 20px 28px; display: flex; flex-direction: column; gap: 12px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<div role="tablist" aria-label="告警状态" style="display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 2px; background: #EBEEF2; border-radius: 8px">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+<button type="button" role="tab" aria-selected="{{t.selected}}" onClick="{{t.pick}}" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: {{t.bg}}; color: #151A22; font-weight: {{t.weight}}; box-shadow: {{t.shadow}}">{{t.label}} <span style="font-family: 'JetBrains Mono', monospace; color: #5D6675">{{t.count}}</span></button>
+</sc-for>
+</div>
+<span style="font-size: 12px; color: #5D6675">告警只来自回归判定 · 只在应用内显示</span>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start">
+
+<section aria-labelledby="a-list" style="flex: 999 1 640px; min-width: 0; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<h1 id="a-list" style="margin: 0; padding: 12px 14px; font-size: 15px; font-weight: 600; border-bottom: 1px solid #DFE3E8">告警</h1>
+<ul style="list-style: none; margin: 0; padding: 0">
+<sc-for list="{{alerts}}" as="a" hint-placeholder-count="5">
+<li style="border-bottom: 1px solid #EEF0F3; background: {{a.bg}}; box-shadow: {{a.ring}}">
+<button type="button" onClick="{{a.pick}}" aria-pressed="{{a.pressed}}" style="display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 4px 14px; width: 100%; padding: 12px 14px; border: 0; background: transparent; text-align: left; color: #151A22; cursor: pointer">
+<span style="font: 400 12px/20px 'JetBrains Mono', monospace; color: #3D4654">{{a.at}}</span>
+<span style="min-width: 0">
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px"><span style="font-weight: 600">{{a.title}}</span><span style="display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 4px; font-size: 11px; font-weight: 600; color: {{a.sevColor}}; background: {{a.sevBg}}">{{a.sev}}</span><span style="font-size: 12px; color: #3D4654">置信度 {{a.conf}}</span></span>
+<span style="display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/18px 'JetBrains Mono', monospace; color: #3D4654">{{a.template}}</span>
+</span>
+<span style="display: inline-flex; align-items: center; align-self: start; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; color: {{a.stColor}}; background: {{a.stBg}}">{{a.status}}</span>
+</button>
+</li>
+</sc-for>
+</ul>
+<div style="padding: 10px 14px; font-size: 12px; color: #5D6675">样本不足（unscored）与不可比较（not_comparable）的判定不产生告警</div>
+</section>
+
+<div style="flex: 1 1 400px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+
+<aside aria-label="告警详情" style="display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<div style="padding: 14px 16px 12px; border-bottom: 1px solid #DFE3E8">
+<div style="font-size: 12px; color: #5D6675">告警 · {{sel.at}}</div>
+<h2 style="margin: 2px 0 0; font-size: 16px; line-height: 22px; font-weight: 600">{{sel.title}}</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px">
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; font-size: 12px; font-weight: 600; color: {{sel.sevColor}}; background: {{sel.sevBg}}">严重度 {{sel.sev}}</span>
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; background: #F0F2F5; font-size: 12px; color: #3D4654">置信度 {{sel.conf}}</span>
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; color: {{sel.evColor}}; background: {{sel.evBg}}">证据 {{sel.ev}}</span>
+</div>
+</div>
+<div style="padding: 12px 16px; border-bottom: 1px solid #DFE3E8">
+<h3 style="margin: 0 0 8px; font-size: 13px; font-weight: 600">证据链</h3>
+<ol style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #3D4654">
+<li>模板 <span style="font-family: 'JetBrains Mono', monospace; color: #151A22">{{sel.fp}}</span> · {{sel.source}}</li>
+<li>时间桶 <span style="font-family: 'JetBrains Mono', monospace; color: #151A22">{{sel.bucket}}</span> · {{sel.change}}</li>
+<li>代表执行 <span style="font-family: 'JetBrains Mono', monospace; color: #151A22">{{sel.rep}}</span></li>
+</ol>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px">
+<a href="Trends.dc.html" style="display: inline-flex; align-items: center; height: 32px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; color: #151A22; text-decoration: none">查看趋势</a>
+<button type="button" style="height: 32px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22">拉取代表执行 Profile</button>
+</div>
+</div>
+<div style="padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" onClick="{{ack}}" style="height: 36px; padding: 0 14px; border: 0; border-radius: 6px; background: #151A22; color: #FFFFFF; font-weight: 500">确认</button>
+<a href="Governance.dc.html" style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 6px; background: #1F55E0; color: #FFFFFF; font-weight: 500; text-decoration: none">加入治理队列</a>
+<button type="button" style="height: 36px; padding: 0 12px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22">静默 24 小时</button>
+</div>
+</aside>
+
+<section aria-labelledby="a-rules" style="padding: 14px 16px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 10px">
+<h2 id="a-rules" style="margin: 0 0 8px; font-size: 15px; font-weight: 600">何时产生告警</h2>
+<ul style="margin: 0; padding-left: 18px; font-size: 12px; color: #3D4654; display: flex; flex-direction: column; gap: 4px">
+<li>模板的回归判定为“回归”，且严重度不低于“中”</li>
+<li>同一模板在恢复到基线带前只产生一条告警</li>
+<li>恢复到基线带后自动标为已解决，可手动重新打开</li>
+</ul>
+<p style="margin: 8px 0 0; font-size: 12px; color: #5D6675">不以耗时单独判定；判定阈值待 G2 真实样本校准。</p>
+<h3 style="margin: 14px 0 8px; font-size: 13px; font-weight: 600">通知渠道</h3>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px">
+<li style="display: flex; justify-content: space-between; gap: 8px"><span>应用内 · 导航角标与本列表</span><span style="display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 10px; background: #E7F5EE; color: #18794E; font-size: 11px">已启用</span></li>
+<li style="display: flex; justify-content: space-between; gap: 8px"><span style="color: #5D6675">Webhook</span><span style="display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 10px; background: #F0F2F5; color: #5D6675; font-size: 11px">Not available in this version</span></li>
+<li style="display: flex; justify-content: space-between; gap: 8px"><span style="color: #5D6675">邮件</span><span style="display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 10px; background: #F0F2F5; color: #5D6675; font-size: 11px">Not available in this version</span></li>
+</ul>
+</section>
+
+</div>
+
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":800}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { tab: 0, picked: 0, acked: {} }; }
+  renderVals() {
+    const sev = { hi: { sev: '高', sevColor: '#B42318', sevBg: '#FDECEA' }, mid: { sev: '中', sevColor: '#9A4D00', sevBg: '#FFF3E0' } };
+    const st = {
+      new: { status: '新告警', stColor: '#B42318', stBg: '#FDECEA' },
+      ack: { status: '已确认', stColor: '#9A4D00', stBg: '#FFF3E0' },
+      res: { status: '已解决', stColor: '#18794E', stBg: '#E7F5EE' },
+      mute: { status: '已静默', stColor: '#5D6675', stBg: '#F0F2F5' }
+    };
+    const evFull = { ev: '完整', evColor: '#18794E', evBg: '#E7F5EE' }, evPart = { ev: '部分', evColor: '#9A4D00', evBg: '#FFF3E0' };
+    const all = [
+      { at: '10-27 14:00', title: '查询耗时中位数回归 +69%', template: 'SELECT o.id, o.amount FROM orders o JOIN customers c ON o.cid = c.id WHERE c.region = ? AND o.dt >= ?', ...sev.hi, conf: '高', ...evFull, fp: '7c41e0a9…d2', source: '非官方指纹', bucket: '10-27 13:00–14:00', change: '6.1 s → 10.3 s', rep: '3b7e19c2…8a10', state: 'new' },
+      { at: '10-27 13:00', title: '查询耗时中位数回归 +18%', template: 'SELECT customer_id, SUM(amount) FROM orders GROUP BY customer_id', ...sev.mid, conf: '中', ...evPart, fp: '0f1e2d3c', source: '官方 digest', bucket: '10-27 12:00–13:00', change: '8.4 s → 9.9 s', rep: '7e8c3a91…4d73', state: 'new' },
+      { at: '10-27 09:00', title: '扫描数据量回归 +120 MB（基线为 0）', template: 'SELECT * FROM dim_store WHERE store_id = ?', ...sev.mid, conf: '中', ...evFull, fp: 'f1e2d3c4', source: '官方 digest', bucket: '10-27 08:00–09:00', change: '0 B → 120 MB · 百分比不定义', rep: 'b40c7d11…9e02', state: 'new' },
+      { at: '10-26 22:00', title: '查询耗时中位数回归 +31%', template: 'SELECT dt, COUNT(DISTINCT uid) FROM events WHERE dt >= ? GROUP BY dt', ...sev.mid, conf: '高', ...evFull, fp: 'c4d5e6f7', source: '官方 digest', bucket: '10-26 21:00–22:00', change: '5.0 s → 6.6 s', rep: '1f9a2e60…3b77', state: 'ack' },
+      { at: '10-26 08:00', title: '查询耗时中位数回归 +52%', template: 'SELECT region, AVG(price) FROM sales WHERE ts BETWEEN ? AND ? GROUP BY region', ...sev.hi, conf: '高', ...evFull, fp: '7b8c9d0e', source: '官方 digest', bucket: '10-26 07:00–08:00', change: '4.7 s → 7.2 s', rep: '6c2d8f14…0a95', state: 'res' }
+    ].map((a, i) => ({ ...a, state: this.state.acked[i] ? 'ack' : a.state }));
+    const keys = ['new', 'ack', 'res', 'mute', 'all'];
+    const labels = ['新告警', '已确认', '已解决', '已静默', '全部'];
+    const tab = this.state.tab;
+    const tabs = keys.map((k, i) => ({ label: labels[i], count: String(k === 'all' ? all.length : all.filter((a) => a.state === k).length), selected: i === tab ? 'true' : 'false', bg: i === tab ? '#FFFFFF' : 'transparent', weight: i === tab ? '600' : '400', shadow: i === tab ? '0 1px 2px rgba(21,26,34,0.08)' : 'none', pick: () => this.setState({ tab: i }) }));
+    const visibleIdx = all.map((a, i) => i).filter((i) => keys[tab] === 'all' || all[i].state === keys[tab]);
+    const picked = visibleIdx.includes(this.state.picked) ? this.state.picked : (visibleIdx[0] ?? 0);
+    const alerts = visibleIdx.map((i) => ({ ...all[i], ...st[all[i].state], bg: i === picked ? '#F3F6FE' : '#FFFFFF', ring: i === picked ? 'inset 0 0 0 1.5px #1F55E0' : 'none', pressed: i === picked ? 'true' : 'false', pick: () => this.setState({ picked: i }) }));
+    const sel = all[picked];
+    return { tabs, alerts, sel, newCount: String(all.filter((a) => a.state === 'new').length), ack: () => this.setState({ acked: { ...this.state.acked, [picked]: true } }) };
+  }
+}
+</script>
+</body>
+</html>

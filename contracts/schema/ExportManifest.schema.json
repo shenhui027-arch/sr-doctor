@@ -1,0 +1,288 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExportManifest",
+  "type": "object",
+  "required": [
+    "canonicalization",
+    "evidence",
+    "files",
+    "integrity",
+    "kind",
+    "manifest_hash",
+    "receipt_bindings",
+    "schema_version",
+    "schemas",
+    "subject_hashes"
+  ],
+  "properties": {
+    "canonicalization": {
+      "$ref": "#/definitions/ExportCanonicalization"
+    },
+    "evidence": {
+      "$ref": "#/definitions/ExportEvidence"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ExportFile"
+      },
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "integrity": {
+      "$ref": "#/definitions/ExportIntegrity"
+    },
+    "kind": {
+      "$ref": "#/definitions/ExportKind"
+    },
+    "manifest_hash": {
+      "type": "string"
+    },
+    "receipt_bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReceiptBinding"
+      },
+      "minItems": 1
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "0.1"
+    },
+    "schemas": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SchemaReceipt"
+      }
+    },
+    "subject_hashes": {
+      "$ref": "#/definitions/SubjectHashes"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "ExportBindingScope": {
+      "type": "string",
+      "enum": [
+        "exporter",
+        "analysis",
+        "comparison",
+        "baseline",
+        "candidate"
+      ]
+    },
+    "ExportCanonicalization": {
+      "type": "string",
+      "enum": [
+        "doctor-canonical-json-v1"
+      ]
+    },
+    "ExportEvidence": {
+      "type": "string",
+      "enum": [
+        "synthetic_contract_only_not_docker_e2e",
+        "product_runtime"
+      ]
+    },
+    "ExportFile": {
+      "type": "object",
+      "required": [
+        "byte_length",
+        "media_type",
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "byte_length": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "media_type": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExportIntegrity": {
+      "type": "string",
+      "enum": [
+        "self_consistent_not_signed"
+      ]
+    },
+    "ExportKind": {
+      "type": "string",
+      "enum": [
+        "analysis",
+        "comparison"
+      ]
+    },
+    "ExportSchemaVersion": {
+      "type": "string",
+      "enum": [
+        "0.1"
+      ]
+    },
+    "ReceiptBinding": {
+      "type": "object",
+      "required": [
+        "component",
+        "scope"
+      ],
+      "properties": {
+        "component": {
+          "$ref": "#/definitions/ReceiptComponent"
+        },
+        "scope": {
+          "$ref": "#/definitions/ExportBindingScope"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ReceiptComponent": {
+      "type": "object",
+      "required": [
+        "id",
+        "manifest_hash",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "manifest_hash": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "SchemaReceipt": {
+      "type": "object",
+      "required": [
+        "schema_id",
+        "sha256",
+        "version"
+      ],
+      "properties": {
+        "schema_id": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SubjectHashAttempt": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "analysis_key",
+            "facts_hash",
+            "state"
+          ],
+          "properties": {
+            "analysis_key": {
+              "type": "string"
+            },
+            "facts_hash": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "success"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error_state",
+            "state"
+          ],
+          "properties": {
+            "error_state": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "failed"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "SubjectHashes": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "analysis_key",
+            "facts_hash",
+            "kind"
+          ],
+          "properties": {
+            "analysis_key": {
+              "type": "string"
+            },
+            "facts_hash": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "analysis"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "baseline",
+            "candidate",
+            "comparison_key",
+            "kind"
+          ],
+          "properties": {
+            "baseline": {
+              "$ref": "#/definitions/SubjectHashAttempt"
+            },
+            "candidate": {
+              "$ref": "#/definitions/SubjectHashAttempt"
+            },
+            "comparison_key": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "comparison"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,55 @@
+PLAN COST
+  CPU: 196.6665
+  Memory: 0.0
+
+PLAN FRAGMENT 0(F01)
+  Output Exprs:1: e_id | 2: e_cust | 3: e_type
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  3:Decode
+  |  <dict id 6> : <string id 3>
+  |  cardinality: 5
+  |  column statistics: 
+  |  * e_id-->[1.0, 100000.0, 0.0, 8.0, 89898.9898989899] ESTIMATE
+  |  * e_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * e_type-->[-Infinity, Infinity, 0.0, 5.66665, 3.0] ESTIMATE
+  |  * e_value-->[10.0, 99.0, 0.0, 4.0, 100.0] ESTIMATE
+  |  
+  2:EXCHANGE
+     distribution type: GATHER
+     limit: 5
+     cardinality: 5
+
+PLAN FRAGMENT 1(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 02
+
+  1:Project
+  |  output columns:
+  |  1 <-> [1: e_id, BIGINT, false]
+  |  2 <-> [2: e_cust, INT, false]
+  |  6 <-> [6: e_type, INT, false]
+  |  limit: 5
+  |  cardinality: 5
+  |  column statistics: 
+  |  * e_id-->[1.0, 100000.0, 0.0, 8.0, 89898.9898989899] ESTIMATE
+  |  * e_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  
+  0:OlapScanNode
+     table: events, rollup: events
+     preAggregation: on
+     Predicates: [5: e_value, INT, false] > 10
+     dict_col=e_type
+     partitionsRatio=1/1, tabletsRatio=4/4
+     tabletList=10193,10195,10197,10199
+     actualRows=0, avgRowSize=21.66665
+     limit: 5
+     cardinality: 5
+     column statistics: 
+     * e_id-->[1.0, 100000.0, 0.0, 8.0, 89898.9898989899] ESTIMATE
+     * e_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * e_type-->[-Infinity, Infinity, 0.0, 5.66665, 3.0] ESTIMATE
+     * e_value-->[10.0, 99.0, 0.0, 4.0, 100.0] ESTIMATE

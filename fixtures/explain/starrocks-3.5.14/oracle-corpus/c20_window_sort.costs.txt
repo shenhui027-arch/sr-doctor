@@ -1,0 +1,81 @@
+PLAN COST
+  CPU: 4.64000032E8
+  Memory: 9.60000176E7
+
+PLAN FRAGMENT 0(F02)
+  Output Exprs:5: count | 6: sum
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  7:AGGREGATE (merge finalize)
+  |  aggregate: count[([5: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false], sum[([6: sum, BIGINT, true]); args: BIGINT; result: BIGINT; args nullable: true; result nullable: true]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 8000000.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  6:EXCHANGE
+     distribution type: GATHER
+     cardinality: 1
+
+PLAN FRAGMENT 1(F01)
+
+  Input Partition: HASH_PARTITIONED: 3: f_val
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 06
+
+  5:AGGREGATE (update serialize)
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false], sum[([4: row_number(), BIGINT, true]); args: BIGINT; result: BIGINT; args nullable: true; result nullable: true]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 8000000.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  4:Project
+  |  output columns:
+  |  4 <-> [4: row_number(), BIGINT, true]
+  |  cardinality: 8000000
+  |  column statistics: 
+  |  * row_number()-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  3:ANALYTIC
+  |  functions: [, row_number[(); args: ; result: BIGINT; args nullable: false; result nullable: true], ]
+  |  partition by: [3: f_val, INT, false]
+  |  order by: [1: f_id, BIGINT, false] ASC
+  |  window: ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  |  cardinality: 8000000
+  |  column statistics: 
+  |  * f_id-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * f_val-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * row_number()-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  2:SORT
+  |  order by: [3, INT, false] ASC, [1, BIGINT, false] ASC
+  |  analytic partition by: [3: f_val, INT, false]
+  |  offset: 0
+  |  cardinality: 8000000
+  |  column statistics: 
+  |  * f_id-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * f_val-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  1:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [3: f_val, INT, false]
+     cardinality: 8000000
+
+PLAN FRAGMENT 2(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 3: f_val
+  OutPut Exchange Id: 01
+
+  0:OlapScanNode
+     table: skew_fact, rollup: skew_fact
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10023,10025,10027,10029,10031,10033,10035,10037
+     actualRows=0, avgRowSize=2.0
+     cardinality: 8000000
+     column statistics: 
+     * f_id-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+     * f_val-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN

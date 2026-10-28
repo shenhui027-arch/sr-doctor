@@ -1,0 +1,1 @@
+SELECT c.c_region, c.c_segment, COUNT(*) AS cnt, SUM(s.s_amount) AS amount FROM sales s JOIN customers c ON s.s_cust = c.c_id WHERE c.c_region < 5 GROUP BY ROLLUP(c.c_region, c.c_segment) ORDER BY c.c_region, c.c_segment;

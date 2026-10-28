@@ -1,0 +1,196 @@
+PLAN COST
+  CPU: 5810542.4
+  Memory: 1158090.4
+
+PLAN FRAGMENT 0(F07)
+  Output Exprs:26: count | 27: sum
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  18:AGGREGATE (merge finalize)
+  |  aggregate: count[([26: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false], sum[([27: sum, DECIMAL128(38,2), true]); args: DECIMAL128; result: DECIMAL128(38,2); args nullable: true; result nullable: true]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 19963.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[-198.41004869323262, 393.7048447089803, 0.0, 16.0, 1.0] ESTIMATE
+  |  
+  17:EXCHANGE
+     distribution type: GATHER
+     cardinality: 1
+
+PLAN FRAGMENT 1(F06)
+
+  Input Partition: HASH_PARTITIONED: 29: add
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 17
+
+  16:AGGREGATE (update serialize)
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false], sum[([15: sum, DECIMAL128(38,2), true] - [23: sum, DECIMAL128(38,2), true]); args: DECIMAL128; result: DECIMAL128(38,2); args nullable: true; result nullable: true]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 19963.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[-198.41004869323262, 393.7048447089803, 0.0, 16.0, 1.0] ESTIMATE
+  |  
+  15:Project
+  |  output columns:
+  |  15 <-> [15: sum, DECIMAL128(38,2), true]
+  |  23 <-> [23: sum, DECIMAL128(38,2), true]
+  |  cardinality: 19963
+  |  column statistics: 
+  |  * sum-->[0.0, 393.7048447089803, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * sum-->[0.0, 198.41004869323262, 0.0, 8.0, 10063.0] ESTIMATE
+  |  
+  14:HASH JOIN
+  |  join op: INNER JOIN (PARTITIONED)
+  |  equal join conjunct: [29: add, BIGINT, false] = [28: cast, BIGINT, false]
+  |  build runtime filters:
+  |  - filter_id = 0, build_expr = (28: cast), remote = true
+  |  output columns: 15, 23
+  |  can local shuffle: true
+  |  cardinality: 19963
+  |  column statistics: 
+  |  * sum-->[0.0, 393.7048447089803, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * sum-->[0.0, 198.41004869323262, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * expr-->[-198.41004869323262, 393.7048447089803, 0.0, 16.0, 10063.0] ESTIMATE
+  |  * cast-->[2.0, 20000.0, 0.0, 8.0, 19963.0] ESTIMATE
+  |  * add-->[2.0, 20000.0, 0.0, 8.0, 19963.0] ESTIMATE
+  |  
+  |----13:EXCHANGE
+  |       distribution type: SHUFFLE
+  |       partition exprs: [28: cast, BIGINT, false]
+  |       cardinality: 19963
+  |    
+  8:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [29: add, BIGINT, false]
+     cardinality: 19968
+
+PLAN FRAGMENT 2(F04)
+
+  Input Partition: HASH_PARTITIONED: 3: s_cust
+  OutPut Partition: HASH_PARTITIONED: 28: cast
+  OutPut Exchange Id: 13
+
+  12:Project
+  |  output columns:
+  |  15 <-> [15: sum, DECIMAL128(38,2), true]
+  |  28 <-> cast([11: s_cust, INT, false] as BIGINT)
+  |  cardinality: 19963
+  |  column statistics: 
+  |  * sum-->[0.0, 393.7048447089803, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * cast-->[1.0, 20000.0, 0.0, 8.0, 19963.0] ESTIMATE
+  |  
+  11:SELECT
+  |  predicates: 16: count > 5
+  |  cardinality: 19963
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19963.0] ESTIMATE
+  |  * sum-->[0.0, 393.7048447089803, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * count-->[5.0, 19968.0, 0.0, 8.0, 19963.0] ESTIMATE
+  |  * cast-->[1.0, 20000.0, 0.0, 8.0, 19963.0] ESTIMATE
+  |  
+  10:Project
+  |  output columns:
+  |  11 <-> [3: s_cust, INT, false]
+  |  15 <-> [7: sum, DECIMAL128(38,2), true]
+  |  16 <-> [8: count, BIGINT, false]
+  |  cardinality: 19963
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19963.0] ESTIMATE
+  |  * sum-->[0.0, 393.7048447089803, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * count-->[5.0, 19968.0, 0.0, 8.0, 19963.0] ESTIMATE
+  |  
+  9:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [3: s_cust, INT, false]
+     cardinality: 19968
+
+PLAN FRAGMENT 3(F02)
+
+  Input Partition: HASH_PARTITIONED: 3: s_cust
+  OutPut Partition: HASH_PARTITIONED: 29: add
+  OutPut Exchange Id: 08
+
+  7:Project
+  |  output columns:
+  |  23 <-> [23: sum, DECIMAL128(38,2), true]
+  |  29 <-> cast([19: s_cust, INT, false] as BIGINT) + 1
+  |  cardinality: 19968
+  |  column statistics: 
+  |  * sum-->[0.0, 198.41004869323262, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * add-->[2.0, 20001.0, 0.0, 8.0, 19968.0] ESTIMATE
+  |  
+  6:SELECT
+  |  predicates: CAST(19: s_cust AS BIGINT) + 1 IS NOT NULL
+  |  cardinality: 19968
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * sum-->[0.0, 198.41004869323262, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * add-->[2.0, 20001.0, 0.0, 8.0, 19968.0] ESTIMATE
+  |  
+  5:Project
+  |  output columns:
+  |  19 <-> [3: s_cust, INT, false]
+  |  23 <-> [7: sum, DECIMAL128(38,2), true]
+  |  cardinality: 19968
+  |  probe runtime filters:
+  |  - filter_id = 0, probe_expr = (CAST(19: s_cust AS BIGINT) + 1)
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * sum-->[0.0, 198.41004869323262, 0.0, 8.0, 10063.0] ESTIMATE
+  |  
+  4:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [3: s_cust, INT, false]
+     cardinality: 19968
+
+PLAN FRAGMENT 4(F01)
+  Output Exprs:3: s_cust | 7: sum | 8: count
+  Input Partition: HASH_PARTITIONED: 3: s_cust
+  MultiCastDataSinks:
+  OutPut Partition: RANDOM
+  OutPut Exchange Id: 04
+  OutPut Partition: RANDOM
+  OutPut Exchange Id: 09
+
+  3:AGGREGATE (merge finalize)
+  |  aggregate: sum[([7: sum, DECIMAL128(38,2), true]); args: DECIMAL64; result: DECIMAL128(38,2); args nullable: true; result nullable: true], count[([8: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false]
+  |  group by: [3: s_cust, INT, false]
+  |  having: (CAST(3: s_cust AS BIGINT) + 1 IS NOT NULL) OR (8: count > 5)
+  |  cardinality: 19968
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19967.999999999996] ESTIMATE
+  |  * sum-->[0.0, 198.41004869323262, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * count-->[0.0, 200000.0, 0.0, 8.0, 19967.999999999996] ESTIMATE
+  |  
+  2:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [3: s_cust, INT, false]
+     cardinality: 19968
+
+PLAN FRAGMENT 5(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 3: s_cust
+  OutPut Exchange Id: 02
+
+  1:AGGREGATE (update serialize)
+  |  STREAMING
+  |  aggregate: sum[([6: s_amount, DECIMAL64(12,2), false]); args: DECIMAL64; result: DECIMAL128(38,2); args nullable: false; result nullable: true], count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false]
+  |  group by: [3: s_cust, INT, false]
+  |  cardinality: 19968
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  * sum-->[0.0, 198.41004869323262, 0.0, 8.0, 10063.0] ESTIMATE
+  |  * count-->[0.0, 200000.0, 0.0, 8.0, 19968.0] ESTIMATE
+  |  
+  0:OlapScanNode
+     table: sales, rollup: sales
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10161,10163,10165,10167,10169,10171,10173,10175
+     actualRows=0, avgRowSize=12.0
+     cardinality: 200000
+     column statistics: 
+     * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * s_amount-->[0.0, 99.99, 0.0, 8.0, 10063.0] ESTIMATE

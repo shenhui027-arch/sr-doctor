@@ -1,0 +1,122 @@
+PLAN COST
+  CPU: 856369.0
+  Memory: 8.8
+
+PLAN FRAGMENT 0(F07)
+  Output Exprs:17: count
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  11:AGGREGATE (merge finalize)
+  |  aggregate: count[([17: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 1995.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  10:EXCHANGE
+     distribution type: GATHER
+     cardinality: 1
+
+PLAN FRAGMENT 1(F06)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 10
+
+  9:AGGREGATE (update serialize)
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false]
+  |  cardinality: 1
+  |  column statistics: 
+  |  * count-->[0.0, 1995.0, 0.0, 8.0, 1.0] ESTIMATE
+  |  
+  0:INTERSECT
+  |  output exprs:
+  |      [16, INT, false]
+  |  child exprs:
+  |      [3: s_cust, INT, false]
+  |      [9: r_cust, INT, false]
+  |      [12: e_cust, INT, false]
+  |  cardinality: 1995
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  
+  |----5:EXCHANGE
+  |       distribution type: SHUFFLE
+  |       partition exprs: [9: r_cust, INT, false]
+  |       cardinality: 20000
+  |    
+  |----8:EXCHANGE
+  |       distribution type: SHUFFLE
+  |       partition exprs: [12: e_cust, INT, false]
+  |       cardinality: 33333
+  |    
+  3:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [3: s_cust, INT, false]
+     cardinality: 20000
+
+PLAN FRAGMENT 2(F04)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 12: e_cust
+  OutPut Exchange Id: 08
+
+  7:Project
+  |  output columns:
+  |  12 <-> [12: e_cust, INT, false]
+  |  cardinality: 33333
+  |  column statistics: 
+  |  * e_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  
+  6:OlapScanNode
+     table: events, rollup: events
+     preAggregation: on
+     Predicates: [13: e_type, VARCHAR(16), false] = 'click'
+     partitionsRatio=1/1, tabletsRatio=4/4
+     tabletList=10311,10313,10315,10317
+     actualRows=0, avgRowSize=9.66665
+     cardinality: 33333
+     column statistics: 
+     * e_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * e_type-->[-Infinity, Infinity, 0.0, 5.66665, 3.0] ESTIMATE
+
+PLAN FRAGMENT 3(F02)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 9: r_cust
+  OutPut Exchange Id: 05
+
+  4:OlapScanNode
+     table: returns, rollup: returns
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=4/4
+     tabletList=10299,10301,10303,10305
+     actualRows=0, avgRowSize=4.0
+     cardinality: 20000
+     column statistics: 
+     * r_cust-->[1.0, 19991.0, 0.0, 4.0, 1995.0] ESTIMATE
+
+PLAN FRAGMENT 4(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 3: s_cust
+  OutPut Exchange Id: 03
+
+  2:Project
+  |  output columns:
+  |  3 <-> [3: s_cust, INT, false]
+  |  cardinality: 20000
+  |  column statistics: 
+  |  * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+  |  
+  1:OlapScanNode
+     table: sales, rollup: sales
+     preAggregation: on
+     Predicates: [5: s_qty, INT, false] = 10
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10279,10281,10283,10285,10287,10289,10291,10293
+     actualRows=0, avgRowSize=8.0
+     cardinality: 20000
+     column statistics: 
+     * s_cust-->[1.0, 20000.0, 0.0, 4.0, 19968.0] ESTIMATE
+     * s_qty-->[10.0, 10.0, 0.0, 4.0, 10.0] ESTIMATE

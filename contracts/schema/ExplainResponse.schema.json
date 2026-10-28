@@ -1,0 +1,1495 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExplainResponse",
+  "type": "object",
+  "required": [
+    "snapshot"
+  ],
+  "properties": {
+    "snapshot": {
+      "$ref": "#/definitions/ExplainSnapshot"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "CompletenessState": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "Diagnostic": {
+      "type": "object",
+      "required": [
+        "affected_ids",
+        "code",
+        "details",
+        "message_id",
+        "recoverability",
+        "severity",
+        "source_refs",
+        "stage"
+      ],
+      "properties": {
+        "affected_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "code": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "recoverability": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stage": {
+          "type": "string"
+        }
+      }
+    },
+    "DimensionCompleteness": {
+      "type": "object",
+      "required": [
+        "present_count",
+        "reasons",
+        "state"
+      ],
+      "properties": {
+        "expected_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "present_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/CompletenessState"
+        }
+      }
+    },
+    "DirectionSemantics": {
+      "type": "string",
+      "enum": [
+        "upstream_to_downstream",
+        "parent_to_child",
+        "dependency_precedes"
+      ]
+    },
+    "EdgeSource": {
+      "type": "string",
+      "enum": [
+        "explicit",
+        "verified_derived"
+      ]
+    },
+    "ExplainAggregatePhase": {
+      "type": "string",
+      "enum": [
+        "update_serialize",
+        "update_finalize",
+        "merge_finalize"
+      ]
+    },
+    "ExplainCardFactSlot": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "expected_fact_kind",
+            "fact_ref",
+            "reason_codes",
+            "selection_recipe",
+            "slot_id",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "expected_fact_kind": {
+              "$ref": "#/definitions/ExplainFactKind"
+            },
+            "fact_ref": {
+              "type": "string"
+            },
+            "reason_codes": {
+              "type": "array",
+              "maxItems": 0
+            },
+            "selection_recipe": {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            "slot_id": {
+              "$ref": "#/definitions/ExplainCardSlotId"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "selected"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "expected_fact_kind",
+            "fact_ref",
+            "reason_codes",
+            "selection_recipe",
+            "slot_id",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "expected_fact_kind": {
+              "$ref": "#/definitions/ExplainFactKind"
+            },
+            "fact_ref": {
+              "type": "null"
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "selection_recipe": {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            "slot_id": {
+              "$ref": "#/definitions/ExplainCardSlotId"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "expected_fact_kind",
+            "fact_ref",
+            "reason_codes",
+            "selection_recipe",
+            "slot_id",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "expected_fact_kind": {
+              "type": "null"
+            },
+            "fact_ref": {
+              "type": "null"
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "selection_recipe": {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            "slot_id": {
+              "$ref": "#/definitions/ExplainCardSlotId"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_applicable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ExplainCardSlotId": {
+      "type": "string",
+      "enum": [
+        "primary",
+        "secondary",
+        "tertiary"
+      ]
+    },
+    "ExplainCardinalityEstimate": {
+      "type": "object",
+      "required": [
+        "kind",
+        "scale",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/ExplainCardinalityNumberKind"
+        },
+        "scale": {
+          "type": "null"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,38})$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainCardinalityNumberKind": {
+      "type": "string",
+      "enum": [
+        "integer"
+      ]
+    },
+    "ExplainDistribution": {
+      "type": "string",
+      "enum": [
+        "broadcast",
+        "gather",
+        "shuffle"
+      ]
+    },
+    "ExplainFactEvidenceKind": {
+      "type": "string",
+      "enum": [
+        "explicit",
+        "verified_derived"
+      ]
+    },
+    "ExplainFactKind": {
+      "description": "The small, version-pinned set of plan facts that an Explain-only card may render.  These are estimates or structural facts, never runtime metrics.",
+      "type": "string",
+      "enum": [
+        "cardinality_estimate",
+        "distribution",
+        "join_strategy",
+        "aggregate_phase",
+        "plan_child_count"
+      ]
+    },
+    "ExplainFactValue": {
+      "description": "The value arm remains type-safe while the outer fact tag always expresses availability.  This prevents a formatter fact kind from being mistaken for an availability state on the public wire.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ExplainCardinalityEstimate"
+        },
+        {
+          "$ref": "#/definitions/ExplainDistribution"
+        },
+        {
+          "$ref": "#/definitions/ExplainJoinStrategy"
+        },
+        {
+          "$ref": "#/definitions/ExplainAggregatePhase"
+        },
+        {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      ]
+    },
+    "ExplainJoinStrategy": {
+      "type": "string",
+      "enum": [
+        "inner_broadcast",
+        "inner_partitioned",
+        "right_outer_bucket_shuffle",
+        "right_outer_partitioned"
+      ]
+    },
+    "ExplainLevel": {
+      "type": "string",
+      "enum": [
+        "logical",
+        "verbose",
+        "costs"
+      ]
+    },
+    "ExplainMetadataAvailability": {
+      "type": "string",
+      "enum": [
+        "available",
+        "unavailable"
+      ]
+    },
+    "ExplainNodeFact": {
+      "description": "A fact is an exclusive `available`/`unavailable` wire arm.  The unavailable arm carries only a typed kind and stable reason codes, never raw formatter text.  Available facts keep `fact_kind` explicit for a renderer that does not know the source grammar.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "evidence_kind",
+            "fact_kind",
+            "fact_ref",
+            "node_ref",
+            "source_refs",
+            "state",
+            "value"
+          ],
+          "properties": {
+            "evidence_kind": {
+              "$ref": "#/definitions/ExplainFactEvidenceKind"
+            },
+            "fact_kind": {
+              "$ref": "#/definitions/ExplainFactKind"
+            },
+            "fact_ref": {
+              "type": "string"
+            },
+            "node_ref": {
+              "type": "string"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/ExplainFactValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "fact_kind",
+            "fact_ref",
+            "node_ref",
+            "reason_codes",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "fact_kind": {
+              "$ref": "#/definitions/ExplainFactKind"
+            },
+            "fact_ref": {
+              "type": "string"
+            },
+            "node_ref": {
+              "type": "string"
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ExplainNodeFactSet": {
+      "type": "object",
+      "required": [
+        "card_slots",
+        "completeness",
+        "facts",
+        "node_ref",
+        "reason_codes",
+        "source_refs"
+      ],
+      "properties": {
+        "card_slots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExplainCardFactSlot"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "completeness": {
+          "$ref": "#/definitions/CompletenessState"
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExplainNodeFact"
+          }
+        },
+        "node_ref": {
+          "type": "string"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainReceipt": {
+      "description": "Receipts that pin the independently versioned Explain surface.  Each component hash is over its actual fixed semantic content. These are available surface pins, not proof that every recipe was applied. Raw-text modes explicitly mark COSTS recipes as not applied in limitations.",
+      "type": "object",
+      "required": [
+        "adapter",
+        "card_facts_recipe",
+        "exchange_recipe",
+        "schema"
+      ],
+      "properties": {
+        "adapter": {
+          "$ref": "#/definitions/ReceiptComponent"
+        },
+        "card_facts_recipe": {
+          "$ref": "#/definitions/ReceiptComponent"
+        },
+        "exchange_recipe": {
+          "$ref": "#/definitions/ReceiptComponent"
+        },
+        "schema": {
+          "$ref": "#/definitions/ReceiptComponent"
+        },
+        "version_pack": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReceiptComponent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainRuntimeState": {
+      "type": "string",
+      "enum": [
+        "unavailable"
+      ]
+    },
+    "ExplainSchemaVersion": {
+      "type": "string",
+      "enum": [
+        "0.4"
+      ]
+    },
+    "ExplainSnapshot": {
+      "type": "object",
+      "required": [
+        "diagnostics",
+        "explain_level",
+        "explain_schema_version",
+        "facts_hash",
+        "graph_view",
+        "input_origin",
+        "limitations",
+        "plan_hash",
+        "plan_node_fact_sets",
+        "receipt",
+        "runtime_state",
+        "snapshot_id",
+        "source_locators",
+        "source_refs",
+        "source_view",
+        "version"
+      ],
+      "properties": {
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        },
+        "explain_level": {
+          "$ref": "#/definitions/ExplainLevel"
+        },
+        "explain_schema_version": {
+          "$ref": "#/definitions/ExplainSchemaVersion"
+        },
+        "facts_hash": {
+          "type": "string"
+        },
+        "graph_view": {
+          "description": "Explain carries the plan graph only. Runtime remains explicitly unavailable in `runtime_state` and is never joined from a Profile.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/GraphView"
+            }
+          ]
+        },
+        "input_origin": {
+          "$ref": "#/definitions/InputOrigin"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "plan_hash": {
+          "type": "string"
+        },
+        "plan_node_fact_sets": {
+          "description": "Source-ordered typed plan facts.  The client only renders these values; it never reparses raw Explain text or derives a fallback.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExplainNodeFactSet"
+          }
+        },
+        "receipt": {
+          "$ref": "#/definitions/ExplainReceipt"
+        },
+        "runtime_state": {
+          "description": "Explain is plan-only; a runtime field cannot be populated here.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ExplainRuntimeState"
+            }
+          ]
+        },
+        "snapshot_id": {
+          "type": "string"
+        },
+        "source_locators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExplainSourceLocator"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_view": {
+          "$ref": "#/definitions/ExplainSourceView"
+        },
+        "version": {
+          "$ref": "#/definitions/ExplainVersionContext"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainSourceDisplayState": {
+      "type": "string",
+      "enum": [
+        "safe_structure_only",
+        "raw_text"
+      ]
+    },
+    "ExplainSourceKind": {
+      "type": "string",
+      "enum": [
+        "explain_logical",
+        "explain_verbose",
+        "explain_costs"
+      ]
+    },
+    "ExplainSourceLocator": {
+      "description": "A locator for Explain source material.  `row_line` ranges are byte offsets in the original MySQL cell, never in a reconstructed joined string.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "byte_length",
+            "kind",
+            "row_count",
+            "source_ref"
+          ],
+          "properties": {
+            "byte_length": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "result"
+              ]
+            },
+            "row_count": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "source_ref": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "byte_end",
+            "byte_start",
+            "global_line_no",
+            "kind",
+            "row_line_no",
+            "row_no",
+            "source_ref"
+          ],
+          "properties": {
+            "byte_end": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "byte_start": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "global_line_no": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 1.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "row_line"
+              ]
+            },
+            "row_line_no": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 1.0
+            },
+            "row_no": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 1.0
+            },
+            "source_ref": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "availability",
+            "field",
+            "kind",
+            "source_ref"
+          ],
+          "properties": {
+            "availability": {
+              "$ref": "#/definitions/ExplainMetadataAvailability"
+            },
+            "evidence_hash": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "field": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "connection_metadata"
+              ]
+            },
+            "source_ref": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ExplainSourceTruncationState": {
+      "type": "string",
+      "enum": [
+        "not_truncated",
+        "input_limited"
+      ]
+    },
+    "ExplainSourceView": {
+      "description": "The only text exposed for an Explain is the registered structural grammar. Attribute and SQL text remain outside the response contract.",
+      "type": "object",
+      "required": [
+        "display_state",
+        "limitations",
+        "lines",
+        "source_kind",
+        "truncation_state"
+      ],
+      "properties": {
+        "display_state": {
+          "$ref": "#/definitions/ExplainSourceDisplayState"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SourceLine"
+          }
+        },
+        "source_kind": {
+          "$ref": "#/definitions/ExplainSourceKind"
+        },
+        "truncation_state": {
+          "$ref": "#/definitions/ExplainSourceTruncationState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExplainVersionContext": {
+      "description": "The narrow, same-connection version envelope for a COSTS plan.  It is intentionally not a `ProfileContext`: an Explain has no runtime profile.",
+      "type": "object",
+      "required": [
+        "limitations",
+        "pack_match",
+        "source_refs"
+      ],
+      "properties": {
+        "detected_release": {
+          "description": "A registered release only.  Unknown server text is never reflected.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pack_match": {
+          "$ref": "#/definitions/PackMatch"
+        },
+        "selected_pack": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SelectedVersionPack"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "GraphEdge": {
+      "type": "object",
+      "required": [
+        "direction_semantics",
+        "edge_id",
+        "evidence_refs",
+        "from",
+        "quality",
+        "relation",
+        "source",
+        "to"
+      ],
+      "properties": {
+        "derivation_recipe": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RecipeRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "direction_semantics": {
+          "$ref": "#/definitions/DirectionSemantics"
+        },
+        "edge_id": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "from": {
+          "type": "string"
+        },
+        "input_role": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/InputRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality": {
+          "$ref": "#/definitions/SourceQuality"
+        },
+        "relation": {
+          "$ref": "#/definitions/GraphRelation"
+        },
+        "restates_edge_id": {
+          "description": "Set on a `fragment_sink` edge whose relation an explicit `plan_child` edge (exchange -> sending fragment root) already states in the opposite direction. A renderer draws the referenced edge and skips this one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "$ref": "#/definitions/EdgeSource"
+        },
+        "source_ordinal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "to": {
+          "type": "string"
+        }
+      }
+    },
+    "GraphEntityKind": {
+      "type": "string",
+      "enum": [
+        "plan_node",
+        "operator_group",
+        "pipeline",
+        "fragment",
+        "sink"
+      ]
+    },
+    "GraphNode": {
+      "type": "object",
+      "required": [
+        "entity_kind",
+        "metric_observation_refs",
+        "native_operator_refs",
+        "node_id",
+        "source_quality",
+        "source_refs",
+        "subordinate_operator_refs"
+      ],
+      "properties": {
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entity_kind": {
+          "$ref": "#/definitions/GraphEntityKind"
+        },
+        "execution_state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fragment_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metric_observation_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "native_operator_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OrderedOperatorRef"
+          }
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "pipeline_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_node_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_node_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_ordinal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_quality": {
+          "$ref": "#/definitions/SourceQuality"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sql_facts": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/GraphSqlFact"
+          }
+        },
+        "sql_location": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GraphSqlLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subordinate_operator_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OrderedOperatorRef"
+          }
+        }
+      }
+    },
+    "GraphRelation": {
+      "type": "string",
+      "enum": [
+        "plan_child",
+        "fragment_sink",
+        "exchange_link",
+        "dependency",
+        "verified_data_flow"
+      ]
+    },
+    "GraphSqlFact": {
+      "type": "object",
+      "required": [
+        "kind",
+        "source_refs",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/GraphSqlFactKind"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "GraphSqlFactKind": {
+      "type": "string",
+      "enum": [
+        "table",
+        "fields",
+        "predicate",
+        "join_condition"
+      ]
+    },
+    "GraphSqlLocation": {
+      "description": "Request-local bounded source excerpt; never a reconstructed SQL expression.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "after",
+            "before",
+            "highlight",
+            "kind",
+            "source_refs",
+            "state"
+          ],
+          "properties": {
+            "after": {
+              "type": "string"
+            },
+            "before": {
+              "type": "string"
+            },
+            "highlight": {
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/definitions/GraphSqlFactKind"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "located"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "ambiguous"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "unsupported"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "GraphState": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "GraphView": {
+      "type": "object",
+      "required": [
+        "completeness",
+        "edges",
+        "nodes",
+        "root_node_ids",
+        "source_refs",
+        "state",
+        "topology_source",
+        "unconnected_node_ids",
+        "unresolved_relations"
+      ],
+      "properties": {
+        "completeness": {
+          "$ref": "#/definitions/DimensionCompleteness"
+        },
+        "edges": {
+          "description": "This remains source ordered; canonicalization never sorts these edges by ID.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GraphEdge"
+          }
+        },
+        "nodes": {
+          "description": "This remains source ordered when the source relation is ordered.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GraphNode"
+          }
+        },
+        "root_node_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/definitions/GraphState"
+        },
+        "topology_source": {
+          "$ref": "#/definitions/TopologySource"
+        },
+        "unconnected_node_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unresolved_relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/UnresolvedRelation"
+          }
+        }
+      }
+    },
+    "InputOrigin": {
+      "type": "string",
+      "enum": [
+        "offline_import",
+        "connected_profile_fetch",
+        "candidate_profile_user_external_rerun",
+        "connected_explain",
+        "connected_sql_runtime"
+      ]
+    },
+    "InputRole": {
+      "type": "string",
+      "enum": [
+        "probe",
+        "build",
+        "child",
+        "sink",
+        "source"
+      ]
+    },
+    "OrderedOperatorRef": {
+      "type": "object",
+      "required": [
+        "operator_ref",
+        "source_ordinal",
+        "source_refs",
+        "source_role"
+      ],
+      "properties": {
+        "operator_ref": {
+          "type": "string"
+        },
+        "source_ordinal": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_role": {
+          "$ref": "#/definitions/SourceRole"
+        }
+      }
+    },
+    "PackMatch": {
+      "type": "string",
+      "enum": [
+        "exact_pack",
+        "baseline_with_deltas",
+        "no_pack"
+      ]
+    },
+    "ReceiptComponent": {
+      "type": "object",
+      "required": [
+        "id",
+        "manifest_hash",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "manifest_hash": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "RecipeRef": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "ReleaseDeltas": {
+      "type": "object",
+      "required": [
+        "delta_ids",
+        "deltas_hash",
+        "line",
+        "release"
+      ],
+      "properties": {
+        "delta_ids": {
+          "description": "Delta ids from `version-deltas.json` that apply, in file order.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deltas_hash": {
+          "type": "string"
+        },
+        "line": {
+          "description": "Its minor line, `x.y`.",
+          "type": "string"
+        },
+        "release": {
+          "description": "The reported release, `x.y.z`.",
+          "type": "string"
+        }
+      }
+    },
+    "SelectedVersionPack": {
+      "type": "object",
+      "required": [
+        "manifest_hash",
+        "pack_id",
+        "product_pack_version",
+        "upstream_commit",
+        "upstream_release"
+      ],
+      "properties": {
+        "manifest_hash": {
+          "type": "string"
+        },
+        "pack_id": {
+          "type": "string"
+        },
+        "product_pack_version": {
+          "type": "string"
+        },
+        "release_deltas": {
+          "description": "A release other than the pack's own: the pack read with the audited deltas of that release (multi-version source audit). Absent for the pack's own release.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReleaseDeltas"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "upstream_commit": {
+          "type": "string"
+        },
+        "upstream_release": {
+          "type": "string"
+        }
+      }
+    },
+    "SourceLine": {
+      "type": "object",
+      "required": [
+        "line_no",
+        "source_ref",
+        "text"
+      ],
+      "properties": {
+        "line_no": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "SourceQuality": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "partial"
+      ]
+    },
+    "SourceRole": {
+      "type": "string",
+      "enum": [
+        "native",
+        "subordinate"
+      ]
+    },
+    "TopologySource": {
+      "type": "string",
+      "enum": [
+        "execution_topology",
+        "embedded_plan",
+        "verified_profile_relation",
+        "explain_costs",
+        "explain_logical",
+        "explain_verbose",
+        "none"
+      ]
+    },
+    "UnresolvedRelation": {
+      "type": "object",
+      "required": [
+        "reason",
+        "relation_ref",
+        "source_refs"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "relation_ref": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

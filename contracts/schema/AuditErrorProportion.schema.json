@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuditErrorProportion",
+  "description": "Exact numerator/denominator facts for a family's source ERR proportion. Decimal strings deliberately avoid a lossy percentage or JSON number.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "denominator",
+        "numerator",
+        "state"
+      ],
+      "properties": {
+        "denominator": {
+          "type": "string"
+        },
+        "numerator": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "exact"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "denominator",
+        "numerator",
+        "state"
+      ],
+      "properties": {
+        "denominator": {
+          "type": "string"
+        },
+        "numerator": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "not_applicable"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "reason",
+        "state"
+      ],
+      "properties": {
+        "reason": {
+          "$ref": "#/definitions/AuditErrorProportionUnavailableReason"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "unavailable"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "reason",
+        "state"
+      ],
+      "properties": {
+        "reason": {
+          "$ref": "#/definitions/AuditErrorProportionInvalidReason"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "invalid"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "AuditErrorProportionInvalidReason": {
+      "type": "string",
+      "enum": [
+        "error_count_invalid",
+        "execution_count_invalid",
+        "numerator_exceeds_denominator"
+      ]
+    },
+    "AuditErrorProportionUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "legacy_field_absent",
+        "error_count_missing",
+        "execution_count_missing"
+      ]
+    }
+  }
+}

@@ -1,0 +1,104 @@
+PLAN COST
+  CPU: 4.508E7
+  Memory: 6320000.0
+
+PLAN FRAGMENT 0(F04)
+  Output Exprs:3: l_grp | 8: count | 9: sum
+  Input Partition: UNPARTITIONED
+  RESULT SINK
+
+  8:EXCHANGE
+     cardinality: 250000
+
+PLAN FRAGMENT 1(F03)
+
+  Input Partition: HASH_PARTITIONED: 3: l_grp
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 08
+
+  7:AGGREGATE (merge finalize)
+  |  aggregate: count[([8: count, BIGINT, false]); args: ; result: BIGINT; args nullable: true; result nullable: false], sum[([9: sum, BIGINT, true]); args: INT; result: BIGINT; args nullable: true; result nullable: true]
+  |  group by: [3: l_grp, INT, false]
+  |  cardinality: 250000
+  |  column statistics: 
+  |  * l_grp-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[0.0, 500000.0, 0.0, 8.0, 250000.0] ESTIMATE
+  |  * sum-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  6:EXCHANGE
+     distribution type: SHUFFLE
+     partition exprs: [3: l_grp, INT, false]
+     cardinality: 500000
+
+PLAN FRAGMENT 2(F00)
+
+  Input Partition: RANDOM
+  OutPut Partition: HASH_PARTITIONED: 3: l_grp
+  OutPut Exchange Id: 06
+
+  5:AGGREGATE (update serialize)
+  |  STREAMING
+  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false], sum[([7: r_val, INT, false]); args: INT; result: BIGINT; args nullable: false; result nullable: true]
+  |  group by: [3: l_grp, INT, false]
+  |  cardinality: 500000
+  |  column statistics: 
+  |  * l_grp-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * count-->[-Infinity, Infinity, 0.0, 8.0, 1.0] ESTIMATE
+  |  * sum-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  4:Project
+  |  output columns:
+  |  3 <-> [3: l_grp, INT, false]
+  |  7 <-> [7: r_val, INT, false]
+  |  cardinality: 1000000
+  |  column statistics: 
+  |  * l_grp-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * r_val-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  3:HASH JOIN
+  |  join op: INNER JOIN (BROADCAST)
+  |  equal join conjunct: [2: l_key, INT, false] = [6: r_key, INT, false]
+  |  build runtime filters:
+  |  - filter_id = 0, build_expr = (6: r_key), remote = false
+  |  output columns: 3, 7
+  |  can local shuffle: true
+  |  cardinality: 1000000
+  |  column statistics: 
+  |  * l_key-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * l_grp-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * r_key-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  * r_val-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+  |  
+  |----2:EXCHANGE
+  |       distribution type: BROADCAST
+  |       cardinality: 20000
+  |    
+  0:OlapScanNode
+     table: fan_left, rollup: fan_left
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=8/8
+     tabletList=10055,10057,10059,10061,10063,10065,10067,10069
+     actualRows=0, avgRowSize=2.0
+     cardinality: 1000000
+     probe runtime filters:
+     - filter_id = 0, probe_expr = (2: l_key)
+     column statistics: 
+     * l_key-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+     * l_grp-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+
+PLAN FRAGMENT 3(F01)
+
+  Input Partition: RANDOM
+  OutPut Partition: UNPARTITIONED
+  OutPut Exchange Id: 02
+
+  1:OlapScanNode
+     table: fan_right, rollup: fan_right
+     preAggregation: on
+     partitionsRatio=1/1, tabletsRatio=2/2
+     tabletList=10075,10077
+     actualRows=0, avgRowSize=2.0
+     cardinality: 20000
+     column statistics: 
+     * r_key-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN
+     * r_val-->[-Infinity, Infinity, 0.0, 1.0, 1.0] UNKNOWN

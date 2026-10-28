@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>v1.0 导航与状态语义</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Noto+Sans+SC:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F5F6F8;color:#151A22;font-family:Inter,"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#1F55E0}a:hover{color:#1743B8}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #F5F6F8">
+<main style="width: 100%; max-width: 1440px; margin: 0 auto; padding: 32px 20px 40px; display: flex; flex-direction: column; gap: 20px">
+
+<div>
+<div style="font: 500 12px/1 'JetBrains Mono', monospace; color: #1F55E0">LIGHT · v1 · v1.0 增量</div>
+<h1 style="margin: 8px 0 0; font-size: 26px; line-height: 34px; font-weight: 600">v1.0 导航与状态语义</h1>
+<p style="margin: 4px 0 0; color: #3D4654">沿用冻结的亮色 token 与控件，只新增监控入口和以下状态。所有状态分开表达，不合成综合分。</p>
+</div>
+
+<section aria-labelledby="s-nav" style="padding: 20px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 12px">
+<h2 id="s-nav" style="margin: 0 0 4px; font-size: 15px; font-weight: 600">顶部导航</h2>
+<p style="margin: 0 0 14px; font-size: 12px; color: #5D6675">保持双层顶部导航：左组为单次诊断流程 1–4，竖线后为 v1.0 监控（趋势 · 告警 · 治理）。不改造成左侧栏。</p>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 8px 12px; border: 1px solid #EEF0F3; border-radius: 8px">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; background: #EAF0FE; color: #1F55E0; font-weight: 600"><span style="font: 500 11px/1 'JetBrains Mono', monospace">1</span>查询</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">2</span>诊断</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">3</span>优化建议</span>
+<span aria-hidden="true" style="color: #9AA2AE">›</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654"><span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5D6675">4</span>对比</span>
+<span aria-hidden="true" style="width: 1px; height: 22px; margin: 0 8px; background: #DFE3E8"></span>
+<span style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; color: #3D4654">趋势</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: #3D4654">告警<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #FDECEA; color: #B42318; font: 600 11px/1 'JetBrains Mono', monospace">3</span></span>
+<span style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; color: #3D4654">治理</span>
+</div>
+<h3 style="margin: 16px 0 8px; font-size: 13px; font-weight: 600">采集胶囊（右上角，点开进入采集状态）</h3>
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<sc-for list="{{capsules}}" as="c" hint-placeholder-count="4">
+<span style="display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: {{c.border}}; border-radius: 17px; background: #FFFFFF; font-size: 12px"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: {{c.dot}}"></span>{{c.label}}<span style="font-family: 'JetBrains Mono', monospace; color: #5D6675">{{c.detail}}</span></span>
+</sc-for>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+<section aria-labelledby="s-fp" style="flex: 1 1 440px; min-width: 0; padding: 20px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 12px">
+<h2 id="s-fp" style="margin: 0 0 4px; font-size: 15px; font-weight: 600">模板来源与语句状态</h2>
+<p style="margin: 0 0 12px; font-size: 12px; color: #5D6675">官方与非官方永不混排、不合计；后两种不进入归组与排序，只计数。</p>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 1px; border: 1px solid #EEF0F3; border-radius: 8px; overflow: hidden">
+<sc-for list="{{sources}}" as="s" hint-placeholder-count="4">
+<li style="display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 12px; padding: 9px 12px; background: #FFFFFF">
+<span><span style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11px; color: {{s.color}}; background: {{s.bg}}; border: {{s.border}}">{{s.label}}</span></span>
+<span style="font-size: 12px; color: #3D4654">{{s.desc}}</span>
+</li>
+</sc-for>
+</ul>
+</section>
+
+<section aria-labelledby="s-bucket" style="flex: 1 1 440px; min-width: 0; padding: 20px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 12px">
+<h2 id="s-bucket" style="margin: 0 0 4px; font-size: 15px; font-weight: 600">时间桶覆盖</h2>
+<p style="margin: 0 0 12px; font-size: 12px; color: #5D6675">缺口不插值、不补造；不可比较的分界画竖线并断开曲线。</p>
+<div aria-hidden="true" style="display: flex; gap: 3px; height: 28px; margin-bottom: 12px">
+<sc-for list="{{strip}}" as="b" hint-placeholder-count="24">
+<span style="flex: 1 1 0; border-radius: 3px; background: {{b.bg}}; border: {{b.border}}"></span>
+</sc-for>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{buckets}}" as="b" hint-placeholder-count="4">
+<li style="display: grid; grid-template-columns: 40px 120px minmax(0, 1fr); align-items: center; gap: 10px; font-size: 12px">
+<span aria-hidden="true" style="height: 18px; border-radius: 3px; background: {{b.bg}}; border: {{b.border}}"></span>
+<span style="font-weight: 600">{{b.label}}</span>
+<span style="color: #5D6675">{{b.desc}}</span>
+</li>
+</sc-for>
+</ul>
+</section>
+
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+<section aria-labelledby="s-reg" style="flex: 1 1 440px; min-width: 0; padding: 20px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 12px">
+<h2 id="s-reg" style="margin: 0 0 4px; font-size: 15px; font-weight: 600">趋势判定</h2>
+<p style="margin: 0 0 12px; font-size: 12px; color: #5D6675">稳健基线（中位数 · MAD）；方向用文字和箭头，不只靠颜色。</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<sc-for list="{{verdicts}}" as="v" hint-placeholder-count="5">
+<span title="{{v.desc}}" style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12px; font-weight: 500; color: {{v.color}}; background: {{v.bg}}; border: {{v.border}}">{{v.label}}</span>
+</sc-for>
+</div>
+<h3 style="margin: 16px 0 8px; font-size: 13px; font-weight: 600">变化量</h3>
+<dl style="margin: 0; display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 6px 12px; font-size: 12px">
+<dt style="font-family: 'JetBrains Mono', monospace">+4.2 s · +38%</dt><dd style="margin: 0; color: #5D6675">基线非 0：绝对变化与相对变化同时给出</dd>
+<dt style="font-family: 'JetBrains Mono', monospace">+120 MB · —</dt><dd style="margin: 0; color: #5D6675">基线为 0：只给绝对变化，百分比不定义</dd>
+<dt><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 1px dashed #9AA2AE; border-radius: 11px; color: #3D4654">not_comparable</span></dt><dd style="margin: 0; color: #5D6675">版本、VersionPack 或规则集变化前后不比较</dd>
+</dl>
+</section>
+
+<section aria-labelledby="s-alert" style="flex: 1 1 440px; min-width: 0; padding: 20px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 12px">
+<h2 id="s-alert" style="margin: 0 0 4px; font-size: 15px; font-weight: 600">告警与治理状态</h2>
+<p style="margin: 0 0 12px; font-size: 12px; color: #5D6675">告警只在应用内；治理项按验证结果收口。</p>
+<div style="font-size: 12px; color: #5D6675; margin-bottom: 6px">告警</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px">
+<sc-for list="{{alertStates}}" as="a" hint-placeholder-count="4">
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12px; color: {{a.color}}; background: {{a.bg}}; border: {{a.border}}">{{a.label}}</span>
+</sc-for>
+</div>
+<div style="font-size: 12px; color: #5D6675; margin-bottom: 6px">治理项</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px">
+<sc-for list="{{govStates}}" as="g" hint-placeholder-count="7">
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12px; color: {{g.color}}; background: {{g.bg}}; border: {{g.border}}">{{g.label}}</span>
+</sc-for>
+</div>
+<div style="font-size: 12px; color: #5D6675; margin-bottom: 6px">能力边界</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; background: #F0F2F5; color: #5D6675; font-size: 12px">Not available in this version · Webhook / 邮件</span>
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; background: #F0F2F5; color: #5D6675; font-size: 12px">Planned · 阶段 B</span>
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; background: #FFF3E0; color: #9A4D00; font-size: 12px">待 G1 · 生产启用前</span>
+</div>
+</section>
+
+</div>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const solid = '1px solid #DFE3E8', dashed = '1px dashed #9AA2AE', none = '0';
+    const capsules = [
+      { label: '采集中', detail: '水位 14:05', dot: '#1F55E0', border: solid },
+      { label: '已暂停', detail: '水位 13:40', dot: '#5D6675', border: solid },
+      { label: '退避中', detail: '2 分钟后重试', dot: '#9A4D00', border: '1px solid #F2A766' },
+      { label: '未采集', detail: '未连接', dot: '#C9CFD7', border: dashed }
+    ];
+    const sources = [
+      { label: '官方 digest', desc: 'enable_sql_digest 产生的原生 digest，直接作为精确模板', color: '#18794E', bg: '#E7F5EE', border: none },
+      { label: '非官方指纹', desc: '本工具按官方 3.5.14 语义规范化后生成，附规则版本', color: '#3D4654', bg: '#FFFFFF', border: solid },
+      { label: '截断 partial', desc: 'stmt 超出读取前缀，不参与归组与排序', color: '#9A4D00', bg: '#FFFFFF', border: '1px dashed #F2A766' },
+      { label: '不可规范化', desc: '词法错误、多语句、16 项以上 AND/OR、非 DML 等', color: '#5D6675', bg: '#FFFFFF', border: dashed }
+    ];
+    const complete = { bg: '#B8C7F2', border: '1px solid #B8C7F2' };
+    const partial = { bg: '#FFF3E0', border: '1px dashed #F2A766' };
+    const missing = { bg: '#FFFFFF', border: '1px dashed #C9CFD7' };
+    const kinds = ['c','c','c','c','c','c','p','c','c','c','m','m','m','c','c','c','c','c','c','x','c','c','c','c'];
+    const strip = kinds.map((k) => k === 'p' ? partial : k === 'm' ? missing : k === 'x' ? { bg: '#151A22', border: '1px solid #151A22' } : complete);
+    const buckets = [
+      { label: '完整', desc: '该小时全部审计行已读取', ...complete },
+      { label: '部分 partial', desc: '超出读取预算或读取失败，宁可漏采并标记', ...partial },
+      { label: '未采集', desc: '未连接或已暂停，不是 0 次执行', ...missing },
+      { label: '不可比较分界', desc: 'StarRocks 版本、VersionPack 或规则集变化', bg: '#151A22', border: '1px solid #151A22' }
+    ];
+    const verdicts = [
+      { label: '↑ 回归', desc: '超出基线带', color: '#B42318', bg: '#FDECEA', border: none },
+      { label: '↓ 改善', desc: '低于基线带', color: '#18794E', bg: '#E7F5EE', border: none },
+      { label: '无显著变化', desc: '在基线带内', color: '#3D4654', bg: '#F0F2F5', border: none },
+      { label: 'unscored · 样本不足', desc: '样本量不足以判定', color: '#3D4654', bg: '#FFFFFF', border: dashed },
+      { label: 'not_comparable', desc: '版本或规则变化', color: '#3D4654', bg: '#FFFFFF', border: dashed }
+    ];
+    const alertStates = [
+      { label: '新告警', color: '#B42318', bg: '#FDECEA', border: none },
+      { label: '已确认', color: '#9A4D00', bg: '#FFF3E0', border: none },
+      { label: '已解决', color: '#18794E', bg: '#E7F5EE', border: none },
+      { label: '已静默', color: '#5D6675', bg: '#F0F2F5', border: none }
+    ];
+    const govStates = [
+      { label: '待处理', color: '#3D4654', bg: '#F0F2F5', border: none },
+      { label: '处理中', color: '#1F55E0', bg: '#EAF0FE', border: none },
+      { label: '待验证', color: '#9A4D00', bg: '#FFF3E0', border: none },
+      { label: '已验证 · 改善', color: '#18794E', bg: '#E7F5EE', border: none },
+      { label: '已验证 · 未改善', color: '#B42318', bg: '#FDECEA', border: none },
+      { label: '不可比较', color: '#3D4654', bg: '#FFFFFF', border: dashed },
+      { label: '已放弃', color: '#5D6675', bg: '#FFFFFF', border: solid }
+    ];
+    return { capsules, sources, strip, buckets, verdicts, alertStates, govStates };
+  }
+}
+</script>
+</body>
+</html>

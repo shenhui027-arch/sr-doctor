@@ -1,0 +1,878 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GovernanceListResponse",
+  "type": "object",
+  "required": [
+    "items",
+    "limitations"
+  ],
+  "properties": {
+    "items": {
+      "description": "Open work first, newest first within a state.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/GovernanceItem"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AuditMetricFact": {
+      "type": "object",
+      "required": [
+        "input",
+        "metric_id",
+        "state"
+      ],
+      "properties": {
+        "canonical_number": {
+          "description": "Decimal text only; never encode audit counters as a JSON number.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "$ref": "#/definitions/AuditMetricInput"
+        },
+        "metric_id": {
+          "$ref": "#/definitions/AuditMetricId"
+        },
+        "parser_state": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ParseState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/AuditMetricState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditMetricId": {
+      "type": "string",
+      "enum": [
+        "query_time",
+        "pending_time",
+        "scan_bytes",
+        "scan_rows",
+        "cpu_cost",
+        "memory_cost",
+        "return_rows"
+      ]
+    },
+    "AuditMetricInput": {
+      "description": "Lossless transport input. `Text(\"0\")` is deliberately distinct from SQL NULL and remains decimal text so JavaScript never receives a lossy number.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "sql_null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditOptionalFactUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "AuditMetricState": {
+      "description": "This is a result state, not a second parser. The core AuditLoader adapter must map its one typed-parser outcome and audit-only negative policy here.",
+      "type": "string",
+      "enum": [
+        "exact",
+        "missing",
+        "invalid",
+        "negative_sentinel",
+        "overflow",
+        "precision_unsafe",
+        "unavailable"
+      ]
+    },
+    "AuditOptionalFactUnavailableReason": {
+      "description": "The existing fixed schema probe did not prove an optional AuditLoader source column. This is deliberately distinct from a present SQL NULL.",
+      "type": "string",
+      "enum": [
+        "source_column_absent",
+        "conflicting_source_rows"
+      ]
+    },
+    "CanonicalNumber": {
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/NumberKind"
+        },
+        "scale": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "value": {
+          "description": "Base-10 only: JSON numbers are never used for counters.",
+          "type": "string"
+        }
+      }
+    },
+    "EvidenceCompleteness": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "GovernanceEvent": {
+      "type": "object",
+      "required": [
+        "actor",
+        "at_seconds",
+        "kind",
+        "to"
+      ],
+      "properties": {
+        "actor": {
+          "description": "`local_user` or `comparator`.",
+          "type": "string"
+        },
+        "at_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "from": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GovernanceState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "description": "`created`, `transition`, `pinned`, `change_recorded` or `verified`.",
+          "type": "string"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "$ref": "#/definitions/GovernanceState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "GovernanceItem": {
+      "type": "object",
+      "required": [
+        "allowed_transitions",
+        "created_seconds",
+        "events",
+        "item_id",
+        "kind",
+        "origin",
+        "state",
+        "target",
+        "template_key",
+        "title",
+        "updated_seconds"
+      ],
+      "properties": {
+        "alert_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "allowed_transitions": {
+          "description": "States the user may move to by hand from here.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GovernanceState"
+          }
+        },
+        "change_seconds": {
+          "description": "When the user says the change outside this tool took effect.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "created_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "events": {
+          "description": "Oldest first.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GovernanceEvent"
+          }
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/definitions/GovernanceOrigin"
+        },
+        "snapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GovernanceSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/GovernanceState"
+        },
+        "target": {
+          "type": "string"
+        },
+        "template": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "template_key": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "verification": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GovernanceVerification"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "GovernanceOrigin": {
+      "type": "string",
+      "enum": [
+        "alert",
+        "trends",
+        "manual"
+      ]
+    },
+    "GovernanceSnapshot": {
+      "description": "The \"before\" side, pinned by the user: one template's current window at pin time. Literal-free by construction; no Profile text.",
+      "type": "object",
+      "required": [
+        "comparability",
+        "executions",
+        "pinned_seconds",
+        "valid_samples",
+        "window_end_seconds",
+        "window_start_seconds"
+      ],
+      "properties": {
+        "comparability": {
+          "$ref": "#/definitions/TrendComparability"
+        },
+        "cpu_cost_median": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditMetricFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executions": {
+          "type": "string"
+        },
+        "exemplar_query_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pinned_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "query_time_median": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditMetricFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scan_bytes_median": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditMetricFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "template": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "valid_samples": {
+          "type": "string"
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TrendVerdict"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "window_end_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "window_start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "GovernanceState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "new",
+            "triaged",
+            "in_progress",
+            "wont_fix"
+          ]
+        },
+        {
+          "description": "Entered only by recording a change; left only by a comparator result or by going back to work / not handling it.",
+          "type": "string",
+          "enum": [
+            "pending_verification"
+          ]
+        },
+        {
+          "description": "Entered only by a comparator result of `improved`.",
+          "type": "string",
+          "enum": [
+            "closed"
+          ]
+        }
+      ]
+    },
+    "GovernanceVerification": {
+      "type": "object",
+      "required": [
+        "after_end_seconds",
+        "after_start_seconds",
+        "evidence",
+        "executions_after",
+        "executions_before",
+        "limitations",
+        "metrics",
+        "outcome",
+        "verified_seconds"
+      ],
+      "properties": {
+        "after_end_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "after_start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TrendConfidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/definitions/EvidenceCompleteness"
+        },
+        "executions_after": {
+          "type": "string"
+        },
+        "executions_before": {
+          "type": "string"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/VerificationMetric"
+          }
+        },
+        "outcome": {
+          "$ref": "#/definitions/VerificationOutcome"
+        },
+        "verified_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "NumberKind": {
+      "type": "string",
+      "enum": [
+        "integer",
+        "decimal"
+      ]
+    },
+    "ParseState": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "missing",
+        "invalid",
+        "partial",
+        "overflow"
+      ]
+    },
+    "TrendChange": {
+      "type": "object",
+      "required": [
+        "direction",
+        "magnitude"
+      ],
+      "properties": {
+        "direction": {
+          "$ref": "#/definitions/TrendDirection"
+        },
+        "magnitude": {
+          "$ref": "#/definitions/AuditMetricFact"
+        },
+        "relative_percent": {
+          "description": "Decimal text with one decimal; `None` when the baseline is 0.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "TrendComparability": {
+      "type": "object",
+      "required": [
+        "engine_version",
+        "rule_version"
+      ],
+      "properties": {
+        "engine_version": {
+          "type": "string"
+        },
+        "rule_version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TrendConfidence": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "TrendDirection": {
+      "type": "string",
+      "enum": [
+        "up",
+        "down",
+        "none"
+      ]
+    },
+    "TrendNotComparableReason": {
+      "type": "string",
+      "enum": [
+        "engine_version_changed",
+        "rule_version_changed"
+      ]
+    },
+    "TrendSeverity": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "TrendUnscoredReason": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "insufficient_baseline",
+            "insufficient_current"
+          ]
+        },
+        {
+          "description": "Baseline median is 0: only the absolute change is shown.",
+          "type": "string",
+          "enum": [
+            "zero_baseline"
+          ]
+        },
+        {
+          "description": "Latency moved but neither scan bytes nor CPU are available.",
+          "type": "string",
+          "enum": [
+            "workload_signal_missing"
+          ]
+        }
+      ]
+    },
+    "TrendVerdict": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "severity",
+            "state",
+            "workload"
+          ],
+          "properties": {
+            "severity": {
+              "$ref": "#/definitions/TrendSeverity"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "regression"
+              ]
+            },
+            "workload": {
+              "$ref": "#/definitions/WorkloadSignal"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "improvement"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Inside the baseline band.",
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "stable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/TrendUnscoredReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unscored"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/TrendNotComparableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_comparable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "VerificationMetric": {
+      "type": "object",
+      "required": [
+        "metric"
+      ],
+      "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditMetricFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "before": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditMetricFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "change": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TrendChange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metric": {
+          "description": "`query_time`, `scan_bytes` or `cpu_cost`.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "VerificationOutcome": {
+      "oneOf": [
+        {
+          "description": "Median query time fell by at least the rule's floor without more work.",
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "improved"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_improved"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "insufficient_samples"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "workload_signal_missing"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/TrendNotComparableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_comparable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "WorkloadSignal": {
+      "description": "Scan bytes or CPU per execution beside the latency change (AGENTS §3: latency alone never decides).",
+      "type": "string",
+      "enum": [
+        "increased",
+        "stable"
+      ]
+    }
+  }
+}

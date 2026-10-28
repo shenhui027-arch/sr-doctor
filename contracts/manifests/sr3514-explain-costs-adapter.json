@@ -1,0 +1,46 @@
+{
+  "id": "sr3514-explain-costs-adapter",
+  "version": "0.2.0",
+  "upstream_release": "3.5.14",
+  "upstream_commit": "23a56ec517db763ea9bc7ee50b19357acdee0303",
+  "grammar": "registered_costs_nodes_and_evidence_aware_scalar_facts",
+  "registered_node_kinds": [
+    "AGGREGATE",
+    "ANALYTIC",
+    "ASSERT NUMBER OF ROWS",
+    "Decode",
+    "EXCHANGE",
+    "HASH JOIN",
+    "MERGING-EXCHANGE",
+    "OlapScanNode",
+    "PARTITION-TOP-N",
+    "Project",
+    "SCAN MYSQL",
+    "SELECT",
+    "SORT",
+    "TableValueFunction",
+    "TOP-N",
+    "UNION"
+  ],
+  "limits": {
+    "max_input_bytes": 16777216,
+    "max_lines": 250000,
+    "max_line_bytes": 262144,
+    "max_nodes": 20000,
+    "max_depth": 128,
+    "max_relations": 40000,
+    "max_fact_candidates": 250000,
+    "max_fact_digits": 39
+  },
+  "plan_fact_grammar": {
+    "cardinality": "cardinality: ASCII [0-9]{1,39}",
+    "distribution": ["BROADCAST", "GATHER", "SHUFFLE"],
+    "aggregate_phase": ["update serialize", "update finalize", "merge finalize"],
+    "join_op": [
+      "INNER JOIN (BROADCAST)",
+      "INNER JOIN (PARTITIONED)",
+      "RIGHT OUTER JOIN (BUCKET_SHUFFLE(S))",
+      "RIGHT OUTER JOIN (PARTITIONED)"
+    ]
+  }
+}

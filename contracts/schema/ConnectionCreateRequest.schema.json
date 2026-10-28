@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConnectionCreateRequest",
+  "description": "Input-only credentials. Serde's `skip_serializing` also emits JSON Schema `writeOnly`, so a request can be accepted but cannot become an echo DTO.",
+  "type": "object",
+  "required": [
+    "host",
+    "password",
+    "port",
+    "tls_mode",
+    "username"
+  ],
+  "properties": {
+    "audit_table": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "catalog": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "database": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "host": {
+      "type": "string"
+    },
+    "password": {
+      "writeOnly": true,
+      "type": "string"
+    },
+    "port": {
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0.0
+    },
+    "tls_mode": {
+      "$ref": "#/definitions/TlsMode"
+    },
+    "username": {
+      "writeOnly": true,
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "TlsMode": {
+      "description": "`plaintext` reaches any host the user names (unencrypted, explicit choice); `docker_loopback_plaintext` is the literal-loopback test fixture mode.",
+      "type": "string",
+      "enum": [
+        "verify_full",
+        "docker_loopback_plaintext",
+        "plaintext"
+      ]
+    }
+  }
+}

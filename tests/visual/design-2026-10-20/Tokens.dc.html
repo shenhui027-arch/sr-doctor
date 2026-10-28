@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Tokens 与状态语义</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Noto+Sans+SC:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F5F6F8;color:#151A22;font-family:Inter,"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#1F55E0}a:hover{color:#1743B8}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #F5F6F8">
+<main style="width: 100%; max-width: 1440px; margin: 0 auto; padding: 32px 20px 40px; display: flex; flex-direction: column; gap: 20px">
+
+<div>
+<div style="font: 500 12px/1 'JetBrains Mono', monospace; color: #1F55E0">LIGHT · v1</div>
+<h1 style="margin: 8px 0 0; font-size: 26px; line-height: 34px; font-weight: 600">Tokens 与状态语义</h1>
+<p style="margin: 4px 0 0; color: #3D4654">一套亮色 token、两种字体角色，以及让「缺失 ≠ 0」「推导 ≠ 显式」在界面上可区分的状态语言。</p>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+<section aria-labelledby="t-color" style="flex: 999 1 640px; min-width: 0; padding: 20px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 12px">
+<h2 id="t-color" style="margin: 0 0 14px; font-size: 15px; font-weight: 600">颜色</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px">
+<sc-for list="{{colors}}" as="c" hint-placeholder-count="16">
+<div style="border: 1px solid #EEF0F3; border-radius: 8px; overflow: hidden">
+<div style="height: 52px; background: {{c.hex}}; border-bottom: 1px solid #EEF0F3"></div>
+<div style="padding: 8px 10px">
+<div style="font-weight: 600; font-size: 12px">{{c.name}}</div>
+<div style="font: 400 11px/16px 'JetBrains Mono', monospace; color: #5D6675">{{c.hex}}</div>
+<div style="font-size: 11px; color: #5D6675">{{c.use}}</div>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section aria-labelledby="t-type" style="flex: 1 1 380px; min-width: 0; padding: 20px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 12px">
+<h2 id="t-type" style="margin: 0 0 14px; font-size: 15px; font-weight: 600">字体</h2>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div><div style="font-size: 26px; line-height: 34px; font-weight: 600">页面标题 26/34</div><div style="font: 400 11px/16px 'JetBrains Mono', monospace; color: #5D6675">Inter + Noto Sans SC · 600</div></div>
+<div><div style="font-size: 16px; line-height: 22px; font-weight: 600">面板标题 16/22</div><div style="font: 400 11px/16px 'JetBrains Mono', monospace; color: #5D6675">600 · 发现详情、建议标题</div></div>
+<div><div style="font-size: 13px; line-height: 20px">正文 13/20 · 解释、限制、问题陈述</div><div style="font: 400 11px/16px 'JetBrains Mono', monospace; color: #5D6675">400 · 最小正文 12px</div></div>
+<div><div style="font: 500 20px/28px 'JetBrains Mono', monospace">27.8 s · 1.10 B</div><div style="font: 400 11px/16px 'JetBrains Mono', monospace; color: #5D6675">JetBrains Mono · 只用于数值、ID、指标名、SQL</div></div>
+<p style="margin: 0; padding: 10px 12px; background: #F5F6F8; border-radius: 8px; font-size: 12px; color: #3D4654">标签与说明不再使用 10px 等宽字；中文正文统一 Noto Sans SC，等宽字只承载机器文本。</p>
+</div>
+</section>
+
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+<section aria-labelledby="t-metric" style="flex: 1 1 440px; min-width: 0; padding: 20px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 12px">
+<h2 id="t-metric" style="margin: 0 0 4px; font-size: 15px; font-weight: 600">指标值状态</h2>
+<p style="margin: 0 0 12px; font-size: 12px; color: #5D6675">真实的 0 是数值；其余状态一律用虚线标签，不显示数字。</p>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 1px; border: 1px solid #EEF0F3; border-radius: 8px; overflow: hidden">
+<sc-for list="{{metricStates}}" as="m" hint-placeholder-count="7">
+<li style="display: grid; grid-template-columns: 120px 150px minmax(0, 1fr); align-items: center; gap: 12px; padding: 9px 12px; background: #FFFFFF">
+<span style="font: 400 12px/18px 'JetBrains Mono', monospace; color: #3D4654">{{m.key}}</span>
+<span>
+<sc-if value="{{m.isValue}}" hint-placeholder-val="{{ false }}"><span style="font: 500 14px/20px 'JetBrains Mono', monospace">{{m.show}}</span></sc-if>
+<sc-if value="{{m.isTag}}" hint-placeholder-val="{{ true }}"><span style="display: inline-block; padding: 0 8px; border: 1px dashed {{m.border}}; border-radius: 4px; font-size: 12px; line-height: 22px; color: {{m.color}}">{{m.show}}</span></sc-if>
+</span>
+<span style="font-size: 12px; color: #5D6675">{{m.desc}}</span>
+</li>
+</sc-for>
+</ul>
+</section>
+
+<section aria-labelledby="t-edge" style="flex: 1 1 380px; min-width: 0; padding: 20px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 12px">
+<h2 id="t-edge" style="margin: 0 0 4px; font-size: 15px; font-weight: 600">执行图关系</h2>
+<p style="margin: 0 0 12px; font-size: 12px; color: #5D6675">只在关系唯一可证时画边；不可证的节点独立放置。</p>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 12px"><span aria-hidden="true" style="height: 2px; background: #6B7480"></span><span><span style="font-weight: 600">显式 explicit</span><span style="display: block; font-size: 12px; color: #5D6675">Profile / Explain 直接给出</span></span></div>
+<div style="display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 12px"><span aria-hidden="true" style="height: 0; border-top: 2px dashed #1F55E0"></span><span><span style="font-weight: 600">已验证推导 derived</span><span style="display: block; font-size: 12px; color: #5D6675">唯一可证，附推导依据</span></span></div>
+<div style="display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 12px"><span aria-hidden="true" style="height: 0; border-top: 2px dotted #9AA2AE"></span><span><span style="font-weight: 600">部分 partial</span><span style="display: block; font-size: 12px; color: #5D6675">端点可证但属性不全</span></span></div>
+<div style="display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 12px"><span aria-hidden="true" style="height: 28px; border: 1.5px dashed #9AA2AE; border-radius: 6px; background: #F5F6F8"></span><span><span style="font-weight: 600">不可用 unavailable</span><span style="display: block; font-size: 12px; color: #5D6675">不画边，节点虚线框，计入图例计数</span></span></div>
+</div>
+<h3 style="margin: 18px 0 8px; font-size: 13px; font-weight: 600">节点耗时热度</h3>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border: 1.5px solid #C2410C; border-radius: 6px; background: #FFF4EC; color: #C2410C; font-size: 12px; font-weight: 500">最耗时 &gt; 30%</span>
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border: 1.5px solid #F2A766; border-radius: 6px; background: #FFFFFF; color: #9A4D00; font-size: 12px; font-weight: 500">次耗时 &gt; 15%</span>
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #3D4654; font-size: 12px">其他</span>
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #3D4654; font-size: 12px; box-shadow: 0 0 0 3px rgba(31,85,224,0.35)">已选中</span>
+</div>
+</section>
+
+<section aria-labelledby="t-judge" style="flex: 1 1 380px; min-width: 0; padding: 20px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 12px">
+<h2 id="t-judge" style="margin: 0 0 4px; font-size: 15px; font-weight: 600">判断维度（不合成分数）</h2>
+<p style="margin: 0 0 12px; font-size: 12px; color: #5D6675">严重度、置信度、证据完整度分开展示，永不相乘成健康分。</p>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div><div style="font-size: 12px; color: #5D6675; margin-bottom: 4px">严重度</div><div style="display: flex; gap: 6px"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; background: #FDECEA; color: #B42318; font-size: 12px; font-weight: 600">高</span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; background: #FFF3E0; color: #9A4D00; font-size: 12px; font-weight: 600">中</span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; background: #F0F2F5; color: #3D4654; font-size: 12px; font-weight: 600">低</span></div></div>
+<div><div style="font-size: 12px; color: #5D6675; margin-bottom: 4px">置信度 · 纯文字</div><div style="display: flex; gap: 14px; font-size: 13px"><span>置信度 <b>高</b></span><span>置信度 <b>中</b></span><span>置信度 <b>低</b></span></div></div>
+<div><div style="font-size: 12px; color: #5D6675; margin-bottom: 4px">证据完整度</div><div style="display: flex; gap: 6px"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; background: #E7F5EE; color: #18794E; font-size: 12px">完整</span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; background: #FFF3E0; color: #9A4D00; font-size: 12px">部分</span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 1px dashed #9AA2AE; border-radius: 11px; color: #5D6675; font-size: 12px">不可用</span></div></div>
+<div><div style="font-size: 12px; color: #5D6675; margin-bottom: 4px">无基准时</div><div style="display: flex; gap: 6px"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 1px dashed #9AA2AE; border-radius: 11px; color: #3D4654; font-size: 12px">unscored · 未评分</span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 1px dashed #9AA2AE; border-radius: 11px; color: #3D4654; font-size: 12px">not_applicable</span></div></div>
+<div><div style="font-size: 12px; color: #5D6675; margin-bottom: 4px">能力边界</div><div style="display: flex; gap: 6px"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; background: #F0F2F5; color: #5D6675; font-size: 12px">Planned · 暂不提供</span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; background: #F0F2F5; color: #3D4654; font-size: 12px">Demo / Mock cluster</span></div></div>
+</div>
+</section>
+
+</div>
+
+<section aria-labelledby="t-comp" style="padding: 20px; background: #FFFFFF; border: 1px solid #DFE3E8; border-radius: 12px">
+<h2 id="t-comp" style="margin: 0 0 14px; font-size: 15px; font-weight: 600">控件</h2>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<button type="button" style="height: 36px; padding: 0 14px; border: 0; border-radius: 6px; background: #1F55E0; color: #FFFFFF; font: inherit; font-weight: 500">主操作</button>
+<button type="button" style="height: 36px; padding: 0 14px; border: 0; border-radius: 6px; background: #151A22; color: #FFFFFF; font: inherit; font-weight: 500">确认 / 提交</button>
+<button type="button" style="height: 36px; padding: 0 12px; border: 1px solid #C9CFD7; border-radius: 6px; background: #FFFFFF; color: #151A22; font: inherit">次操作</button>
+<button type="button" style="height: 36px; padding: 0 10px; border: 0; background: transparent; color: #1F55E0; font: inherit">文字操作</button>
+<span style="display: inline-flex; padding: 3px; gap: 2px; background: #EBEEF2; border-radius: 8px"><span style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 6px; background: #FFFFFF; font-weight: 600; box-shadow: 0 1px 2px rgba(21,26,34,0.08)">分段·选中</span><span style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; color: #3D4654">未选中</span></span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; background: #EAF0FE; color: #1F55E0; font-weight: 600"><span style="font: 500 11px/1 'JetBrains Mono', monospace">2</span>导航·当前</span>
+<span style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border: 1px solid #151A22; border-radius: 15px; background: #151A22; color: #FFFFFF; font-size: 12px">筛选·选中</span>
+<span style="font-size: 12px; color: #5D6675">圆角：控件 6 · 卡片 10 · 页面卡 12 · 胶囊 全圆</span>
+</div>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const colors = [
+      { name: 'page', hex: '#F5F6F8', use: '页面底色' },
+      { name: 'surface', hex: '#FFFFFF', use: '卡片、面板' },
+      { name: 'sunken', hex: '#FAFBFC', use: '图画布、证据格' },
+      { name: 'border', hex: '#DFE3E8', use: '卡片描边' },
+      { name: 'border-strong', hex: '#C9CFD7', use: '输入框、次按钮' },
+      { name: 'text', hex: '#151A22', use: '正文 16.9:1' },
+      { name: 'text-2', hex: '#3D4654', use: '次级正文 9.6:1' },
+      { name: 'muted', hex: '#5D6675', use: '标签 5.9:1' },
+      { name: 'accent', hex: '#1F55E0', use: '主操作、选中 6.0:1' },
+      { name: 'accent-tint', hex: '#EAF0FE', use: '选中底、导航当前' },
+      { name: 'critical', hex: '#B42318', use: '严重度高 6.5:1' },
+      { name: 'warning', hex: '#9A4D00', use: '严重度中、上升 6.3:1' },
+      { name: 'hot', hex: '#C2410C', use: '最耗时节点' },
+      { name: 'ok', hex: '#18794E', use: '可用、下降 5.6:1' },
+      { name: 'ok-tint', hex: '#E7F5EE', use: '可用底色' },
+      { name: 'edge', hex: '#6B7480', use: '显式关系线' }
+    ];
+    const value = (key, show, desc) => ({ key, show, desc, isValue: true, isTag: false });
+    const tag = (key, show, desc, color, border) => ({ key, show, desc, isValue: false, isTag: true, color: color || '#5D6675', border: border || '#9AA2AE' });
+    const metricStates = [
+      value('exact', '12.6 s', '精确数值，带单位与原文引用'),
+      value('zero', '0 B', '真实观测到的 0，可参与计算'),
+      tag('missing', '缺失', 'Profile 未提供，不按 0 计'),
+      tag('invalid', '无效', '解析失败，保留原文', '#B42318', '#E8A29B'),
+      tag('partial', '部分', '部分实例缺失，聚合不完整', '#9A4D00', '#F2A766'),
+      tag('overflow', '溢出', '超出可表示范围'),
+      tag('unknown_version', '未知版本', '未注册版本包，不套用近似版本')
+    ];
+    return { colors, metricStates };
+  }
+}
+</script>
+</body>
+</html>
