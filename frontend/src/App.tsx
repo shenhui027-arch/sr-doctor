@@ -2,8 +2,6 @@ import { Fragment, lazy, Suspense, useCallback, useEffect, useReducer, useRef, u
 import type { JSX } from "react";
 import type { AnalysisSnapshotReport, Comparison, ConnectedProfileComparisonResponse, ConnectedQueryRef, ConnectionSessionView, ExplainMode, ExplainRequest, ExplainSnapshot, InputOrigin, PlanAdvisorResponse, ProfileFetchResponse, RunningProfileSnapshotResponse } from "../../contracts/generated/doctor-contracts";
 import { ConnectionDialog } from "./features/connection/ConnectionDialog";
-import { CompareWorkspace, PendingComparison } from "./features/compare/CompareWorkspace";
-import { OfflineCompareForm } from "./features/compare/OfflineCompareForm";
 import { connectionReducer, initialConnectionState } from "./features/connection/connection-state";
 import { DoctorWorkspace } from "./features/doctor/DoctorWorkspace";
 import { ReportExportButton } from "./features/export/ReportExportButton";
@@ -18,11 +16,17 @@ import { SqlAnalysisWorkspace, type SqlAnalysisWorkspaceStage } from "./features
 import { advanceSqlExecutionAttempt, attemptForConnection, canDispatchSqlExecution, createSqlExecutionAttempt, emptySqlWorkspaceDraft, type SqlExecutionAttempt, type SqlWorkspaceDraft } from "./app-sql-workspace-state";
 import { useLocale, type LocalizedText } from "./i18n/locale";
 import { doctorApi } from "./lib/api";
-import { CollectionCapsule, HistoryWorkspace, monitorGeneration, useHistoryStatus, type MonitoringTab } from "./features/history/HistoryWorkspace";
-import { AlertsWorkspace, GovernanceWorkspace } from "./features/history/MonitoringWorkspaces";
+import { CollectionCapsule, monitorGeneration, useHistoryStatus, type MonitoringTab } from "./features/history/history-status";
 
 // Connected audit UI is not needed for offline Profile diagnosis.
 const AuditWorkloadWorkspace = lazy(() => import("./features/audit/AuditWorkloadWorkspace").then((module) => ({ default: module.AuditWorkloadWorkspace })));
+// Compare and the monitoring pages are opened on demand; they stay out of the first load.
+const CompareWorkspace = lazy(() => import("./features/compare/CompareWorkspace").then((module) => ({ default: module.CompareWorkspace })));
+const PendingComparison = lazy(() => import("./features/compare/CompareWorkspace").then((module) => ({ default: module.PendingComparison })));
+const OfflineCompareForm = lazy(() => import("./features/compare/OfflineCompareForm").then((module) => ({ default: module.OfflineCompareForm })));
+const HistoryWorkspace = lazy(() => import("./features/history/HistoryWorkspace").then((module) => ({ default: module.HistoryWorkspace })));
+const AlertsWorkspace = lazy(() => import("./features/history/MonitoringWorkspaces").then((module) => ({ default: module.AlertsWorkspace })));
+const GovernanceWorkspace = lazy(() => import("./features/history/MonitoringWorkspaces").then((module) => ({ default: module.GovernanceWorkspace })));
 const RunningProfileEntry = lazy(() => import("./features/queries/RunningProfileEntry").then((module) => ({ default: module.RunningProfileEntry })));
 
 const workspaces = ["Queries", "Doctor", "Recommendations", "Compare"] as const;

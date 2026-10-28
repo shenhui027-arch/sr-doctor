@@ -1,59 +1,20 @@
 // The monitoring workspace (design boards B-D). It owns one status poll for
 // the header capsule, the trends tab and the collection tab; the server
 // decides every state and every statistic.
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import type { HistoryStatusResponse, ProfileFetchResponse, TrendExemplar, TrendRow } from "../../../../contracts/generated/doctor-contracts";
+import type { ProfileFetchResponse, TrendExemplar, TrendRow } from "../../../../contracts/generated/doctor-contracts";
 import { useLocale } from "../../i18n/locale";
 import { doctorApi } from "../../lib/api";
-import { HeaderStatusText } from "../shell/HeaderStatusText";
-import { CollectionPanel, collectionLabel, clockText } from "./CollectionPanel";
+import { CollectionPanel } from "./CollectionPanel";
+import { monitorGeneration, type HistoryStatusState, type MonitoringTab } from "./history-status";
 import { failureId, useMonitorRead } from "./monitor-read";
 import { governanceActionText } from "./MonitoringWorkspaces";
 import { blockedStore, HistoryOffState, MonitorReadError, RefreshBar, TargetPicker } from "./MonitorStates";
 import { TrendsPanel } from "./TrendsPanel";
 import "./history.css";
 
-export const HISTORY_POLL_MS = 15_000;
-
-export type HistoryStatusState = { status: HistoryStatusResponse | null; error: string | null; refresh(): void };
-
-/** One bounded poll of the local API; it never talks to StarRocks itself. */
-export function useHistoryStatus(connectionId: string | null): HistoryStatusState {
-  const [status, setStatus] = useState<HistoryStatusResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
-  const refresh = useCallback(() => setTick((value) => value + 1), []);
-  useEffect(() => {
-    const controller = new AbortController();
-    doctorApi.readHistoryStatus(connectionId, controller.signal)
-      .then((value) => { if (!controller.signal.aborted) { setStatus(value); setError(null); } })
-      .catch((cause: unknown) => { if (!controller.signal.aborted) setError(failureId(cause, "history_status_failed")); });
-    const timer = window.setTimeout(refresh, HISTORY_POLL_MS);
-    return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [connectionId, refresh, tick]);
-  return { status, error, refresh };
-}
-
-/**
- * Changes whenever the collector stores a slice or the alert count moves, so
- * the trends and alert views re-read exactly when there is something new.
- */
-export function monitorGeneration(status: HistoryStatusResponse | null): string {
-  return status ? `${status.watermark_seconds ?? "-"}|${status.open_alerts}` : "";
-}
-
-export function CollectionCapsule({ status, onOpen }: { status: HistoryStatusResponse | null; onOpen(): void }): JSX.Element | null {
-  const { text } = useLocale();
-  if (!status || status.store.state !== "available") return null;
-  const state = status.collection.state;
-  return <button className={`collection-capsule ${state}`} onClick={onOpen} title={`${text("Collection and history", "采集与历史")} · ${collectionLabel(status, text)}`} type="button">
-    <HeaderStatusText value={collectionLabel(status, text)} />
-    {status.watermark_seconds !== null && <span className="collection-watermark header-detail">{text("watermark", "水位")} {clockText(status.watermark_seconds).slice(11, 16)}</span>}
-  </button>;
-}
-
-export type MonitoringTab = "trends" | "collection";
+export { CollectionCapsule, HISTORY_POLL_MS, monitorGeneration, useHistoryStatus, type HistoryStatusState, type MonitoringTab } from "./history-status";
 
 /** Board C: trends and one template's series, re-read when the window, target, selection or collection changes. */
 function TrendsTab({ connectionId, target, onTarget, onTargets, generation, focusTemplate, history, onOpenDoctor, onOpenItem, onOpenQueries, onSessionExpired }: {

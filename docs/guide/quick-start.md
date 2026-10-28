@@ -4,7 +4,7 @@
 
 ## 你需要
 
-- 一台 Linux 服务器（x86_64；arm64 可在本机构建，尚未验证），装有 **Docker Engine** 与 **Compose**（`docker compose` 插件，或 1.29 以上的 `docker-compose`）。
+- 一台 Linux 服务器（x86_64；arm64 也可本机构建，已在模拟环境中验证，尚未在真实硬件上运行），装有 **Docker Engine** 与 **Compose**（`docker compose` 插件，或 1.29 以上的 `docker-compose`）。
 - 服务器能访问 StarRocks FE 的 MySQL 端口（默认 `9030`）。支持 StarRocks 3.1 及以后的版本（已审计到 4.1，2.5、3.0 不支持）。
 - 使用者的电脑能访问服务器的服务端口（默认 `8000`）。
 

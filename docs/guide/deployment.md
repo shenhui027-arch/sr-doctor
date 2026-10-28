@@ -19,7 +19,7 @@ v1.0 起服务器部署统一用 Docker。
 
 ### 准备
 
-- **服务器**：Linux x86_64，已安装 Docker Engine 与 Compose（`docker compose` 插件，或 1.29 以上的 `docker-compose`）。[安装 Docker](https://docs.docker.com/engine/install/)。arm64 可在本机构建，尚未验证。
+- **服务器**：Linux x86_64，已安装 Docker Engine 与 Compose（`docker compose` 插件，或 1.29 以上的 `docker-compose`）。[安装 Docker](https://docs.docker.com/engine/install/)。arm64 服务器同样可以本机构建：已在模拟环境中构建并验证启动、登录与 Profile 分析，尚未在真实 arm64 硬件上运行。
 - **资源**：运行时 1 核、512 MiB 内存足够；首次构建镜像需要 2 核以上和数 GB 磁盘（Rust 编译缓存）；用[离线安装包](#离线安装)则不需要构建。
 - **网络**：使用者 → 服务器的服务端口（默认 `8000`）；服务器 → StarRocks FE 的 MySQL 端口（默认 `9030`）。
 - **权限**：运行命令的账号要能使用 Docker（root，或已加入 `docker` 组）。

@@ -5,12 +5,10 @@ import type { JSX, ReactNode } from "react";
 import type { CollectionRun, HistoryStatusResponse } from "../../../../contracts/generated/doctor-contracts";
 import type { LocalizedText } from "../../i18n/locale";
 import { countText } from "../../lib/duration-display";
+import { clockText, collectionLabel } from "./history-status";
 import "./history.css";
 
-export function clockText(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined) return "—";
-  return new Date(seconds * 1000).toISOString().slice(0, 19).replace("T", " ");
-}
+export { clockText, collectionLabel };
 
 function bytesText(value: string | null | undefined): string {
   if (!value) return "—";
@@ -21,20 +19,6 @@ function bytesText(value: string | null | undefined): string {
   let unit = 0;
   while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
   return `${unit === 0 ? size : size.toFixed(1)} ${units[unit]}`;
-}
-
-export function collectionLabel(status: HistoryStatusResponse, text: LocalizedText): string {
-  const state = status.collection;
-  if (state.state === "running") return text("Collecting", "采集中");
-  if (state.state === "paused") return text("Paused", "已暂停");
-  if (state.state === "backoff") return text("Retrying shortly", "稍后自动重试");
-  return {
-    not_connected: text("Not collecting · reconnect to continue", "未采集 · 重新连接后继续"),
-    history_disabled: text("History off", "历史已关闭"),
-    production_gate: text("Remote collection not enabled yet", "远端采集尚未启用"),
-    audit_unavailable: text("Not collecting · no audit table", "未采集 · 无审计表"),
-    another_session_collecting: text("Not collecting · another session collects", "未采集 · 另一会话正在采集"),
-  }[state.reason];
 }
 
 function runLabel(run: CollectionRun, text: LocalizedText): string {
