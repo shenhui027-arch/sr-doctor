@@ -154,6 +154,11 @@ impl HistoryRuntime {
             .unwrap_or_else(|poison| poison.into_inner())
     }
 
+    /// The "host:port" target the collector of this connection writes to.
+    pub(crate) fn entry_target(&self, connection_id: &str) -> Option<String> {
+        self.entry(connection_id).map(|entry| entry.target.clone())
+    }
+
     fn entry(&self, connection_id: &str) -> Option<Arc<CollectorEntry>> {
         self.collectors().get(connection_id).cloned()
     }

@@ -1,0 +1,159 @@
+/* Design board O1 · Queries / audit history / overview. Frozen light tokens only. */
+.audit-performance { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.audit-performance .mono { font-family: var(--mono); }
+.audit-performance .muted { color: var(--muted); }
+.audit-performance-read { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 0; color: var(--text-2); font: 400 12px/18px var(--sans); }
+
+.audit-performance-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.audit-performance-card { min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.audit-performance-card-label { color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-performance-card-value { display: flex; align-items: flex-end; gap: 6px; min-width: 0; color: var(--text); font: 600 18px/28px var(--mono); letter-spacing: -.02em; }
+.audit-performance-card-value > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-performance-card-value small { color: var(--muted); font: 500 12px/24px var(--sans); white-space: nowrap; }
+.audit-performance-card-value svg { flex: 0 1 64px; min-width: 32px; height: 28px; margin-left: auto; }
+.audit-performance-card-value polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.audit-performance-card.hot .audit-performance-card-value > span { color: var(--hot); }
+.audit-performance-card.compact .audit-performance-card-value { font-size: 15px; line-height: 28px; letter-spacing: -.01em; }
+.audit-performance-card.compact .audit-performance-card-value > span { white-space: normal; overflow-wrap: anywhere; }
+.audit-performance-card.hot polyline { stroke: var(--hot); }
+.audit-performance-card-note { overflow: hidden; color: var(--muted); font: 400 12px/18px var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+
+.audit-performance-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; }
+.audit-performance-panel { flex: 1 1 420px; min-width: 0; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.audit-performance-chart { flex: 999 1 720px; }
+.audit-performance-wide { flex: 1.4 1 560px; }
+.audit-performance-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.audit-performance-head h2 { margin: 0; color: var(--text); font: 600 15px/22px var(--sans); }
+.audit-performance-head > .muted { font: 400 12px/18px var(--sans); }
+.audit-performance-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.audit-performance-segmented { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; background: #ebeef2; border-radius: 8px; }
+.audit-performance-segmented button { height: 28px; padding: 0 10px; color: var(--text-2); background: transparent; border: 0; border-radius: var(--radius-control); font: 400 12px/18px var(--sans); cursor: pointer; }
+.audit-performance-segmented button[aria-pressed="true"] { color: var(--text); background: var(--surface); box-shadow: 0 1px 2px rgba(21, 26, 34, .08); font-weight: 600; }
+.audit-performance-segmented button:disabled { color: var(--faint); cursor: not-allowed; }
+.audit-performance-bucket { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-performance-bucket select { height: 30px; padding: 0 8px; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-control); font: inherit; }
+
+.audit-performance-plot { display: block; width: 100%; height: auto; margin-top: 12px; }
+.audit-performance-plot .tick line { stroke: var(--border-soft); }
+.audit-performance-plot text { fill: var(--muted); font: 400 11px var(--mono); }
+.audit-performance-plot .axis { stroke: var(--border-strong); }
+.audit-performance-plot .selected { fill: var(--accent-tint); }
+.audit-performance-plot .ok { fill: #9db4f2; }
+.audit-performance-plot .failed { fill: var(--hot); }
+.audit-performance-plot .bar { fill: #5b80e8; }
+.audit-performance-plot .bar.partial { stroke: var(--hot-soft); stroke-dasharray: 3 2; }
+.audit-performance-plot .gap { fill: url(#audit-performance-hatch); stroke: var(--hot-soft); stroke-dasharray: 3 3; }
+.audit-performance-plot .recent { fill: none; stroke: var(--dashed); stroke-dasharray: 3 3; }
+.audit-performance-plot .p99 { stroke: #0b2a7a; stroke-width: 1.5; stroke-dasharray: 5 3; }
+.audit-performance-plot .p95 { stroke: var(--accent); stroke-width: 2; }
+.audit-performance-plot .p50 { stroke: #8ea8ee; stroke-width: 2; }
+.audit-performance-plot .line { stroke: var(--accent); stroke-width: 2; }
+/* Lines never fill; a lone point between gaps is a dot in its series colour. */
+.audit-performance-plot polyline { fill: none; stroke-linejoin: round; }
+.audit-performance-plot circle { stroke: none; }
+.audit-performance-plot circle.p99 { fill: #0b2a7a; }
+.audit-performance-plot circle.p95, .audit-performance-plot circle.line { fill: var(--accent); }
+.audit-performance-plot circle.p50 { fill: #8ea8ee; }
+.audit-performance-plot .hit { fill: transparent; cursor: pointer; }
+.audit-performance-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; margin-top: 6px; color: var(--muted); font: 400 12px/18px var(--sans); }
+.audit-performance-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--text-2); }
+.audit-performance-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.audit-performance-legend .swatch { display: inline-block; width: 14px; height: 10px; }
+.swatch.ok { background: #9db4f2; }
+.swatch.failed { background: var(--hot); }
+.swatch.bar { background: #5b80e8; }
+.swatch.partial { background: #5b80e8; outline: 1px dashed var(--hot-soft); outline-offset: 1px; }
+.swatch.gap { background: var(--warning-tint); border: 1px dashed var(--hot-soft); }
+.swatch.recent { border: 1px dashed var(--dashed); }
+.swatch.p99, .swatch.p95, .swatch.p50, .swatch.line { height: 2px !important; }
+.swatch.p99 { background: #0b2a7a; }
+.swatch.p95, .swatch.line { background: var(--accent); }
+.swatch.p50 { background: #8ea8ee; }
+
+.audit-performance-aside { flex: 1 1 300px; display: flex; flex-direction: column; padding: 0; }
+.audit-performance-aside-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+.audit-performance-aside-head .muted { font: 400 12px/18px var(--sans); }
+.audit-performance-aside-head h2 { margin: 2px 0 0; font: 600 14px/22px var(--mono); }
+.audit-performance-steps { display: flex; gap: 6px; margin-top: 8px; }
+.audit-performance-steps button { height: 30px; padding: 0 10px; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-control); font: 400 12px/18px var(--sans); cursor: pointer; }
+.audit-performance-steps button:disabled { color: var(--faint); cursor: default; }
+.audit-performance-aside dl { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 8px 12px; margin: 0; padding: 12px 16px; font: 400 12px/18px var(--sans); }
+.audit-performance-aside dt { color: var(--muted); }
+.audit-performance-aside dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+.audit-performance-flag { margin: 0 16px 10px; padding: 8px 10px; color: var(--warning); background: var(--warning-tint); border: 1px dashed var(--hot-soft); border-radius: var(--radius-control); font: 400 12px/18px var(--sans); }
+.audit-performance-aside-actions { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+
+.audit-performance-histogram { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.audit-performance-histogram-row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 132px; align-items: center; gap: 10px; font: 400 12px/18px var(--sans); }
+.audit-performance-histogram-row .label { color: var(--text-2); text-align: right; }
+.audit-performance-histogram-row .value { white-space: nowrap; }
+.audit-performance .track { position: relative; display: block; height: 18px; background: var(--page); border-radius: 3px; }
+.audit-performance .fill { position: absolute; inset: 0 auto 0 0; background: #5b80e8; border-radius: 3px; }
+.audit-performance .fill.marked { background: var(--hot); }
+.audit-performance-note { margin: 10px 0 0; color: var(--text-2); font: 400 12px/18px var(--sans); }
+.audit-performance-note.muted { margin-top: 4px; color: var(--muted); }
+
+.audit-performance-table-wrap { overflow-x: auto; }
+.audit-performance-table { width: 100%; margin-top: 10px; border-collapse: collapse; font: 400 12px/18px var(--sans); }
+.audit-performance-table-wrap .audit-performance-table { min-width: 560px; }
+.audit-performance-table th { padding: 6px 8px; color: var(--muted); border-bottom: 1px solid var(--border); font-weight: 500; text-align: left; white-space: nowrap; }
+.audit-performance-table th:first-child, .audit-performance-table td:first-child { padding-left: 0; }
+.audit-performance-table td { padding: 7px 8px; border-bottom: 1px solid var(--border-soft); }
+.audit-performance-table .num { font-family: var(--mono); text-align: right; white-space: nowrap; }
+.audit-performance-table td.mono { overflow-wrap: anywhere; }
+.audit-performance-table td.action { padding-right: 0; text-align: right; }
+.audit-performance-table td.action .button { height: 26px; padding: 0 8px; font-size: 12px; }
+.audit-performance-share { display: flex; align-items: center; gap: 8px; min-width: 160px; }
+.audit-performance-share .track { flex: 1 1 auto; height: 10px; }
+.audit-performance-share .mono { width: 52px; text-align: right; }
+
+.audit-performance-top { display: flex; flex-direction: column; margin: 10px 0 0; padding: 0; list-style: none; }
+.audit-performance-top li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 0; border-bottom: 1px solid var(--border-soft); font: 400 12px/18px var(--sans); }
+.audit-performance-top .sql { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-performance-top li > .mono:nth-child(2) { font-weight: 500; text-align: right; }
+.audit-performance .link-button { padding: 0; color: var(--accent); background: transparent; border: 0; font: 400 12px/18px var(--sans); cursor: pointer; }
+.audit-performance .link-button:hover { color: var(--accent-strong); text-decoration: underline; }
+
+.audit-performance-coverage summary { cursor: pointer; color: var(--text); font: 600 14px/22px var(--sans); }
+.audit-performance-coverage summary .muted { font-weight: 400; font-size: 12px; }
+.audit-performance-coverage dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 24px; max-width: 520px; margin: 10px 0; font: 400 12px/18px var(--sans); }
+.audit-performance-coverage dt { color: var(--muted); }
+.audit-performance-coverage dd { margin: 0; font-family: var(--mono); text-align: right; }
+
+@media (max-width: 640px) {
+  .audit-performance-histogram-row { grid-template-columns: 72px minmax(0, 1fr) 108px; }
+  .audit-performance-panel { flex-basis: 100%; }
+}
+
+.audit-overview-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.audit-overview-head h1 { margin: 0; color: var(--text); font: 600 15px/22.5px var(--sans); }
+.audit-overview-head p { margin: 2px 0 0; color: var(--muted); font: 400 12px/18px var(--sans); }
+
+/* Design board O2 · 30-day load from the local history store. */
+.audit-overview-range { display: inline-flex; gap: 2px; padding: 3px; background: #ebeef2; border-radius: 8px; }
+.audit-overview-range button { height: 30px; padding: 0 12px; color: var(--text-2); background: transparent; border: 0; border-radius: var(--radius-control); font: 400 12px/18px var(--sans); cursor: pointer; }
+.audit-overview-range button[aria-pressed="true"] { color: var(--text); background: var(--surface); box-shadow: 0 1px 2px rgba(21, 26, 34, .08); font-weight: 600; }
+.audit-overview-head-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.audit-history-badge { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; color: var(--ok); background: var(--ok-tint); border-radius: 11px; }
+.audit-history-badge.partial { color: var(--warning); background: var(--warning-tint); }
+.audit-performance-plot .audit-history-before { fill: var(--chip); }
+.audit-performance-plot .audit-history-boundary { stroke: var(--muted); stroke-dasharray: 4 3; }
+.swatch.audit-history-before-swatch { background: var(--chip); border: 1px solid var(--border); }
+.audit-history-week { flex: 1 1 360px; }
+.audit-history-week td:first-child { white-space: nowrap; font-family: var(--mono); }
+.audit-history-heatmap { width: 100%; min-width: 640px; margin-top: 12px; border-collapse: separate; border-spacing: 2px; font: 400 10px/14px var(--mono); }
+.audit-history-heatmap th { color: var(--muted); font-weight: 400; text-align: center; }
+.audit-history-heatmap tbody th { padding-right: 6px; color: var(--text-2); font: 500 11px/22px var(--sans); text-align: right; white-space: nowrap; }
+.audit-history-heatmap td { height: 22px; border-radius: 3px; }
+.level-0 { background: #eaf0fe; }
+.level-1 { background: #c3d2f8; }
+.level-2 { background: #8ea8ee; }
+.level-3 { background: #5b80e8; }
+.level-4 { background: var(--accent); }
+.level-5 { background: #0b2a7a; }
+.audit-history-heatmap td.missing, .audit-history-scale i.missing { background: var(--surface); outline: 1px dashed var(--dashed); outline-offset: -1px; }
+.audit-history-scale { margin-top: 10px; font: 400 12px/18px var(--sans); }
+.audit-history-scale i { display: inline-block; width: 18px; height: 10px; }
+.audit-history-change { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; color: var(--text-2); background: var(--chip); border-radius: 11px; white-space: nowrap; }
+.audit-history-change.dashed { color: var(--muted); background: var(--surface); border: 1px dashed var(--dashed); }
+.audit-history-empty { display: flex; flex-direction: column; gap: 4px; }

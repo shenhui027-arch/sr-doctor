@@ -50,6 +50,9 @@ use doctor_core::{
 
 use super::*;
 
+pub(crate) mod performance;
+pub(super) use performance::performance;
+
 pub(super) async fn occurrences(
     State(state): State<ApiState>,
     AxumPath(connection_id): AxumPath<String>,

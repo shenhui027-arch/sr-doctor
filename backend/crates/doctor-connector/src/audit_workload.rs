@@ -20,6 +20,8 @@ use doctor_contracts::{
 
 mod family_detail;
 pub use family_detail::*;
+mod performance;
+pub use performance::*;
 
 const OCCURRENCE_PROJECTION: &str = "`query_id`, `event_time`, UNIX_TIMESTAMP(`event_time`) AS `event_epoch_seconds`, `state`, `query_time`, `scan_bytes`, `scan_rows`, `cpu_cost_ns`, `mem_cost_bytes`, `return_rows`, `catalog_name`, `database_name`, `resource_group`, `digest`, `error_code`, `error_code_agrees`, `pending_time_ms`, `pending_time_agrees`";
 
@@ -329,6 +331,9 @@ pub enum AuditSqlBuildError {
     FamilyCandidateBudget,
     StatementBudget,
     FamilyDetailResponse,
+    /// Unsupported bucket width, or more buckets than one read may return.
+    PerformanceBucket,
+    PerformanceResponse,
     RowShape {
         expected: usize,
         actual: usize,
@@ -352,6 +357,8 @@ impl fmt::Display for AuditSqlBuildError {
             Self::FamilyCandidateBudget => formatter.write_str("audit_family_candidate_budget"),
             Self::StatementBudget => formatter.write_str("audit_statement_budget"),
             Self::FamilyDetailResponse => formatter.write_str("audit_family_detail_response"),
+            Self::PerformanceBucket => formatter.write_str("audit_performance_bucket"),
+            Self::PerformanceResponse => formatter.write_str("audit_performance_response"),
             Self::RowShape { expected, actual } => {
                 write!(formatter, "audit_row_shape:{actual}_expected_{expected}")
             }
@@ -1485,6 +1492,39 @@ fn canonical_occurrence_events_cte_with_predicate(
     predicate: String,
     schema: &AuditSchema,
 ) -> String {
+    canonical_occurrence_events_cte_with_user(table, predicate, schema, false)
+}
+
+/// `with_user` adds the optional source user as one more decorated fact,
+/// with the same agreement rule as `errorCode`; otherwise the CTE is the
+/// unchanged occurrence cohort.
+fn canonical_occurrence_events_cte_with_user(
+    table: &AuditTableName,
+    predicate: String,
+    schema: &AuditSchema,
+    with_user: bool,
+) -> String {
+    let (user_source, user_fact, user_column) = if with_user {
+        (
+            format!(
+                ", {}",
+                optional_source_projection(
+                    schema,
+                    AuditColumn::User,
+                    "user",
+                    "source_user",
+                    "VARCHAR"
+                )
+            ),
+            format!(
+                ", CASE WHEN {agrees} THEN MAX(`source_user`) ELSE CAST(NULL AS VARCHAR) END AS `source_user`, CASE WHEN {agrees} THEN 1 ELSE 0 END AS `source_user_agrees`",
+                agrees = optional_rows_agree_having("source_user")
+            ),
+            ", `source_user`, `source_user_agrees`".to_owned(),
+        )
+    } else {
+        Default::default()
+    };
     let error_code_source = optional_source_projection(
         schema,
         AuditColumn::ErrorCode,
@@ -1502,7 +1542,7 @@ fn canonical_occurrence_events_cte_with_predicate(
     let error_code_agrees = optional_rows_agree_having("error_code");
     let pending_time_agrees = optional_rows_agree_having("pending_time_ms");
     format!(
-        "WITH audit_window AS (SELECT LOWER(`queryId`) AS `query_id`, `timestamp` AS `event_time`, `state` AS `state`, `queryTime` AS `query_time`, `scanBytes` AS `scan_bytes`, `scanRows` AS `scan_rows`, `cpuCostNs` AS `cpu_cost_ns`, `memCostBytes` AS `mem_cost_bytes`, `returnRows` AS `return_rows`, `catalog` AS `catalog_name`, `db` AS `database_name`, `resourceGroup` AS `resource_group`, `digest` AS `digest`, {error_code_source}, {pending_time_source} FROM {table}{predicate}), canonical_events AS (SELECT `query_id`, MAX(`event_time`) AS `event_time`, MAX(`state`) AS `state`, MAX(`query_time`) AS `query_time`, MAX(`scan_bytes`) AS `scan_bytes`, MAX(`scan_rows`) AS `scan_rows`, MAX(`cpu_cost_ns`) AS `cpu_cost_ns`, MAX(`mem_cost_bytes`) AS `mem_cost_bytes`, MAX(`return_rows`) AS `return_rows`, MAX(`catalog_name`) AS `catalog_name`, MAX(`database_name`) AS `database_name`, MAX(`resource_group`) AS `resource_group`, MAX(`digest`) AS `digest` FROM audit_window WHERE `query_id` REGEXP '^[0-9A-Fa-f]{{8}}-[0-9A-Fa-f]{{4}}-[0-9A-Fa-f]{{4}}-[0-9A-Fa-f]{{4}}-[0-9A-Fa-f]{{12}}$' GROUP BY `query_id` HAVING {base_agreement}), optional_facts AS (SELECT `query_id`, CASE WHEN {error_code_agrees} THEN MAX(`error_code`) ELSE CAST(NULL AS VARCHAR) END AS `error_code`, CASE WHEN {error_code_agrees} THEN 1 ELSE 0 END AS `error_code_agrees`, CASE WHEN {pending_time_agrees} THEN MAX(`pending_time_ms`) ELSE CAST(NULL AS BIGINT) END AS `pending_time_ms`, CASE WHEN {pending_time_agrees} THEN 1 ELSE 0 END AS `pending_time_agrees` FROM audit_window WHERE `query_id` REGEXP '^[0-9A-Fa-f]{{8}}-[0-9A-Fa-f]{{4}}-[0-9A-Fa-f]{{4}}-[0-9A-Fa-f]{{4}}-[0-9A-Fa-f]{{12}}$' GROUP BY `query_id`), occurrence_events AS (SELECT `canonical_events`.`query_id`, `event_time`, `state`, `query_time`, `scan_bytes`, `scan_rows`, `cpu_cost_ns`, `mem_cost_bytes`, `return_rows`, `catalog_name`, `database_name`, `resource_group`, `digest`, `error_code`, `error_code_agrees`, `pending_time_ms`, `pending_time_agrees` FROM canonical_events INNER JOIN optional_facts ON `canonical_events`.`query_id` = `optional_facts`.`query_id`)",
+        "WITH audit_window AS (SELECT LOWER(`queryId`) AS `query_id`, `timestamp` AS `event_time`, `state` AS `state`, `queryTime` AS `query_time`, `scanBytes` AS `scan_bytes`, `scanRows` AS `scan_rows`, `cpuCostNs` AS `cpu_cost_ns`, `memCostBytes` AS `mem_cost_bytes`, `returnRows` AS `return_rows`, `catalog` AS `catalog_name`, `db` AS `database_name`, `resourceGroup` AS `resource_group`, `digest` AS `digest`, {error_code_source}, {pending_time_source}{user_source} FROM {table}{predicate}), canonical_events AS (SELECT `query_id`, MAX(`event_time`) AS `event_time`, MAX(`state`) AS `state`, MAX(`query_time`) AS `query_time`, MAX(`scan_bytes`) AS `scan_bytes`, MAX(`scan_rows`) AS `scan_rows`, MAX(`cpu_cost_ns`) AS `cpu_cost_ns`, MAX(`mem_cost_bytes`) AS `mem_cost_bytes`, MAX(`return_rows`) AS `return_rows`, MAX(`catalog_name`) AS `catalog_name`, MAX(`database_name`) AS `database_name`, MAX(`resource_group`) AS `resource_group`, MAX(`digest`) AS `digest` FROM audit_window WHERE `query_id` REGEXP '^[0-9A-Fa-f]{{8}}-[0-9A-Fa-f]{{4}}-[0-9A-Fa-f]{{4}}-[0-9A-Fa-f]{{4}}-[0-9A-Fa-f]{{12}}$' GROUP BY `query_id` HAVING {base_agreement}), optional_facts AS (SELECT `query_id`, CASE WHEN {error_code_agrees} THEN MAX(`error_code`) ELSE CAST(NULL AS VARCHAR) END AS `error_code`, CASE WHEN {error_code_agrees} THEN 1 ELSE 0 END AS `error_code_agrees`, CASE WHEN {pending_time_agrees} THEN MAX(`pending_time_ms`) ELSE CAST(NULL AS BIGINT) END AS `pending_time_ms`, CASE WHEN {pending_time_agrees} THEN 1 ELSE 0 END AS `pending_time_agrees`{user_fact} FROM audit_window WHERE `query_id` REGEXP '^[0-9A-Fa-f]{{8}}-[0-9A-Fa-f]{{4}}-[0-9A-Fa-f]{{4}}-[0-9A-Fa-f]{{4}}-[0-9A-Fa-f]{{12}}$' GROUP BY `query_id`), occurrence_events AS (SELECT `canonical_events`.`query_id`, `event_time`, `state`, `query_time`, `scan_bytes`, `scan_rows`, `cpu_cost_ns`, `mem_cost_bytes`, `return_rows`, `catalog_name`, `database_name`, `resource_group`, `digest`, `error_code`, `error_code_agrees`, `pending_time_ms`, `pending_time_agrees`{user_column} FROM canonical_events INNER JOIN optional_facts ON `canonical_events`.`query_id` = `optional_facts`.`query_id`)",
         table = table.quoted(),
         base_agreement = projected_rows_agree_having(),
     )

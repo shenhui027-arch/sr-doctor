@@ -1,0 +1,1327 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuditPerformanceResponse",
+  "type": "object",
+  "required": [
+    "axes",
+    "bucket_seconds",
+    "buckets",
+    "cluster_identity",
+    "connection_id",
+    "dimensions",
+    "errors",
+    "latency_histogram",
+    "limitations",
+    "read_at_milliseconds",
+    "schema_version",
+    "scope",
+    "window"
+  ],
+  "properties": {
+    "audit_timestamp_time_zone": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TimeZoneEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "axes": {
+      "$ref": "#/definitions/AuditPerformanceAxes"
+    },
+    "bucket_seconds": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "buckets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AuditPerformanceBucket"
+      }
+    },
+    "cluster_identity": {
+      "$ref": "#/definitions/AuditClusterIdentity"
+    },
+    "connection_id": {
+      "type": "string"
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AuditPerformanceDimension"
+      }
+    },
+    "errors": {
+      "$ref": "#/definitions/AuditPerformanceErrors"
+    },
+    "latency_histogram": {
+      "$ref": "#/definitions/AuditPerformanceHistogram"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "read_at_milliseconds": {
+      "type": "string"
+    },
+    "schema_version": {
+      "$ref": "#/definitions/AuditPerformanceVersion"
+    },
+    "scope": {
+      "$ref": "#/definitions/AuditScope"
+    },
+    "window": {
+      "$ref": "#/definitions/AuditPerformanceSummary"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AuditAggregateFact": {
+      "type": "object",
+      "required": [
+        "aggregation",
+        "metric"
+      ],
+      "properties": {
+        "aggregation": {
+          "$ref": "#/definitions/AuditAggregation"
+        },
+        "metric": {
+          "$ref": "#/definitions/AuditMetricFact"
+        },
+        "source_nonnegative_count": {
+          "description": "Source-side nonnegative numeric rows, not a second parser verdict.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditAggregation": {
+      "type": "string",
+      "enum": [
+        "sum",
+        "max"
+      ]
+    },
+    "AuditClusterIdentity": {
+      "oneOf": [
+        {
+          "description": "No native cross-connection cluster identity has been established.",
+          "type": "object",
+          "required": [
+            "connection_id",
+            "detected_version",
+            "state"
+          ],
+          "properties": {
+            "connection_id": {
+              "type": "string"
+            },
+            "detected_version": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "session_scoped"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditConcurrencyTimeTick": {
+      "description": "A server-labelled x-axis location. The label is presentation text emitted in the source session's observed time zone; clients do not convert it.",
+      "type": "object",
+      "required": [
+        "at_milliseconds",
+        "label",
+        "x_permyriad"
+      ],
+      "properties": {
+        "at_milliseconds": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "x_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditFamilyDistributionExclusions": {
+      "type": "object",
+      "required": [
+        "negative_count",
+        "overflow_count",
+        "sql_null_count"
+      ],
+      "properties": {
+        "negative_count": {
+          "type": "string"
+        },
+        "overflow_count": {
+          "type": "string"
+        },
+        "sql_null_count": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditFamilyHistogramBucket": {
+      "type": "object",
+      "required": [
+        "bucket_id",
+        "count",
+        "display_label_seconds",
+        "lower_ms_inclusive",
+        "upper_ms_exclusive"
+      ],
+      "properties": {
+        "bucket_id": {
+          "type": "string"
+        },
+        "count": {
+          "type": "string"
+        },
+        "display_label_seconds": {
+          "type": "string"
+        },
+        "lower_ms_inclusive": {
+          "type": "string"
+        },
+        "upper_ms_exclusive": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditMetricFact": {
+      "type": "object",
+      "required": [
+        "input",
+        "metric_id",
+        "state"
+      ],
+      "properties": {
+        "canonical_number": {
+          "description": "Decimal text only; never encode audit counters as a JSON number.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "$ref": "#/definitions/AuditMetricInput"
+        },
+        "metric_id": {
+          "$ref": "#/definitions/AuditMetricId"
+        },
+        "parser_state": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ParseState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/AuditMetricState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditMetricId": {
+      "type": "string",
+      "enum": [
+        "query_time",
+        "pending_time",
+        "scan_bytes",
+        "scan_rows",
+        "cpu_cost",
+        "memory_cost",
+        "return_rows"
+      ]
+    },
+    "AuditMetricInput": {
+      "description": "Lossless transport input. `Text(\"0\")` is deliberately distinct from SQL NULL and remains decimal text so JavaScript never receives a lossy number.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "sql_null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditOptionalFactUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "AuditMetricState": {
+      "description": "This is a result state, not a second parser. The core AuditLoader adapter must map its one typed-parser outcome and audit-only negative policy here.",
+      "type": "string",
+      "enum": [
+        "exact",
+        "missing",
+        "invalid",
+        "negative_sentinel",
+        "overflow",
+        "precision_unsafe",
+        "unavailable"
+      ]
+    },
+    "AuditOptionalFactUnavailableReason": {
+      "description": "The existing fixed schema probe did not prove an optional AuditLoader source column. This is deliberately distinct from a present SQL NULL.",
+      "type": "string",
+      "enum": [
+        "source_column_absent",
+        "conflicting_source_rows"
+      ]
+    },
+    "AuditPerformanceAggregate": {
+      "description": "A sum or maximum plus the executions it could not include (SQL NULL or a negative sentinel). `excluded_count` is exact; it is never folded into 0.",
+      "type": "object",
+      "required": [
+        "aggregate",
+        "excluded_count"
+      ],
+      "properties": {
+        "aggregate": {
+          "$ref": "#/definitions/AuditAggregateFact"
+        },
+        "excluded_count": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceAxes": {
+      "type": "object",
+      "required": [
+        "cpu_cost",
+        "execution",
+        "memory_cost",
+        "pending_time",
+        "query_time_log",
+        "scan_bytes",
+        "time_ticks"
+      ],
+      "properties": {
+        "cpu_cost": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditPerformanceValueTick"
+          }
+        },
+        "execution": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditPerformanceValueTick"
+          }
+        },
+        "memory_cost": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditPerformanceValueTick"
+          }
+        },
+        "pending_time": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditPerformanceValueTick"
+          }
+        },
+        "query_time_log": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditPerformanceValueTick"
+          }
+        },
+        "scan_bytes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditPerformanceValueTick"
+          }
+        },
+        "time_ticks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditConcurrencyTimeTick"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceBucket": {
+      "type": "object",
+      "required": [
+        "end_milliseconds",
+        "projection",
+        "recent_ingestion",
+        "start_milliseconds",
+        "summary",
+        "width_permyriad",
+        "x_permyriad"
+      ],
+      "properties": {
+        "end_milliseconds": {
+          "type": "string"
+        },
+        "projection": {
+          "$ref": "#/definitions/AuditPerformanceProjection"
+        },
+        "recent_ingestion": {
+          "description": "The bucket ends within the AuditLoader ingestion grace of the read, so rows may still be arriving. It is drawn, never extrapolated.",
+          "type": "boolean"
+        },
+        "start_milliseconds": {
+          "description": "Reader-zone epoch coordinates, like every other Audit timestamp.",
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/definitions/AuditPerformanceSummary"
+        },
+        "width_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "x_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceDimension": {
+      "type": "object",
+      "required": [
+        "dimension",
+        "state"
+      ],
+      "properties": {
+        "dimension": {
+          "$ref": "#/definitions/AuditPerformanceDimensionId"
+        },
+        "state": {
+          "$ref": "#/definitions/AuditPerformanceDimensionState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceDimensionId": {
+      "type": "string",
+      "enum": [
+        "user",
+        "database",
+        "resource_group",
+        "catalog"
+      ]
+    },
+    "AuditPerformanceDimensionRow": {
+      "type": "object",
+      "required": [
+        "error_count",
+        "execution_count",
+        "query_time_sum",
+        "value"
+      ],
+      "properties": {
+        "error_count": {
+          "type": "string"
+        },
+        "execution_count": {
+          "type": "string"
+        },
+        "query_time_sum": {
+          "$ref": "#/definitions/AuditPerformanceAggregate"
+        },
+        "value": {
+          "$ref": "#/definitions/AuditPerformanceValue"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceDimensionState": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "distinct_value_count",
+            "rankings",
+            "rows",
+            "state"
+          ],
+          "properties": {
+            "distinct_value_count": {
+              "type": "string"
+            },
+            "rankings": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/AuditPerformanceRanking"
+              }
+            },
+            "rows": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/AuditPerformanceDimensionRow"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditOptionalFactUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditPerformanceErrorRow": {
+      "type": "object",
+      "required": [
+        "code",
+        "count",
+        "last_event_milliseconds",
+        "share_permyriad"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/definitions/AuditPerformanceValue"
+        },
+        "count": {
+          "type": "string"
+        },
+        "last_event_milliseconds": {
+          "type": "string"
+        },
+        "share_permyriad": {
+          "description": "Share of all failed executions in the window.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceErrors": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "error_count",
+            "remainder_code_count",
+            "remainder_count",
+            "rows",
+            "state"
+          ],
+          "properties": {
+            "error_count": {
+              "type": "string"
+            },
+            "remainder_code_count": {
+              "type": "string"
+            },
+            "remainder_count": {
+              "description": "Failed executions and distinct codes beyond the returned rows.",
+              "type": "string"
+            },
+            "rows": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/AuditPerformanceErrorRow"
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error_count",
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "error_count": {
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/definitions/AuditOptionalFactUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditPerformanceHistogram": {
+      "type": "object",
+      "required": [
+        "buckets",
+        "eligible_count",
+        "exclusions",
+        "slow"
+      ],
+      "properties": {
+        "buckets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditPerformanceHistogramBucket"
+          }
+        },
+        "eligible_count": {
+          "type": "string"
+        },
+        "exclusions": {
+          "$ref": "#/definitions/AuditFamilyDistributionExclusions"
+        },
+        "slow": {
+          "description": "Executions at or above each fixed bucket boundary. A marker, not a verdict.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditPerformanceSlowCount"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceHistogramBucket": {
+      "type": "object",
+      "required": [
+        "bucket",
+        "share_permyriad",
+        "width_permyriad"
+      ],
+      "properties": {
+        "bucket": {
+          "$ref": "#/definitions/AuditFamilyHistogramBucket"
+        },
+        "share_permyriad": {
+          "description": "Share of the eligible executions.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "width_permyriad": {
+          "description": "Bar length relative to the fullest bucket.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceOptionalQuantiles": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "conflicting_count",
+            "quantiles",
+            "state"
+          ],
+          "properties": {
+            "conflicting_count": {
+              "description": "Executions whose duplicate source rows disagree on this field.",
+              "type": "string"
+            },
+            "quantiles": {
+              "$ref": "#/definitions/AuditPerformanceQuantiles"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditOptionalFactUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditPerformanceProjection": {
+      "description": "Layout-only heights. Count series share one linear axis (errors stack on successes); `query_time_*` use the fixed log axis; others are linear to their own server-chosen axis maximum. `None` means nothing to draw.",
+      "type": "object",
+      "required": [
+        "error_permyriad",
+        "execution_permyriad"
+      ],
+      "properties": {
+        "cpu_cost_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "error_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "execution_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "memory_cost_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "pending_time_p95_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "query_time_p50_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "query_time_p95_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "query_time_p99_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "scan_bytes_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceQuantiles": {
+      "description": "Exact nearest-rank quantiles (`PERCENTILE_DISC`) over the eligible values: `0 <= value <= ceiling`. Absent quantiles mean no eligible value, never 0.",
+      "type": "object",
+      "required": [
+        "eligible_count"
+      ],
+      "properties": {
+        "eligible_count": {
+          "type": "string"
+        },
+        "p50": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditMetricFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "p95": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditMetricFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "p99": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditMetricFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceRankEntry": {
+      "type": "object",
+      "required": [
+        "row_index",
+        "width_permyriad"
+      ],
+      "properties": {
+        "row_index": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "share_permyriad": {
+          "description": "Share of the window total for this key; `None` when that total is 0.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "width_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceRankKey": {
+      "type": "string",
+      "enum": [
+        "execution_count",
+        "query_time_sum",
+        "error_count"
+      ]
+    },
+    "AuditPerformanceRanking": {
+      "description": "Exact Top-N for one key, ranked by the source over every value of the dimension, plus what lies beyond it. Values with nothing to rank (0 or an absent sum) are never listed for that key.",
+      "type": "object",
+      "required": [
+        "entries",
+        "key",
+        "remainder_value_count"
+      ],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditPerformanceRankEntry"
+          }
+        },
+        "key": {
+          "$ref": "#/definitions/AuditPerformanceRankKey"
+        },
+        "remainder_share_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "remainder_value_count": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceSlowCount": {
+      "type": "object",
+      "required": [
+        "count",
+        "share_permyriad",
+        "threshold_ms"
+      ],
+      "properties": {
+        "count": {
+          "type": "string"
+        },
+        "share_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "threshold_ms": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceSummary": {
+      "type": "object",
+      "required": [
+        "cpu_cost_sum",
+        "error_count",
+        "execution_count",
+        "memory_cost_max",
+        "pending_time",
+        "query_time",
+        "query_time_sum",
+        "scan_bytes_sum"
+      ],
+      "properties": {
+        "cpu_cost_sum": {
+          "description": "Summed CPU time, not elapsed time.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditPerformanceAggregate"
+            }
+          ]
+        },
+        "error_count": {
+          "description": "`state = ERR` executions.",
+          "type": "string"
+        },
+        "error_share_permyriad": {
+          "description": "Failed share of the executions; `None` when there are none.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "execution_count": {
+          "type": "string"
+        },
+        "memory_cost_max": {
+          "description": "Largest single-execution memory, not concurrent total memory.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditPerformanceAggregate"
+            }
+          ]
+        },
+        "pending_time": {
+          "$ref": "#/definitions/AuditPerformanceOptionalQuantiles"
+        },
+        "query_time": {
+          "$ref": "#/definitions/AuditPerformanceQuantiles"
+        },
+        "query_time_sum": {
+          "$ref": "#/definitions/AuditPerformanceAggregate"
+        },
+        "scan_bytes_sum": {
+          "$ref": "#/definitions/AuditPerformanceAggregate"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceTickValue": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "count",
+            "kind"
+          ],
+          "properties": {
+            "count": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "count"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "metric"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "metric"
+              ]
+            },
+            "metric": {
+              "$ref": "#/definitions/AuditMetricFact"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditPerformanceValue": {
+      "description": "A grouped source value. `SqlNull` and `Conflicting` (duplicate rows of one execution disagree) stay distinct from every text value, including \"\".",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "sql_null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "conflicting"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditPerformanceValueTick": {
+      "type": "object",
+      "required": [
+        "value",
+        "y_permyriad"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "#/definitions/AuditPerformanceTickValue"
+        },
+        "y_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditPerformanceVersion": {
+      "type": "string",
+      "enum": [
+        "audit-performance.v1"
+      ]
+    },
+    "AuditScope": {
+      "type": "object",
+      "required": [
+        "statement_filter",
+        "window"
+      ],
+      "properties": {
+        "catalog": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "database": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "native_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resource_group": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditTerminalState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "statement_filter": {
+          "description": "Explicit, user-visible statement-class filter. It is part of the scope so every Audit read (window cards, Top tables, families, concurrency, SQL lookup) uses the same population; hidden rows stay countable.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AuditStatementFilter"
+            }
+          ]
+        },
+        "user": {
+          "description": "Optional exact AuditLoader source-user filter. The source column is capability-probed; a requested value never falls back to an unfiltered read when that column is absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "window": {
+          "$ref": "#/definitions/AuditWindow"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditStatementFilter": {
+      "description": "Product-owned statement-class filter over AuditLoader rows.\n\n`ExcludeDoctorAndNonQuery` keeps only rows whose FE-reported `isQuery` is exactly 1 (official 3.5.14 `ConnectContext.isQueryStmt`: a `QueryStatement` or EXECUTE of a prepared query; statements that fail to parse keep the initial `true`) and whose `stmt` does not start with this product's fixed statement marker. SET/SHOW/DDL/DML rows, rows with a NULL `isQuery`, and this tool's own statements are hidden but counted.",
+      "type": "string",
+      "enum": [
+        "all",
+        "exclude_doctor_and_non_query"
+      ]
+    },
+    "AuditTerminalState": {
+      "type": "string",
+      "enum": [
+        "finished",
+        "error"
+      ]
+    },
+    "AuditWindow": {
+      "type": "object",
+      "required": [
+        "end_seconds",
+        "start_seconds"
+      ],
+      "properties": {
+        "end_seconds": {
+          "description": "Exclusive Unix second. Adjacent windows therefore cannot overlap.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "start_seconds": {
+          "description": "Inclusive Unix second. This is a `u32`, never a lossy JavaScript `u64`.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "CanonicalNumber": {
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/NumberKind"
+        },
+        "scale": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "value": {
+          "description": "Base-10 only: JSON numbers are never used for counters.",
+          "type": "string"
+        }
+      }
+    },
+    "NumberKind": {
+      "type": "string",
+      "enum": [
+        "integer",
+        "decimal"
+      ]
+    },
+    "ParseState": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "missing",
+        "invalid",
+        "partial",
+        "overflow"
+      ]
+    },
+    "TimeZoneEvidence": {
+      "type": "object",
+      "required": [
+        "current_utc_offset_seconds",
+        "effective_time_zone",
+        "session_time_zone",
+        "source_ref",
+        "system_time_zone"
+      ],
+      "properties": {
+        "current_utc_offset_seconds": {
+          "description": "Observed offset at connection time. Historical rows are never converted with this value because daylight-saving rules may differ at row time.",
+          "type": "integer",
+          "format": "int32"
+        },
+        "effective_time_zone": {
+          "description": "Session zone unless it is `SYSTEM`, then the server-reported system zone.",
+          "type": "string"
+        },
+        "session_time_zone": {
+          "description": "Effective time zone of the exact StarRocks session used by the connector.",
+          "type": "string"
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "system_time_zone": {
+          "description": "FE host time zone reported by StarRocks. This resolves a session value of `SYSTEM` without guessing from the application host.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

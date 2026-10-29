@@ -584,6 +584,128 @@ export type AuditFamilyRepresentatives = { recent: AuditFamilyRepresentative, sl
 export type AuditProfileListCheck = "checked" | "capability_unavailable" | "capability_forbidden" | "capability_unknown";
 export type AuditProfileEvidenceCoverage = { profile_list_check: AuditProfileListCheck, profile_list_limit: number, profile_list_returned: number, profile_list_at_limit: boolean, profile_list_excluded: number, successful_cache_retained: number, successful_cache_capacity: number, successful_cache_evicted: boolean, candidate_count: number, candidate_limit: number, candidate_truncated: boolean, };
 export type AuditFamilyDetailResponse = { schema_version: AuditWorkloadVersion, connection_id: string, discovery_generation: number, scope: AuditScope, family: AuditFamilyMembership, distribution: AuditFamilyExecutionDistribution, representatives: AuditFamilyRepresentatives, profile_evidence_coverage: AuditProfileEvidenceCoverage, cluster_identity: AuditClusterIdentity, audit_timestamp_time_zone: TimeZoneEvidence, limitations: Array<string>, };
+export type AuditPerformanceVersion = "audit-performance.v1";
+export type AuditPerformanceBucketChoice = { "state": "auto" } | { "state": "fixed", seconds: number, };
+export type AuditPerformanceReadRequest = { connection_id: string, scope: AuditScope, bucket: AuditPerformanceBucketChoice, };
+export type AuditPerformanceQuantiles = { eligible_count: string, p50: AuditMetricFact | null, p95: AuditMetricFact | null, p99: AuditMetricFact | null, };
+export type AuditPerformanceOptionalQuantiles = { "state": "available", quantiles: AuditPerformanceQuantiles,
+/**
+ * Executions whose duplicate source rows disagree on this field.
+ */
+conflicting_count: string, } | { "state": "unavailable", reason: AuditOptionalFactUnavailableReason, };
+export type AuditPerformanceAggregate = { aggregate: AuditAggregateFact, excluded_count: string, };
+export type AuditPerformanceSummary = { execution_count: string,
+/**
+ * `state = ERR` executions.
+ */
+error_count: string,
+/**
+ * Failed share of the executions; `None` when there are none.
+ */
+error_share_permyriad: number | null, query_time: AuditPerformanceQuantiles, query_time_sum: AuditPerformanceAggregate, scan_bytes_sum: AuditPerformanceAggregate,
+/**
+ * Summed CPU time, not elapsed time.
+ */
+cpu_cost_sum: AuditPerformanceAggregate,
+/**
+ * Largest single-execution memory, not concurrent total memory.
+ */
+memory_cost_max: AuditPerformanceAggregate, pending_time: AuditPerformanceOptionalQuantiles, };
+export type AuditPerformanceProjection = { execution_permyriad: number, error_permyriad: number, query_time_p50_permyriad: number | null, query_time_p95_permyriad: number | null, query_time_p99_permyriad: number | null, scan_bytes_permyriad: number | null, cpu_cost_permyriad: number | null, memory_cost_permyriad: number | null, pending_time_p95_permyriad: number | null, };
+export type AuditPerformanceBucket = {
+/**
+ * Reader-zone epoch coordinates, like every other Audit timestamp.
+ */
+start_milliseconds: string, end_milliseconds: string, x_permyriad: number, width_permyriad: number, summary: AuditPerformanceSummary, projection: AuditPerformanceProjection,
+/**
+ * The bucket ends within the AuditLoader ingestion grace of the read, so
+ * rows may still be arriving. It is drawn, never extrapolated.
+ */
+recent_ingestion: boolean, };
+export type AuditPerformanceTickValue = { "kind": "count", count: string, } | { "kind": "metric", metric: AuditMetricFact, };
+export type AuditPerformanceValueTick = { y_permyriad: number, value: AuditPerformanceTickValue, };
+export type AuditPerformanceAxes = { time_ticks: Array<AuditConcurrencyTimeTick>, execution: Array<AuditPerformanceValueTick>, query_time_log: Array<AuditPerformanceValueTick>, scan_bytes: Array<AuditPerformanceValueTick>, cpu_cost: Array<AuditPerformanceValueTick>, memory_cost: Array<AuditPerformanceValueTick>, pending_time: Array<AuditPerformanceValueTick>, };
+export type AuditPerformanceHistogramBucket = { bucket: AuditFamilyHistogramBucket,
+/**
+ * Share of the eligible executions.
+ */
+share_permyriad: number,
+/**
+ * Bar length relative to the fullest bucket.
+ */
+width_permyriad: number, };
+export type AuditPerformanceSlowCount = { threshold_ms: string, count: string, share_permyriad: number, };
+export type AuditPerformanceHistogram = { eligible_count: string, exclusions: AuditFamilyDistributionExclusions, buckets: Array<AuditPerformanceHistogramBucket>,
+/**
+ * Executions at or above each fixed bucket boundary. A marker, not a verdict.
+ */
+slow: Array<AuditPerformanceSlowCount>, };
+export type AuditPerformanceValue = { "state": "text", value: string, } | { "state": "sql_null" } | { "state": "conflicting" };
+export type AuditPerformanceErrorRow = { code: AuditPerformanceValue, count: string,
+/**
+ * Share of all failed executions in the window.
+ */
+share_permyriad: number, last_event_milliseconds: string, };
+export type AuditPerformanceErrors = { "state": "available", error_count: string, rows: Array<AuditPerformanceErrorRow>,
+/**
+ * Failed executions and distinct codes beyond the returned rows.
+ */
+remainder_count: string, remainder_code_count: string, } | { "state": "unavailable", error_count: string, reason: AuditOptionalFactUnavailableReason, };
+export type AuditPerformanceDimensionId = "user" | "database" | "resource_group" | "catalog";
+export type AuditPerformanceRankKey = "execution_count" | "query_time_sum" | "error_count";
+export type AuditPerformanceDimensionRow = { value: AuditPerformanceValue, execution_count: string, error_count: string, query_time_sum: AuditPerformanceAggregate, };
+export type AuditPerformanceRankEntry = { row_index: number,
+/**
+ * Share of the window total for this key; `None` when that total is 0.
+ */
+share_permyriad: number | null, width_permyriad: number, };
+export type AuditPerformanceRanking = { key: AuditPerformanceRankKey, entries: Array<AuditPerformanceRankEntry>, remainder_value_count: string, remainder_share_permyriad: number | null, };
+export type AuditPerformanceDimensionState = { "state": "available", distinct_value_count: string, rows: Array<AuditPerformanceDimensionRow>, rankings: Array<AuditPerformanceRanking>, } | { "state": "unavailable", reason: AuditOptionalFactUnavailableReason, };
+export type AuditPerformanceDimension = { dimension: AuditPerformanceDimensionId, state: AuditPerformanceDimensionState, };
+export type AuditPerformanceResponse = { schema_version: AuditPerformanceVersion, connection_id: string, scope: AuditScope, bucket_seconds: number, read_at_milliseconds: string, window: AuditPerformanceSummary, buckets: Array<AuditPerformanceBucket>, axes: AuditPerformanceAxes, latency_histogram: AuditPerformanceHistogram, errors: AuditPerformanceErrors, dimensions: Array<AuditPerformanceDimension>, cluster_identity: AuditClusterIdentity, audit_timestamp_time_zone: TimeZoneEvidence | null, limitations: Array<string>, };
+export type HistoryLoadRequest = {
+/**
+ * The connected session whose target to show; otherwise the most
+ * recently collected target.
+ */
+connection_id: string | null, days: number, };
+export type HistoryLoadCoverage = "complete" | "partial" | "not_collected";
+export type HistoryLoadDay = { start_seconds: number, coverage: HistoryLoadCoverage, complete_hours: number, partial_hours: number, not_collected_hours: number,
+/**
+ * `None` when the day was not collected.
+ */
+executions: string | null, errors: string | null, query_time_sum: AuditMetricFact | null,
+/**
+ * Index into `segments`: days in different segments are never compared.
+ */
+segment: number, executions_permyriad: number | null, errors_permyriad: number | null, query_time_permyriad: number | null, };
+export type HistoryLoadSegment = { engine_versions: Array<string>, rule_versions: Array<string>, first_day_seconds: number, };
+export type HistoryLoadHeatCell = {
+/**
+ * 0 = Monday … 6 = Sunday.
+ */
+weekday: number, hour: number, collected_hours: number,
+/**
+ * Rounded to a whole execution; `None` when no such hour was collected.
+ */
+average_executions: string | null,
+/**
+ * 0–5 relative to the busiest cell; `None` with the average.
+ */
+level: number | null, };
+export type HistoryLoadComparison = { "state": "exact", delta: string,
+/**
+ * Change in permille of the earlier day; `None` when that day had 0.
+ */
+permille: number | null, } | { "state": "not_comparable", reason: HistoryLoadNotComparableReason, };
+export type HistoryLoadNotComparableReason = "partial_coverage" | "version_or_rule_changed";
+export type HistoryLoadWeekRow = { current_day_seconds: number, previous_day_seconds: number, current_executions: string | null, previous_executions: string | null, comparison: HistoryLoadComparison, };
+export type HistoryLoadAxes = { executions: Array<AuditPerformanceValueTick>, errors: Array<AuditPerformanceValueTick>, query_time: Array<AuditPerformanceValueTick>, };
+export type HistoryLoadResponse = { target: string | null, start_seconds: number, end_seconds: number, days: Array<HistoryLoadDay>, segments: Array<HistoryLoadSegment>, heatmap: Array<HistoryLoadHeatCell>, week: Array<HistoryLoadWeekRow>, axes: HistoryLoadAxes, collected_hours: number, expected_hours: number,
+/**
+ * Rows the collector read and the ones it could attribute to a template.
+ */
+rows_read: string, rows_attributed: string, executions: string | null, errors: string | null, limitations: Array<string>, };
 export type ProductSqlFingerprint = { "state": "exact", fingerprint: string, template: string, } | { "state": "partial", reason: ProductSqlFingerprintPartialReason, } | { "state": "unavailable", reason: ProductSqlFingerprintUnavailableReason, };
 export type ProductSqlFingerprintPartialReason = "statement_truncated";
 export type ProductSqlFingerprintUnavailableReason = "statement_sql_null" | "statement_not_read" | "conflicting_source_rows" | "empty_statement" | "lexical_error" | "unbalanced_parentheses" | "multiple_statements" | "unsupported_statement" | "massive_compound_predicate";

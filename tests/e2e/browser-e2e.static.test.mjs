@@ -420,8 +420,9 @@ test("every literal browser button label exists in current production UI sources
   const labels = new Set([...runnerSource.matchAll(/clickButton\("([^"\n]+)"\)/g)].map(match => match[1]));
   for (const label of labels) assert.ok(ui.includes(JSON.stringify(label)), `Button label absent from current production UI: ${label}`);
   const auditUi = readFileSync(resolve("frontend/src/features/audit/AuditWorkloadWorkspace.tsx"), "utf8");
+  assert.ok(auditUi.includes('onClick={() => { setOverviewShown(true); if (mode === "similar") chooseMode("families"); }} type="button">{text("Overview"'));
   for (const [mode, label] of [["occurrences", "Individual executions"], ["families", "Repeated SQL"]]) {
-    assert.ok(auditUi.includes(`onClick={() => chooseMode("${mode}")} type="button">{text("${label}"`));
+    assert.ok(auditUi.includes(`chooseMode("${mode}"); }} type="button">{text("${label}"`));
     assert.ok(runnerSource.includes(`clickButton("${label}")`));
   }
 });
@@ -501,7 +502,12 @@ test("fixed controlled B opens the real Overview disclosure and separately basel
   assertLayoutContains(runnerSource, "const originalWindowSeconds = auditWindowSecondsByPreset[originalWindowPreset]");
   assertLayoutContains(runnerSource, "receipt.audit_filters = { ...receipt.audit_filters, original_window_preset: originalWindowPreset");
   const workload = runnerSource.slice(runnerSource.indexOf("async function auditWorkloadCoverage"), runnerSource.indexOf("async function auditFamilyDoctorCoverage"));
-  assert.ok(workload.indexOf("await applyAuditFixtureWindowAfterOverview();") < workload.indexOf('clickButton("Repeated SQL")'), "fixture window must apply before family discovery");
+  // The first switch only leaves the performance overview and is asserted to
+  // issue no read; family discovery is the later click that counts a new read.
+  assert.ok(workload.indexOf("await auditPerformanceOverviewCoverage();") < workload.indexOf('clickButton("Repeated SQL")'));
+  assertLayoutContains(workload, "Leaving the performance overview re-read the Audit overview.");
+  const discovery = runnerSource.indexOf('clickButton("Repeated SQL")', runnerSource.indexOf("const familyRequestsBefore"));
+  assert.ok(runnerSource.indexOf("await applyAuditFixtureWindowAfterOverview();") < discovery, "fixture window must apply before family discovery");
   // Every list discovery is an Overview read; the one exception is the selected
   // family's member ranking (design board 01 aside), a single occurrence read.
   assert.doesNotMatch(runnerSource, /"\/audit\/families"/);

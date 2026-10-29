@@ -1,0 +1,649 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HistoryLoadResponse",
+  "type": "object",
+  "required": [
+    "axes",
+    "collected_hours",
+    "days",
+    "end_seconds",
+    "expected_hours",
+    "heatmap",
+    "limitations",
+    "rows_attributed",
+    "rows_read",
+    "segments",
+    "start_seconds",
+    "week"
+  ],
+  "properties": {
+    "axes": {
+      "$ref": "#/definitions/HistoryLoadAxes"
+    },
+    "collected_hours": {
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0.0
+    },
+    "days": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/HistoryLoadDay"
+      }
+    },
+    "end_seconds": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "errors": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "executions": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expected_hours": {
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0.0
+    },
+    "heatmap": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/HistoryLoadHeatCell"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rows_attributed": {
+      "type": "string"
+    },
+    "rows_read": {
+      "description": "Rows the collector read and the ones it could attribute to a template.",
+      "type": "string"
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/HistoryLoadSegment"
+      }
+    },
+    "start_seconds": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "target": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "week": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/HistoryLoadWeekRow"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AuditMetricFact": {
+      "type": "object",
+      "required": [
+        "input",
+        "metric_id",
+        "state"
+      ],
+      "properties": {
+        "canonical_number": {
+          "description": "Decimal text only; never encode audit counters as a JSON number.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CanonicalNumber"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "$ref": "#/definitions/AuditMetricInput"
+        },
+        "metric_id": {
+          "$ref": "#/definitions/AuditMetricId"
+        },
+        "parser_state": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ParseState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/AuditMetricState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuditMetricId": {
+      "type": "string",
+      "enum": [
+        "query_time",
+        "pending_time",
+        "scan_bytes",
+        "scan_rows",
+        "cpu_cost",
+        "memory_cost",
+        "return_rows"
+      ]
+    },
+    "AuditMetricInput": {
+      "description": "Lossless transport input. `Text(\"0\")` is deliberately distinct from SQL NULL and remains decimal text so JavaScript never receives a lossy number.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "sql_null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/AuditOptionalFactUnavailableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "unavailable"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "AuditMetricState": {
+      "description": "This is a result state, not a second parser. The core AuditLoader adapter must map its one typed-parser outcome and audit-only negative policy here.",
+      "type": "string",
+      "enum": [
+        "exact",
+        "missing",
+        "invalid",
+        "negative_sentinel",
+        "overflow",
+        "precision_unsafe",
+        "unavailable"
+      ]
+    },
+    "AuditOptionalFactUnavailableReason": {
+      "description": "The existing fixed schema probe did not prove an optional AuditLoader source column. This is deliberately distinct from a present SQL NULL.",
+      "type": "string",
+      "enum": [
+        "source_column_absent",
+        "conflicting_source_rows"
+      ]
+    },
+    "AuditPerformanceTickValue": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "count",
+            "kind"
+          ],
+          "properties": {
+            "count": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "count"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "metric"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "metric"
+              ]
+            },
+            "metric": {
+              "$ref": "#/definitions/AuditMetricFact"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuditPerformanceValueTick": {
+      "type": "object",
+      "required": [
+        "value",
+        "y_permyriad"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "#/definitions/AuditPerformanceTickValue"
+        },
+        "y_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "CanonicalNumber": {
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/NumberKind"
+        },
+        "scale": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "value": {
+          "description": "Base-10 only: JSON numbers are never used for counters.",
+          "type": "string"
+        }
+      }
+    },
+    "HistoryLoadAxes": {
+      "type": "object",
+      "required": [
+        "errors",
+        "executions",
+        "query_time"
+      ],
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditPerformanceValueTick"
+          }
+        },
+        "executions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditPerformanceValueTick"
+          }
+        },
+        "query_time": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AuditPerformanceValueTick"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "HistoryLoadComparison": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "delta",
+            "state"
+          ],
+          "properties": {
+            "delta": {
+              "type": "string"
+            },
+            "permille": {
+              "description": "Change in permille of the earlier day; `None` when that day had 0.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "exact"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "reason",
+            "state"
+          ],
+          "properties": {
+            "reason": {
+              "$ref": "#/definitions/HistoryLoadNotComparableReason"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "not_comparable"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "HistoryLoadCoverage": {
+      "oneOf": [
+        {
+          "description": "Every hour of the day was read completely.",
+          "type": "string",
+          "enum": [
+            "complete"
+          ]
+        },
+        {
+          "description": "Some hours were read only partly or not at all.",
+          "type": "string",
+          "enum": [
+            "partial"
+          ]
+        },
+        {
+          "description": "No hour of the day was read: nothing is drawn, nothing is zero.",
+          "type": "string",
+          "enum": [
+            "not_collected"
+          ]
+        }
+      ]
+    },
+    "HistoryLoadDay": {
+      "description": "One UTC day. Sums cover only the hours that were read.",
+      "type": "object",
+      "required": [
+        "complete_hours",
+        "coverage",
+        "not_collected_hours",
+        "partial_hours",
+        "segment",
+        "start_seconds"
+      ],
+      "properties": {
+        "complete_hours": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "coverage": {
+          "$ref": "#/definitions/HistoryLoadCoverage"
+        },
+        "errors": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "errors_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "executions": {
+          "description": "`None` when the day was not collected.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "executions_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "not_collected_hours": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "partial_hours": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "query_time_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "query_time_sum": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuditMetricFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "segment": {
+          "description": "Index into `segments`: days in different segments are never compared.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "HistoryLoadHeatCell": {
+      "description": "Average executions per collected hour for one UTC weekday and hour.",
+      "type": "object",
+      "required": [
+        "collected_hours",
+        "hour",
+        "weekday"
+      ],
+      "properties": {
+        "average_executions": {
+          "description": "Rounded to a whole execution; `None` when no such hour was collected.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "collected_hours": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "hour": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "level": {
+          "description": "0–5 relative to the busiest cell; `None` with the average.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "weekday": {
+          "description": "0 = Monday … 6 = Sunday.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "HistoryLoadNotComparableReason": {
+      "type": "string",
+      "enum": [
+        "partial_coverage",
+        "version_or_rule_changed"
+      ]
+    },
+    "HistoryLoadSegment": {
+      "description": "A run of days under one StarRocks version and one history rule set.",
+      "type": "object",
+      "required": [
+        "engine_versions",
+        "first_day_seconds",
+        "rule_versions"
+      ],
+      "properties": {
+        "engine_versions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "first_day_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "rule_versions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "HistoryLoadWeekRow": {
+      "type": "object",
+      "required": [
+        "comparison",
+        "current_day_seconds",
+        "previous_day_seconds"
+      ],
+      "properties": {
+        "comparison": {
+          "$ref": "#/definitions/HistoryLoadComparison"
+        },
+        "current_day_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "current_executions": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "previous_day_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "previous_executions": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "NumberKind": {
+      "type": "string",
+      "enum": [
+        "integer",
+        "decimal"
+      ]
+    },
+    "ParseState": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "missing",
+        "invalid",
+        "partial",
+        "overflow"
+      ]
+    }
+  }
+}

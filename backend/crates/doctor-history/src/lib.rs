@@ -229,6 +229,20 @@ pub struct StoredBucket {
     pub delta: HistoryBucketDelta,
 }
 
+/// The additive totals of one target hour under one version pair, summed
+/// over every template. Quantile histograms are deliberately not read.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HourlyTotal {
+    pub bucket_start: i64,
+    pub engine_version: String,
+    pub rule_version: String,
+    pub executions: u64,
+    pub errors: u64,
+    pub query_time_valid: u64,
+    /// Exact: stored decimal sums are added as integers, never as floats.
+    pub query_time_sum: u128,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StoredExemplar {
     pub query_id: String,
@@ -686,6 +700,61 @@ impl HistoryStore {
             .collect()
     }
 
+    /// Hourly totals of one target in `[from, to)`, ascending by hour then
+    /// version pair. Reads only the additive columns of each template row.
+    pub fn hourly_totals(&self, target: &str, from: i64, to: i64) -> Result<Vec<HourlyTotal>> {
+        let connection = self.lock();
+        let mut statement = connection.prepare(
+            "SELECT b.bucket_start, b.engine_version, b.rule_version, b.executions, b.errors, b.qt_valid, b.qt_sum
+             FROM buckets b JOIN templates t ON t.template_key = b.template_key
+             WHERE t.target = ?1 AND b.bucket_start >= ?2 AND b.bucket_start < ?3",
+        )?;
+        let rows = statement.query_map(params![target, from, to], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, String>(6)?,
+            ))
+        })?;
+        let invalid = || HistoryError::Internal("corrupt_hourly_total");
+        let mut totals: std::collections::BTreeMap<(i64, String, String), HourlyTotal> =
+            std::collections::BTreeMap::new();
+        for row in rows {
+            let (start, engine, rule, executions, errors, valid, sum) = row?;
+            let count = |value: i64| u64::try_from(value).map_err(|_| invalid());
+            let sum = sum.parse::<u128>().map_err(|_| invalid())?;
+            let entry = totals
+                .entry((start, engine.clone(), rule.clone()))
+                .or_insert_with(|| HourlyTotal {
+                    bucket_start: start,
+                    engine_version: engine,
+                    rule_version: rule,
+                    executions: 0,
+                    errors: 0,
+                    query_time_valid: 0,
+                    query_time_sum: 0,
+                });
+            entry.executions = entry
+                .executions
+                .checked_add(count(executions)?)
+                .ok_or_else(invalid)?;
+            entry.errors = entry
+                .errors
+                .checked_add(count(errors)?)
+                .ok_or_else(invalid)?;
+            entry.query_time_valid = entry
+                .query_time_valid
+                .checked_add(count(valid)?)
+                .ok_or_else(invalid)?;
+            entry.query_time_sum = entry.query_time_sum.checked_add(sum).ok_or_else(invalid)?;
+        }
+        Ok(totals.into_values().collect())
+    }
+
     /// Targets with any recorded state, most recently updated first.
     pub fn targets(&self) -> Result<Vec<String>> {
         let connection = self.lock();
@@ -839,6 +908,43 @@ mod tests {
     use super::*;
     use doctor_contracts::{AuditMetricId, AuditMetricInput};
     use doctor_core::{AuditFingerprintStatement, CollectedExecution, aggregate_collection};
+
+    #[test]
+    fn hourly_totals_add_templates_and_keep_version_pairs_apart() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        {
+            let connection = store.lock();
+            connection
+                .execute_batch(
+                    "INSERT INTO templates VALUES ('a','t','digest','x','c','d',NULL,0,0),('b','t','digest','y','c','d',NULL,0,0),('z','other','digest','w','c','d',NULL,0,0);",
+                )
+                .unwrap();
+            let insert = "INSERT INTO buckets VALUES (?1,?2,?3,'r1',?4,?5,?6,?7,NULL,x'',0,'0',NULL,x'',0,'0',NULL,x'',0,'0',NULL,x'')";
+            for (key, start, engine, executions, errors, valid, sum) in [
+                ("a", 3600, "3.5.14", 3, 1, 3, "18446744073709551615"),
+                ("b", 3600, "3.5.14", 2, 0, 1, "5"),
+                ("a", 3600, "3.5.13", 1, 0, 1, "7"),
+                ("a", 7200, "3.5.14", 4, 0, 4, "40"),
+                ("z", 3600, "3.5.14", 9, 9, 9, "9"),
+            ] {
+                connection
+                    .execute(
+                        insert,
+                        params![key, start, engine, executions, errors, valid, sum],
+                    )
+                    .unwrap();
+            }
+        }
+        let totals = store.hourly_totals("t", 0, 7200).unwrap();
+        assert_eq!(totals.len(), 2);
+        assert_eq!(totals[0].engine_version, "3.5.13");
+        assert_eq!(totals[1].executions, 5);
+        assert_eq!(totals[1].errors, 1);
+        assert_eq!(totals[1].query_time_valid, 4);
+        // Beyond u64: the decimal sums are added exactly.
+        assert_eq!(totals[1].query_time_sum, 18_446_744_073_709_551_620);
+        assert!(store.hourly_totals("t", 7200, 10800).unwrap()[0].bucket_start == 7200);
+    }
 
     #[test]
     fn audit_v1_10_partial_unique_index_guards_the_database_itself() {

@@ -22,7 +22,7 @@ use crate::{
     audit_coverage_statement, audit_family_detail_sql_lookup_statement,
     audit_family_detail_statement, audit_family_sample_statement, audit_family_statement,
     audit_fingerprint_event_statement, audit_fingerprint_sample_statement,
-    audit_occurrence_sample_statement, audit_occurrence_statement,
+    audit_occurrence_sample_statement, audit_occurrence_statement, audit_performance_statement,
     audit_search_hidden_counts_statement, audit_sql_lookup_statement, audit_statement,
     doctor_statement, explain_statement, is_uuid, quote_sql_literal, valid_identifier_path,
 };
@@ -467,6 +467,15 @@ impl Remote for MysqlTextRemote {
                 scope,
                 schema,
             } => audit_concurrency_statement(&table, &scope, &schema)
+                .map_err(|_| RemoteError::Protocol)
+                .and_then(|statement| self.audit_query(&statement))
+                .map(RemoteResponse::NullableRows),
+            RemoteOperation::AuditPerformance {
+                table,
+                scope,
+                bucket_seconds,
+                schema,
+            } => audit_performance_statement(&table, &scope, bucket_seconds, &schema)
                 .map_err(|_| RemoteError::Protocol)
                 .and_then(|statement| self.audit_query(&statement))
                 .map(RemoteResponse::NullableRows),

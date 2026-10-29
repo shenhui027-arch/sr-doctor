@@ -52,6 +52,12 @@ pub use audit_workload::{
     decode_occurrence_sample_row, decode_occurrence_source_row, doctor_statement,
     family_sample_targets, occurrence_sample_targets,
 };
+pub use audit_workload::{
+    AUDIT_PERFORMANCE_SUMMARY_COLUMNS, AUDIT_PERFORMANCE_TOP_LIMIT,
+    AuditPerformanceDimensionSource, AuditPerformanceErrorSource, AuditPerformanceSource,
+    AuditPerformanceSummarySource, audit_performance_bucket_count, audit_performance_statement,
+    decode_performance_source_rows, summary_cell as audit_performance_summary_cell,
+};
 
 /// The release the connector fixtures report; every audited release (3.1–4.1) connects.
 pub const SUPPORTED_VERSION: &str = "3.5.14";
@@ -355,6 +361,19 @@ pub struct AuditOverviewWorkload {
     pub concurrency: AuditConcurrencySource,
     pub family_top_sort: AuditOverviewFamilyTopSort,
     pub family_top_rows: Vec<AuditFamilySourceRow>,
+}
+
+/// One bounded window aggregation. It publishes no SQL or family binding, so
+/// it never moves the discovery generation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuditPerformanceWorkload {
+    pub scope: AuditScope,
+    pub bucket_seconds: u32,
+    pub session_identity: AuditSessionIdentity,
+    pub user_column: bool,
+    pub error_code_column: bool,
+    pub pending_time_column: bool,
+    pub source: AuditPerformanceSource,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -714,6 +733,13 @@ pub enum RemoteOperation {
         table: AuditTableName,
         scope: AuditScope,
         at_milliseconds: i128,
+        schema: AuditSchema,
+    },
+    /// The one bounded performance-overview aggregation of a window.
+    AuditPerformance {
+        table: AuditTableName,
+        scope: AuditScope,
+        bucket_seconds: u32,
         schema: AuditSchema,
     },
     AuditOverviewFamilyTop {
@@ -2058,6 +2084,48 @@ impl SessionManager {
             discovery_generation,
             None,
         )
+    }
+
+    pub fn audit_performance_controlled(
+        &self,
+        connection_id: &str,
+        scope: AuditScope,
+        bucket_seconds: u32,
+        control: Option<&Arc<OperationControl>>,
+    ) -> Result<AuditPerformanceWorkload, ConnectorError> {
+        scope.validate().map_err(audit_request_error)?;
+        audit_performance_bucket_count(&scope, bucket_seconds).map_err(|_| {
+            ConnectorError::new(ConnectorErrorCode::InvalidRequest, "audit_performance")
+        })?;
+        self.with_supported_session_controlled(connection_id, control, |session| {
+            let schema = verified_audit_schema(session)?;
+            let table = session.audit_table.clone();
+            audit_performance_statement(&table, &scope, bucket_seconds, &schema)
+                .map_err(audit_schema_error)?;
+            let rows = nullable_rows(
+                session
+                    .remote
+                    .run(RemoteOperation::AuditPerformance {
+                        table,
+                        scope: scope.clone(),
+                        bucket_seconds,
+                        schema: schema.clone(),
+                    })
+                    .map_err(|error| error.connector("audit_performance"))?,
+                "audit_performance",
+            )?;
+            let source = decode_performance_source_rows(rows, &scope, bucket_seconds, &schema)
+                .map_err(audit_response_error)?;
+            Ok(AuditPerformanceWorkload {
+                scope: scope.clone(),
+                bucket_seconds,
+                session_identity: audit_session_identity(session),
+                user_column: schema.has(AuditColumn::User),
+                error_code_column: schema.has(AuditColumn::ErrorCode),
+                pending_time_column: schema.has(AuditColumn::PendingTimeMs),
+                source,
+            })
+        })
     }
 
     pub fn audit_active_at_controlled(
@@ -4191,6 +4259,7 @@ mod tests {
         AuditFamilyDetailSqlLookup,
         AuditCoverage,
         AuditConcurrency,
+        AuditPerformance,
         AuditOverviewFamilyTop,
         AuditSqlLookup,
         AuditActiveAt,
@@ -4246,6 +4315,7 @@ mod tests {
                     Operation::AuditFingerprintSamples
                 }
                 RemoteOperation::AuditConcurrency { .. } => Operation::AuditConcurrency,
+                RemoteOperation::AuditPerformance { .. } => Operation::AuditPerformance,
                 RemoteOperation::AuditOverviewFamilyTop { .. } => Operation::AuditOverviewFamilyTop,
                 RemoteOperation::AuditSqlLookup { .. } => Operation::AuditSqlLookup,
                 RemoteOperation::AuditActiveAt { .. } => Operation::AuditActiveAt,
@@ -4365,6 +4435,7 @@ mod tests {
                 RemoteOperation::AuditConcurrency { scope, .. } => self
                     .audit_search
                     .map(|_| RemoteResponse::NullableRows(audit_concurrency_rows(&scope))),
+                RemoteOperation::AuditPerformance { .. } => Err(RemoteError::Unsupported),
                 RemoteOperation::AuditOverviewFamilyTop { request, .. } => {
                     self.audit_search?;
                     assert_eq!(request.limit, AUDIT_OVERVIEW_FAMILY_TOP_LIMIT);
@@ -4926,6 +4997,7 @@ mod tests {
                 | RemoteOperation::AuditCollectionSlice { .. }
                 | RemoteOperation::AuditFingerprintSamples { .. }
                 | RemoteOperation::AuditConcurrency { .. }
+                | RemoteOperation::AuditPerformance { .. }
                 | RemoteOperation::AuditOverviewFamilyTop { .. }
                 | RemoteOperation::AuditSqlLookup { .. }
                 | RemoteOperation::AuditActiveAt { .. }

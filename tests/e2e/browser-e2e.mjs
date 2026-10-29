@@ -510,6 +510,33 @@ async function applyAuditFixtureWindowAfterOverview() {
   };
   return applied.audit_scope;
 }
+/** O1: the default Audit face is the server-aggregated performance overview. */
+async function auditPerformanceOverviewCoverage() {
+  await waitFor(async () => {
+    const routes = await routeTelemetry("/audit/performance");
+    return routes.at(-1)?.method === "POST" && routes.at(-1)?.status === 200 &&
+      (await has(".audit-performance-chart svg rect.hit"));
+  }, "Audit performance response");
+  const coverage = (await projectionTelemetry(auditOverviewRoute)).at(-1)?.audit_coverage ?? null;
+  receipt.audit_performance = await evaluate(
+    `(() => { const root = document.querySelector('.workspace-queries .audit-performance'); const cards = Array.from(root?.querySelectorAll('.audit-performance-card') ?? []); const executions = cards.find((card) => card.querySelector('.audit-performance-card-label')?.textContent === 'Executions'); return {
+      card_count: cards.length,
+      executions: executions?.querySelector('.audit-performance-card-value > span')?.textContent?.replaceAll(',', '') ?? null,
+      bucket_count: root?.querySelectorAll('.audit-performance-chart svg rect.hit').length ?? 0,
+      histogram_rows: root?.querySelectorAll('.audit-performance-histogram-row').length ?? 0,
+      panels: ['audit-performance-histogram', 'audit-performance-errors', 'audit-performance-dimensions', 'audit-performance-top'].filter((id) => document.getElementById(id)).length,
+      overview_pressed: Array.from(document.querySelectorAll('.audit-view-switch button')).find((button) => button.textContent.trim() === 'Overview')?.getAttribute('aria-pressed') ?? null,
+      sql_text_in_cards: cards.some((card) => /\\bSELECT\\b/i.test(card.textContent ?? '')),
+    }; })()`,
+  );
+  assert(receipt.audit_performance.card_count === 6 &&
+    receipt.audit_performance.executions === coverage?.retained_event_count &&
+    receipt.audit_performance.bucket_count > 0 && receipt.audit_performance.histogram_rows === 8 &&
+    receipt.audit_performance.panels === 4 && receipt.audit_performance.overview_pressed === "true" &&
+    !receipt.audit_performance.sql_text_in_cards,
+    `Audit performance overview did not render its DTO facts: ${JSON.stringify(receipt.audit_performance)}`);
+  receipt.assertions.push("audit_performance_overview_http200_same_cohort_cards_chart_panels");
+}
 async function auditWorkloadCoverage() {
   await evaluate(auditReleaseObserverSource());
   const overviewRequestsBefore = (await routeTelemetry(auditOverviewRoute))
@@ -535,9 +562,17 @@ async function auditWorkloadCoverage() {
       routes.length > overviewRequestsBefore &&
       routes.at(-1)?.method === "POST" &&
       routes.at(-1)?.status === 200 &&
-      (await has(".audit-kpi-grid"))
+      (await has(".audit-performance-cards"))
     );
-  }, "Audit Overview response");
+  }, "Audit Overview response and performance overview");
+  await auditPerformanceOverviewCoverage();
+  // The legacy board assertions below run on the repeated-SQL view; switching
+  // from the overview reuses the admitted read instead of issuing another.
+  const overviewRequestsAtSwitch = (await routeTelemetry(auditOverviewRoute)).length;
+  await clickButton("Repeated SQL");
+  await waitFor(() => has(".audit-kpi-grid"), "Repeated SQL view after the overview");
+  assert((await routeTelemetry(auditOverviewRoute)).length === overviewRequestsAtSwitch,
+    "Leaving the performance overview re-read the Audit overview.");
   const overviewProjection = (await projectionTelemetry(auditOverviewRoute)).at(-1);
   const overviewTop = overviewProjection?.audit_top;
   const overviewCoverage = overviewProjection?.audit_coverage;

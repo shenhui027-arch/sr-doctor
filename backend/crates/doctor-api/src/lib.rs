@@ -8,6 +8,7 @@ mod access;
 mod audit;
 mod governance;
 mod history;
+mod history_load;
 mod history_trend;
 pub use history::{HistoryConfig, SlicePlan, plan_slices};
 
@@ -1023,6 +1024,10 @@ pub fn router(state: ApiState) -> Router {
             options(preflight).post(history_trend::trends),
         )
         .route(
+            "/api/v1/history/load",
+            options(preflight).post(history_load::load),
+        )
+        .route(
             "/api/v1/history/series",
             options(preflight).post(history_trend::series),
         )
@@ -1073,6 +1078,10 @@ pub fn router(state: ApiState) -> Router {
         .route(
             "/api/v1/connections/{id}/audit/overview",
             options(preflight).post(audit::overview),
+        )
+        .route(
+            "/api/v1/connections/{id}/audit/performance",
+            options(preflight).post(audit::performance),
         )
         .route(
             "/api/v1/connections/{id}/audit/active-at",
@@ -4355,6 +4364,162 @@ mod tests {
                         Some("00:00:01".into()),
                     ];
                     Ok(RemoteResponse::NullableRows(vec![summary, delta]))
+                }
+                RemoteOperation::AuditPerformance { scope, .. } => {
+                    let cells = |values: &[Option<&str>]| -> Vec<Option<String>> {
+                        values
+                            .iter()
+                            .map(|value| value.map(str::to_owned))
+                            .collect()
+                    };
+                    let summary = |kind: &str, key: Option<&str>, values: [Option<&str>; 22]| {
+                        let mut row = cells(&[Some(kind), key, None, None]);
+                        row.extend(cells(&values));
+                        row
+                    };
+                    let tail = |used: usize| vec![None; 22 - used];
+                    let last = (scope.window.start_seconds + 200).to_string();
+                    let mut error = cells(&[
+                        Some("error"),
+                        None,
+                        Some("1"),
+                        Some("TIMEOUT"),
+                        Some("1"),
+                        Some(&last),
+                        Some("1"),
+                    ]);
+                    error.extend(tail(3));
+                    let dim = |name: &str, agrees: &str, value: Option<&str>, values: [&str; 8]| {
+                        let mut row = cells(&[Some("dim"), Some(name), Some(agrees), value]);
+                        row.extend(values.iter().map(|value| Some((*value).to_owned())));
+                        row.extend(tail(8));
+                        row
+                    };
+                    let mut histogram = cells(&[Some("hist"), None, None, None]);
+                    histogram.extend(
+                        ["0", "0", "2", "1", "0", "0", "0", "0", "0", "0", "0", "3"]
+                            .map(|value| Some(value.to_owned())),
+                    );
+                    histogram.extend(tail(12));
+                    let s = Some;
+                    Ok(RemoteResponse::NullableRows(vec![
+                        summary(
+                            "window",
+                            None,
+                            [
+                                s("3"),
+                                s("1"),
+                                s("3"),
+                                s("3"),
+                                s("100"),
+                                s("2500"),
+                                s("2500"),
+                                s("2700"),
+                                s("2"),
+                                s("1300"),
+                                s("3"),
+                                s("21000"),
+                                s("3"),
+                                s("4096"),
+                                s("2"),
+                                s("3"),
+                                s("5"),
+                                s("5"),
+                                s("1"),
+                                s("0"),
+                                s("0"),
+                                s("0"),
+                            ],
+                        ),
+                        summary(
+                            "bucket",
+                            Some("0"),
+                            [
+                                s("2"),
+                                s("0"),
+                                s("2"),
+                                s("2"),
+                                s("100"),
+                                s("100"),
+                                s("100"),
+                                s("200"),
+                                s("2"),
+                                s("1300"),
+                                s("2"),
+                                s("12000"),
+                                s("2"),
+                                s("4096"),
+                                s("1"),
+                                s("3"),
+                                s("3"),
+                                s("3"),
+                                s("1"),
+                                s("0"),
+                                s("0"),
+                                s("0"),
+                            ],
+                        ),
+                        summary(
+                            "bucket",
+                            Some("3"),
+                            [
+                                s("1"),
+                                s("1"),
+                                s("1"),
+                                s("1"),
+                                s("2500"),
+                                s("2500"),
+                                s("2500"),
+                                s("2500"),
+                                s("0"),
+                                None,
+                                s("1"),
+                                s("9000"),
+                                s("1"),
+                                s("1024"),
+                                s("1"),
+                                s("5"),
+                                s("5"),
+                                s("5"),
+                                s("0"),
+                                s("0"),
+                                s("0"),
+                                s("0"),
+                            ],
+                        ),
+                        histogram,
+                        error,
+                        dim(
+                            "database",
+                            "1",
+                            Some("db1"),
+                            ["3", "1", "3", "2700", "1", "1", "1", "1"],
+                        ),
+                        dim(
+                            "resource_group",
+                            "1",
+                            None,
+                            ["3", "1", "3", "2700", "1", "1", "1", "1"],
+                        ),
+                        dim(
+                            "catalog",
+                            "1",
+                            Some("default_catalog"),
+                            ["3", "1", "3", "2700", "1", "1", "1", "1"],
+                        ),
+                        dim(
+                            "user",
+                            "1",
+                            Some("alice"),
+                            ["2", "0", "2", "200", "1", "2", "2", "2"],
+                        ),
+                        dim(
+                            "user",
+                            "0",
+                            None,
+                            ["1", "1", "1", "2500", "2", "1", "1", "2"],
+                        ),
+                    ]))
                 }
                 RemoteOperation::AuditOverviewFamilyTop { .. } => {
                     Ok(RemoteResponse::NullableRows(vec![vec![
@@ -8330,6 +8495,97 @@ mod tests {
         );
     }
     #[tokio::test]
+    async fn audit_performance_projects_buckets_quantiles_errors_and_exact_rankings() {
+        let factory = Arc::new(ConnectorTestFactory::connected().with_audit_user_column());
+        let app = router(connector_state(factory));
+        let connection_id = connector_connection_id(app.clone()).await;
+        let body = serde_json::json!({
+            "connection_id": connection_id,
+            "scope": {
+                "window": { "start_seconds": 1788047990, "end_seconds": 1788051600 },
+                "state": null, "user": null, "native_digest": null, "catalog": null,
+                "database": null, "resource_group": null, "statement_filter": "all"
+            },
+            "bucket": { "state": "auto" }
+        });
+        let post = |body: String| {
+            json_request(
+                Method::POST,
+                &format!("{CONNECTIONS_PATH}/{connection_id}/audit/performance"),
+                "127.0.0.1:8000",
+                SocketAddr::from(([127, 0, 0, 1], 41000)),
+                &body,
+            )
+        };
+        let response = app.clone().oneshot(post(body.to_string())).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let value: serde_json::Value =
+            from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(value["schema_version"], "audit-performance.v1");
+        assert_eq!(value["bucket_seconds"], 60);
+        // 3,610 s in 60 s buckets: 61, the last one 10 s wide; empty ones are exact zeros.
+        assert_eq!(value["buckets"].as_array().unwrap().len(), 61);
+        assert_eq!(value["buckets"][1]["summary"]["execution_count"], "0");
+        assert_eq!(
+            value["buckets"][1]["summary"]["query_time"]["p95"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            value["buckets"][0]["projection"]["execution_permyriad"],
+            10_000
+        );
+        assert_eq!(value["buckets"][3]["projection"]["error_permyriad"], 5_000);
+        // A missing scan sum is not drawn and is never a zero.
+        assert_eq!(
+            value["buckets"][3]["projection"]["scan_bytes_permyriad"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            value["buckets"][3]["summary"]["scan_bytes_sum"]["excluded_count"],
+            "1"
+        );
+        assert_eq!(value["window"]["query_time"]["p95"]["canonical_unit"], "ns");
+        assert_eq!(
+            value["window"]["query_time"]["p95"]["canonical_number"]["value"],
+            "2500000000"
+        );
+        assert_eq!(value["window"]["pending_time"]["conflicting_count"], "1");
+        assert_eq!(value["window"]["error_share_permyriad"], 3_333);
+        assert_eq!(
+            value["buckets"][1]["summary"]["error_share_permyriad"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            value["latency_histogram"]["slow"][0]["threshold_ms"],
+            "1000"
+        );
+        assert_eq!(value["latency_histogram"]["slow"][0]["count"], "1");
+        assert_eq!(
+            value["latency_histogram"]["slow"][0]["share_permyriad"],
+            3_333
+        );
+        assert_eq!(value["errors"]["state"], "available");
+        assert_eq!(value["errors"]["rows"][0]["code"]["value"], "TIMEOUT");
+        assert_eq!(value["errors"]["remainder_count"], "0");
+        let user = &value["dimensions"][0];
+        assert_eq!(user["dimension"], "user");
+        assert_eq!(user["state"]["rows"][1]["value"]["state"], "conflicting");
+        let by_errors = &user["state"]["rankings"][2];
+        assert_eq!(by_errors["key"], "error_count");
+        // Only the conflicting-user row failed; a zero is never ranked.
+        assert_eq!(by_errors["entries"].as_array().unwrap().len(), 1);
+        assert_eq!(by_errors["entries"][0]["row_index"], 1);
+        assert_eq!(by_errors["remainder_value_count"], "1");
+        assert_eq!(
+            value["dimensions"][2]["state"]["rows"][0]["value"]["state"],
+            "sql_null"
+        );
+        let mut fixed = body.clone();
+        fixed["bucket"] = serde_json::json!({ "state": "fixed", "seconds": 120 });
+        let rejected = app.oneshot(post(fixed.to_string())).await.unwrap();
+        assert_eq!(rejected.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    #[tokio::test]
     async fn audit_user_filter_capability_is_projected_and_missing_column_rejects_scope() {
         let factory = Arc::new(ConnectorTestFactory::connected());
         let app = router(connector_state(factory));
@@ -9859,6 +10115,29 @@ mod tests {
         assert_eq!(status["target"], "127.0.0.1:9030");
         assert_eq!(status["collection"]["reason"], "not_connected");
         assert!(status["watermark_seconds"].as_u64().is_some());
+
+        // O2: the 30-day view reads the same collected target from the store.
+        let (code, load) = history_post(
+            app.clone(),
+            "/api/v1/history/load",
+            serde_json::json!({ "connection_id": null, "days": 30 }),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(load["target"], "127.0.0.1:9030");
+        assert_eq!(load["days"].as_array().unwrap().len(), 30);
+        assert_eq!(load["heatmap"].as_array().unwrap().len(), 7 * 24);
+        assert!(load["collected_hours"].as_u64().unwrap() > 0);
+        assert!(load["executions"].as_str().unwrap().parse::<u64>().unwrap() > 0);
+        for days in [6, 31] {
+            let (code, _) = history_post(
+                app.clone(),
+                "/api/v1/history/load",
+                serde_json::json!({ "connection_id": null, "days": days }),
+            )
+            .await;
+            assert_eq!(code, StatusCode::BAD_REQUEST);
+        }
 
         for bad in [
             serde_json::json!({ "target": null, "current_hours": 0, "baseline_hours": 48, "limit": 50 }),

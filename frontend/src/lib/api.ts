@@ -22,11 +22,15 @@ import type {
   HistorySeriesRequest,
   HistorySeriesResponse,
   HistoryTrendsRequest,
+  HistoryLoadRequest,
+  HistoryLoadResponse,
   HistoryTrendsResponse,
   HistoryStatusResponse,
   AuditOccurrenceReadRequest,
   AuditOccurrenceResponse,
   AuditOverviewReadRequest,
+  AuditPerformanceReadRequest,
+  AuditPerformanceResponse,
   AuditOverviewResponse,
   AuditSqlReadRequest,
   Capabilities,
@@ -328,6 +332,10 @@ export class DoctorApi {
     await this.postJson<unknown>("/history/collection", request, signal);
   }
 
+  async readHistoryLoad(request: HistoryLoadRequest, signal?: AbortSignal): Promise<HistoryLoadResponse> {
+    return this.postJson<HistoryLoadResponse>("/history/load", request, signal);
+  }
+
   async readHistoryTrends(request: HistoryTrendsRequest, signal?: AbortSignal): Promise<HistoryTrendsResponse> {
     const value = await this.postJson<unknown>("/history/trends", request, signal);
     if (!isRecord(value) || !Array.isArray(value.rows) || !isRecord(value.counts) || !isRecord(value.rule)) {
@@ -389,6 +397,10 @@ export class DoctorApi {
 
   async readAuditOverview(request: AuditOverviewReadRequest, signal?: AbortSignal): Promise<AuditOverviewResponse> {
     return this.postConnection<AuditOverviewResponse>("audit/overview", request, signal);
+  }
+
+  async readAuditPerformance(request: AuditPerformanceReadRequest, signal?: AbortSignal): Promise<AuditPerformanceResponse> {
+    return this.postConnection<AuditPerformanceResponse>("audit/performance", request, signal);
   }
 
   async readAuditActiveAt(request: AuditActiveAtReadRequest, signal?: AbortSignal): Promise<AuditActiveAtResponse> {

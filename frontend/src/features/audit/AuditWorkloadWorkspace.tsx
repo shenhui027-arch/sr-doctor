@@ -19,6 +19,7 @@ import type {
   AuditOccurrenceSort,
   AuditOverviewFamilyTopSort,
   AuditOverviewResponse,
+  AuditPerformanceDimensionId,
   AuditScope,
   AuditSqlReadRequest,
   AuditStatementFilterCoverage,
@@ -37,6 +38,8 @@ import { AuditFamilyDetail } from "./AuditFamilyDetail";
 import { AuditBoundedSourceNote, AuditDigestGuidance, auditSegmentAt } from "./AuditOverviewCharts";
 import { AuditFamilyAside, AuditFamilyList, AuditFingerprintFamilyList, AuditKpiStrip, memberKey, type BaselineState } from "./AuditOverviewPanels";
 import { AuditSimilarAside, AuditSimilarSqlList } from "./AuditSimilarSql";
+import { AuditPerformanceOverview } from "./AuditPerformanceOverview";
+import { AuditHistoryLoad } from "./AuditHistoryLoad";
 import { countText } from "../../lib/duration-display";
 import { compactQueryId } from "../../lib/query-id";
 import { SqlText, SqlToggleButton } from "../shell/SqlText";
@@ -44,7 +47,7 @@ import { auditClockText, auditDigestUnavailable, auditMillisecondsText, errorPro
 export { metricText } from "./audit-display";
 import "./audit-workload.css";
 
-type AuditApi = Pick<DoctorApi, "compareConnectedProfiles" | "fetchConnectedProfile" | "readAuditSql" | "readAuditFamilyDetail" | "readAuditOverview" | "readAuditActiveAt" | "readAuditOccurrences"> & Partial<Pick<DoctorApi, "readAuditFingerprintFamilies" | "readAuditSimilarSql">>;
+type AuditApi = Pick<DoctorApi, "compareConnectedProfiles" | "fetchConnectedProfile" | "readAuditSql" | "readAuditFamilyDetail" | "readAuditOverview" | "readAuditActiveAt" | "readAuditOccurrences"> & Partial<Pick<DoctorApi, "readAuditFingerprintFamilies" | "readAuditSimilarSql" | "readAuditPerformance" | "readHistoryLoad">>;
 /** Unofficial fingerprint groups of the digest-missing executions in the admitted families window. */
 type FingerprintState = { response: AuditFingerprintFamilyResponse | null; loading: boolean; error: string | null };
 /** The family selected in the repeated-SQL table and its member ranking (design board 01 aside). */
@@ -98,6 +101,10 @@ export function AuditWorkloadWorkspace({
   const [familyTopSort, setFamilyTopSort] = useState<AuditOverviewFamilyTopSort>("cumulative_query_time_desc");
   const [limit, setLimit] = useState<(typeof limits)[number]>(100);
   const [mode, setMode] = useState<AuditMode>("families");
+  // O1: the performance overview is the default face of the families/occurrences reads.
+  const [overviewShown, setOverviewShown] = useState(true);
+  // O2: the overview reads either the chosen window or the local 30-day history.
+  const [overviewRange, setOverviewRange] = useState<"window" | "history">("window");
   const [familySelection, setFamilySelection] = useState<FamilySelection | null>(null);
   const [fetchedQueryIds, setFetchedQueryIds] = useState<ReadonlySet<string>>(() => new Set());
   const [moreFilters, setMoreFilters] = useState(false);
@@ -724,6 +731,35 @@ export function AuditWorkloadWorkspace({
     ? text(`${familySelection.members.top.returned_count} of ${familySelection.members.top.full_window_count} members`, `${familySelection.members.top.full_window_count} 次中前 ${familySelection.members.top.returned_count}`)
     : "";
   const moreFiltersId = "audit-more-filters";
+  const readPerformance = api.readAuditPerformance;
+  const readHistoryLoad = api.readHistoryLoad;
+  const overviewView = overviewShown && readPerformance !== undefined && (view === "families" || view === "occurrences");
+  const viewSwitch = <div aria-label={text("View", "视图")} className="audit-view-switch" role="group">
+    {readPerformance && <button aria-pressed={overviewView} disabled={loading} onClick={() => { setOverviewShown(true); if (mode === "similar") chooseMode("families"); }} type="button">{text("Overview", "概览")}</button>}
+    {(!digestUnavailable || mode === "families") && <button aria-pressed={view === "families" && !overviewView} disabled={loading} onClick={() => { setOverviewShown(false); if (!(overviewView && mode === "families")) chooseMode("families"); }} type="button">{text("Repeated SQL", "同类 SQL")}</button>}
+    {api.readAuditSimilarSql && <button aria-pressed={view === "similar"} disabled={loading} onClick={() => { setOverviewShown(false); chooseSimilar(); }} type="button">{text("Similar SQL", "相似 SQL")}</button>}
+    <button aria-pressed={view === "occurrences" && !overviewView} disabled={loading} onClick={() => { setOverviewShown(false); if (!(overviewView && mode === "occurrences")) chooseMode("occurrences"); }} type="button">{text("Individual executions", "单次执行")}</button>
+  </div>;
+  const describePerformanceFailure = (cause: unknown): string => {
+    if (isConnectionExpiredFailure(cause)) onSessionExpired?.(sessionEndReason(cause));
+    return auditErrorLabel(cause);
+  };
+  const drillToWindow = (startMilliseconds: string, endMilliseconds: string, target: "occurrences" | "families"): void => {
+    const base = currentOverview?.scope ?? scope;
+    const nextScope: AuditScope = { ...base, window: { start_seconds: Number(startMilliseconds) / 1000, end_seconds: Number(endMilliseconds) / 1000 } };
+    setOverviewShown(false);
+    setMode(target);
+    setScope(nextScope);
+    if (target === "families") void loadFamilies(nextScope);
+    else void loadOccurrences(nextScope);
+  };
+  const filterDimension = (dimension: AuditPerformanceDimensionId, value: string): void => {
+    const base = currentOverview?.scope ?? scope;
+    const field = dimension === "resource_group" ? "resource_group" : dimension;
+    const nextScope: AuditScope = { ...base, [field]: value };
+    setScope(nextScope);
+    loadForMode(nextScope);
+  };
 
   return <section className="audit-workload audit-workload-overview" aria-busy={loading} aria-labelledby="audit-board-title">
     <form className="audit-filter-bar" aria-label={text("Filters", "筛选")} onSubmit={(event) => { event.preventDefault(); refresh(); }}>
@@ -757,18 +793,47 @@ export function AuditWorkloadWorkspace({
 
     {!familyDetailShown && view !== "similar" && <AuditWindowEvidence compact response={response} scope={scope} windowPreset={windowPreset} text={text} />}
     {error && <p className="audit-error" role="alert">{error === "not_found_or_expired_or_not_profiled" ? text("No Profile is available for this query. It may not have been collected or may have expired.", "这条查询没有可用的 Profile：可能未采集，或已过期。请选择另一条查询。") : error}</p>}
-    {currentOverview && !familyDetailShown && view !== "similar" && <AuditKpiStrip concurrency={currentOverview.concurrency} coverage={currentOverview.coverage} disabled={loading} onSelectTime={(at) => void selectTime(at)} text={text} />}
+    {currentOverview && !familyDetailShown && view !== "similar" && !overviewView && <AuditKpiStrip concurrency={currentOverview.concurrency} coverage={currentOverview.coverage} disabled={loading} onSelectTime={(at) => void selectTime(at)} text={text} />}
 
-    <div className="audit-board-layout">
+    {overviewView && <div className="audit-overview-head">
+      <div><h1 id="audit-board-title">{text("Overview · audit performance", "概览 · 审计性能")}</h1><p data-audit-statement-filter={statementFilter?.state} title={hiddenTitle}>{filterNote}</p></div>
+      <div className="audit-overview-head-controls">
+        {readHistoryLoad && <div aria-label={text("Overview range", "概览范围")} className="audit-overview-range" role="group">
+          <button aria-pressed={overviewRange === "window"} onClick={() => setOverviewRange("window")} type="button">{text("Selected window · audit table", "所选时间窗 · 审计表")}</button>
+          <button aria-pressed={overviewRange === "history"} onClick={() => setOverviewRange("history")} type="button">{text("30 days · history", "30 天 · 历史库")}</button>
+        </div>}
+        {viewSwitch}
+      </div>
+    </div>}
+    {overviewView && overviewRange === "history" && readHistoryLoad && <AuditHistoryLoad
+      api={{ readHistoryLoad: readHistoryLoad.bind(api) }}
+      connectionId={session.connection_id}
+      describeFailure={describePerformanceFailure}
+      text={text}
+    />}
+    {overviewView && overviewRange === "window" && readPerformance && (currentOverview
+      ? <AuditPerformanceOverview
+        api={{ readAuditPerformance: readPerformance.bind(api) }}
+        concurrency={currentOverview.concurrency}
+        connectionId={session.connection_id}
+        coverage={currentOverview.coverage}
+        describeFailure={describePerformanceFailure}
+        families={currentFamilies?.rows ?? []}
+        familySortLabel={sortLabel(familySort, text)}
+        filterableUser={userFilterAvailable}
+        onDrill={drillToWindow}
+        onFilter={filterDimension}
+        onOpenFamilies={() => { setOverviewShown(false); if (mode !== "families") chooseMode("families"); }}
+        scope={currentOverview.scope}
+        text={text}
+      />
+      : !error && <p className="audit-empty" role="status">{text("Reading audit records…", "正在读取审计记录…")}</p>)}
+    {!overviewView && <div className="audit-board-layout">
       <section aria-labelledby="audit-board-title" className="audit-board-main">
         <div className="audit-board-main-head">
           <div><h1 id="audit-board-title">{title}</h1><p data-audit-statement-filter={statementFilter?.state} title={hiddenTitle}>{subtitle}</p></div>
           {view === "families" || view === "occurrences" || view === "similar"
-            ? <div aria-label={text("View", "视图")} className="audit-view-switch" role="group">
-              {(!digestUnavailable || mode === "families") && <button aria-pressed={view === "families"} disabled={loading} onClick={() => chooseMode("families")} type="button">{text("Repeated SQL", "同类 SQL")}</button>}
-              {api.readAuditSimilarSql && <button aria-pressed={view === "similar"} disabled={loading} onClick={chooseSimilar} type="button">{text("Similar SQL", "相似 SQL")}</button>}
-              <button aria-pressed={view === "occurrences"} disabled={loading} onClick={() => chooseMode("occurrences")} type="button">{text("Individual executions", "单次执行")}</button>
-            </div>
+            ? viewSwitch
             : <button className="button secondary" disabled={loading} onClick={() => {
               if (view === "members") setFamilySelection((current) => current ? { ...current, showAll: false } : current);
               else if (view === "family_detail") returnToParent();
@@ -853,7 +918,7 @@ export function AuditWorkloadWorkspace({
           sqlLoading={sqlLoading}
           text={text}
         />}
-    </div>
+    </div>}
   </section>;
 }
 
