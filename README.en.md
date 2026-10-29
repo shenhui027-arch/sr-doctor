@@ -79,6 +79,13 @@ No cluster? **Import a Profile** on the first page to analyze a JSON or text Pro
 | In-app alerts | Raised only by regression checks, with severity, confidence and evidence completeness shown separately |
 | Governance queue | New → triaged → in progress → pending verification → closed; an item closes only when a before/after comparison confirms the improvement |
 
+### Audit overview (added after v1.0.0, not yet released)
+
+| Capability | What it does |
+|---|---|
+| Selected window | The default view of Audit history: one bounded aggregation read of the audit table draws executions and failures, duration P50/P95/P99, scanned bytes, CPU, peak memory and queue time over time; pick a bucket to drill into its executions or repeated SQL. Also a duration histogram, failures by errorCode, and the workload by user, database, resource group and catalog. Percentiles use StarRocks `PERCENTILE_DISC`, and the page states how it picks a value |
+| 30 days · history | Daily bars, a weekday × hour heatmap and this week against last week from the local hourly aggregates; only additive totals are drawn and no percentile is synthesized; days that were not collected stay empty, and nothing is compared across a version or rule change |
+
 ## Screenshots
 
 <table>
@@ -88,7 +95,11 @@ No cluster? **Import a Profile** on the first page to analyze a JSON or text Pro
   </tr>
   <tr>
     <td><img src="docs/assets/screenshots/04-compare.png" alt="Before / after"><br><sub><b>Before / after</b>: measured intervals, finding changes and incomparable items</sub></td>
-    <td><img src="docs/assets/screenshots/06-queries-audit.png" alt="Audit history"><br><sub><b>Audit history</b>: similar SQL grouped by the official digest</sub></td>
+    <td><img src="docs/assets/screenshots/06-queries-audit.png" alt="Repeated SQL"><br><sub><b>Repeated SQL</b>: grouped by the official digest, with frequency and cumulative cost</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/05-audit-overview.png" alt="Audit overview"><br><sub><b>Audit overview</b>: trends over time, the selected bucket and window totals</sub></td>
+    <td><img src="docs/assets/screenshots/12-history-load.png" alt="30-day load"><br><sub><b>30-day load</b>: daily bars, collection coverage and comparable segments</sub></td>
   </tr>
   <tr>
     <td colspan="2"><img src="docs/assets/screenshots/11-topology.png" alt="Execution structure"><br><sub><b>Execution structure</b>: fragment containers, operator category colours, nodes with findings outlined in red, upstream output rows and join probe/build inputs on the edges</sub></td>
@@ -158,6 +169,7 @@ Connecting to 2.5 or 3.0 shows "unsupported version" and reads no audit or Profi
 |---|---|
 | Latest release | **v1.0.0** (2026-10-29), see [Releases](https://github.com/shenhui027-arch/sr-doctor/releases). Servers are deployed with Docker; there is no installer |
 | v1.0.0 | SQL quality monitoring stages A–D developed and accepted locally; all 19 issues from the project-wide audit fixed |
+| main branch | Adds the audit overview after v1.0.0 (window performance charts and the 30-day load view); local CI and the official 3.5.14 release-level E2E pass; not yet released |
 | Local verification | Local CI passes; on fixed-digest official `starrocks/*:3.5.14` Docker fixtures, the fingerprint, collection, trends, alerts and governance, multi-BE, release-audit and TLS verify-full E2E tests pass |
 | Production acceptance | **Pending**: the G1 read-only production pilot and G2 real-workload calibration have not been done, so it is not claimed to be production-safe; remote clusters are not collected by default and alert thresholds are marked as on trial |
 | Supported versions | StarRocks **3.1 and later** (audited 3.1–4.1); 2.5 and 3.0 are not supported. See [Supported StarRocks versions](#supported-starrocks-versions) |

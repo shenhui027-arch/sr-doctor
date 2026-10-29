@@ -79,6 +79,13 @@ docker compose up -d --build
 | 應用內告警 | 只來自回歸判定，分開呈現嚴重度、信賴度與證據完整度 |
 | 治理佇列 | 新建 → 已分類 → 處理中 → 待驗證 → 已關閉；只有前後對比驗證確認改善才會關閉 |
 
+### 稽核概覽（v1.0.0 之後新增，尚未發布）
+
+| 能力 | 說明 |
+|---|---|
+| 所選時間窗 | 稽核歷史的預設檢視：一次有界彙總讀取稽核表，畫出執行量與失敗、耗時 P50/P95/P99、掃描量、CPU、記憶體峰值、排隊時間的時間趨勢，點選時段可下鑽到單次執行或同類 SQL；另有耗時分布、依 errorCode 的失敗拆分、依使用者／資料庫／資源群組／Catalog 的負載構成。分位數使用 StarRocks `PERCENTILE_DISC`，介面寫明其取值規則 |
+| 30 天 · 歷史庫 | 依本機小時彙總畫出每日柱狀圖、星期 × 小時熱力圖與本週對上週；只畫可相加的量，不合成分位數；未採集的日子留空，版本或規則變化前後不比較 |
+
 ## 截圖
 
 <table>
@@ -88,7 +95,11 @@ docker compose up -d --build
   </tr>
   <tr>
     <td><img src="docs/assets/screenshots/04-compare.png" alt="前後對比"><br><sub><b>前後對比</b>：實測區間、發現項變化與不可比較項</sub></td>
-    <td><img src="docs/assets/screenshots/06-queries-audit.png" alt="稽核歷史"><br><sub><b>稽核歷史</b>：依官方 digest 合併的同類 SQL</sub></td>
+    <td><img src="docs/assets/screenshots/06-queries-audit.png" alt="同類 SQL"><br><sub><b>同類 SQL</b>：依官方 digest 合併，看頻次與累計消耗</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/05-audit-overview.png" alt="稽核概覽"><br><sub><b>稽核概覽</b>：時間趨勢、所選時段與視窗彙總</sub></td>
+    <td><img src="docs/assets/screenshots/12-history-load.png" alt="30 天負載"><br><sub><b>30 天負載</b>：每日柱狀圖、採集覆蓋與可比分段</sub></td>
   </tr>
   <tr>
     <td colspan="2"><img src="docs/assets/screenshots/11-topology.png" alt="執行結構"><br><sub><b>執行結構</b>：Fragment 容器、運算子類別配色、有發現項的節點以紅框標出，連線上是上游輸出列數與 Join 的探測／建置輸入</sub></td>
@@ -158,6 +169,7 @@ flowchart LR
 |---|---|
 | 最近發布 | **v1.0.0**（2026-10-29），見 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。伺服器部署統一使用 Docker，不提供安裝包 |
 | v1.0.0 | SQL 品質監控階段 A～D 已完成開發與本機驗收；全專案稽核的 19 個問題已修復 |
+| main 分支 | v1.0.0 之後新增稽核概覽（時間窗效能圖表與 30 天負載檢視），本機 CI 與官方 3.5.14 發布級 E2E 通過，尚未發布 |
 | 本機驗證 | 本地 CI 全部通過；固定 digest 的官方 `starrocks/*:3.5.14` Docker 測試環境上，指紋、採集、趨勢、告警治理、多 BE、發布級稽核、TLS verify-full 的 E2E 均通過 |
 | 正式環境驗收 | **待驗證**：G1 正式環境唯讀試點、G2 真實業務分布校準尚未進行。因此不宣稱 Production-safe；遠端叢集預設不採集，告警門檻標為「規則試行中」 |
 | 支援版本 | StarRocks **3.1 及以後**（已稽核 3.1～4.1），2.5、3.0 不支援；詳見[支援的 StarRocks 版本](#支援的-starrocks-版本) |

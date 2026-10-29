@@ -77,6 +77,13 @@ docker compose up -d --build
 | 应用内告警 | 只来自回归判定，分开展示严重度、置信度与证据完整度 |
 | 治理队列 | 新建 → 已分诊 → 处理中 → 待验证 → 已关闭；只有前后对比验证确认改善才会关闭 |
 
+### 审计概览（v1.0.0 之后新增，尚未发布）
+
+| 能力 | 说明 |
+|---|---|
+| 所选时间窗 | 审计历史的默认视图：一次有界聚合读取审计表，画执行量与失败、耗时 P50/P95/P99、扫描量、CPU、内存峰值、排队时间的时间趋势，点选时段可下钻到单次执行或同类 SQL；另有耗时分布、按 errorCode 的失败拆分、按用户/数据库/资源组/Catalog 的负载构成。分位数用 StarRocks `PERCENTILE_DISC`，界面写明其取值规则 |
+| 30 天 · 历史库 | 按本地小时聚合画每日柱图、星期 × 小时热力图与本周对上周；只画可相加的量，不合成分位数；未采集的日子留空，版本或规则变化前后不比较 |
+
 ## 截图
 
 <table>
@@ -86,7 +93,11 @@ docker compose up -d --build
   </tr>
   <tr>
     <td><img src="docs/assets/screenshots/04-compare.png" alt="前后对比"><br><sub><b>前后对比</b>：实测区间、发现项变化与不可比较项</sub></td>
-    <td><img src="docs/assets/screenshots/06-queries-audit.png" alt="审计历史"><br><sub><b>审计历史</b>：按官方 digest 归并的同类 SQL</sub></td>
+    <td><img src="docs/assets/screenshots/06-queries-audit.png" alt="同类 SQL"><br><sub><b>同类 SQL</b>：按官方 digest 归并，看频次与累计消耗</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/05-audit-overview.png" alt="审计概览"><br><sub><b>审计概览</b>：时间趋势、所选时段与窗口汇总</sub></td>
+    <td><img src="docs/assets/screenshots/12-history-load.png" alt="30 天负载"><br><sub><b>30 天负载</b>：每日柱图、采集覆盖与可比分段</sub></td>
   </tr>
   <tr>
     <td><img src="docs/assets/screenshots/07-trends.png" alt="模板趋势"><br><sub><b>模板趋势</b>：每小时中位数与基线带</sub></td>
@@ -156,6 +167,7 @@ flowchart LR
 |---|---|
 | 最近发布 | **v1.0.0**（2026-10-29），见 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。服务器部署统一用 Docker，不提供安装包 |
 | v1.0.0 | SQL 质量监控阶段 A～D 已完成开发与本机验收；全项目审计的 19 个问题已修复 |
+| main 分支 | v1.0.0 之后新增审计概览（时间窗性能图表与 30 天负载视图），本地 CI 与官方 3.5.14 发布级 E2E 通过，尚未发布 |
 | 本机验证 | 本地 CI 全部通过；固定 digest 的官方 `starrocks/*:3.5.14` Docker 夹具上，指纹、采集、趋势、告警治理、多 BE、发布级审计、TLS verify-full 的 E2E 均通过 |
 | 生产验收 | **待验证**：G1 生产只读试点、G2 真实业务分布校准尚未进行。因此不宣称 Production-safe；远端集群默认不采集，告警阈值标为“规则试运行中” |
 | 支持版本 | StarRocks **3.1 及以后**（已审计 3.1～4.1），2.5、3.0 不支持；详见[支持的 StarRocks 版本](#支持的-starrocks-版本) |
