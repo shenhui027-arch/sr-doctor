@@ -15,7 +15,7 @@
 [![StarRocks](https://img.shields.io/badge/StarRocks-3.1～4.1-1f55e0.svg)](docs/guide/faq.md)
 [![Backend](https://img.shields.io/badge/backend-Rust%20%2F%20Axum-b7410e.svg)](docs/development/architecture.md)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
-[![Status](https://img.shields.io/badge/v1.0-local%20verified%20·%20production%20pending-orange.svg)](#项目状态)
+[![Status](https://img.shields.io/badge/v1.0.0-local%20verified%20·%20production%20pending-orange.svg)](#项目状态)
 
 [快速开始](#快速开始) · [功能](#功能) · [截图](#截图) · [文档](#文档) · [安全](SECURITY.md) · [参与开发](CONTRIBUTING.md) · [更新日志](CHANGELOG.md)
 
@@ -154,8 +154,8 @@ flowchart LR
 
 | | 状态 |
 |---|---|
-| 最近发布 | v1.0 开发版（`main`）。v1.0 起服务器部署统一用 Docker |
-| `main`（v1.0） | SQL 质量监控阶段 A～D 已完成开发与本机验收；全项目审计的 19 个问题已修复 |
+| 最近发布 | **v1.0.0**（2026-10-29），见 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。服务器部署统一用 Docker，不提供安装包 |
+| v1.0.0 | SQL 质量监控阶段 A～D 已完成开发与本机验收；全项目审计的 19 个问题已修复 |
 | 本机验证 | 本地 CI 全部通过；固定 digest 的官方 `starrocks/*:3.5.14` Docker 夹具上，指纹、采集、趋势、告警治理、多 BE、发布级审计、TLS verify-full 的 E2E 均通过 |
 | 生产验收 | **待验证**：G1 生产只读试点、G2 真实业务分布校准尚未进行。因此不宣称 Production-safe；远端集群默认不采集，告警阈值标为“规则试运行中” |
 | 支持版本 | StarRocks **3.1 及以后**（已审计 3.1～4.1），2.5、3.0 不支持；详见[支持的 StarRocks 版本](#支持的-starrocks-版本) |

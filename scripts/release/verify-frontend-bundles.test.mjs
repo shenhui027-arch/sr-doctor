@@ -138,7 +138,7 @@ test("observation policy still blocks missing assets, vendor and worker referenc
 test("current build and formal Candidate share the explicit size-observation policy", () => {
   const root = resolve(import.meta.dirname, "../..");
   const pkg = JSON.parse(readFileSync(join(root, "frontend/package.json"), "utf8"));
-  assert.match(pkg.version, /^0\.7\./);
+  assert.match(pkg.version, /^1\.0\./);
   assert.match(pkg.scripts.build, /npm run verify:bundles/);
   assert.match(pkg.scripts["verify:bundles"], /--policy private-v0\.2-size-observation/);
   const candidate = readFileSync(join(root, "scripts/release/candidate-lib.mjs"), "utf8");

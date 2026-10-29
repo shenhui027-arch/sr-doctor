@@ -15,7 +15,7 @@ Every conclusion comes with evidence; when the evidence is not enough, it says s
 [![StarRocks](https://img.shields.io/badge/StarRocks-3.1～4.1-1f55e0.svg)](docs/guide/faq.md)
 [![Backend](https://img.shields.io/badge/backend-Rust%20%2F%20Axum-b7410e.svg)](docs/development/architecture.md)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
-[![Status](https://img.shields.io/badge/v1.0-local%20verified%20·%20production%20pending-orange.svg)](#project-status)
+[![Status](https://img.shields.io/badge/v1.0.0-local%20verified%20·%20production%20pending-orange.svg)](#project-status)
 
 [Quick start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) · [Docs](#documentation) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
@@ -156,8 +156,8 @@ Connecting to 2.5 or 3.0 shows "unsupported version" and reads no audit or Profi
 
 | | Status |
 |---|---|
-| Latest release | v1.0 in development (`main`). From v1.0, servers are deployed with Docker |
-| `main` (v1.0) | SQL quality monitoring stages A–D developed and accepted locally; all 19 issues from the project-wide audit fixed |
+| Latest release | **v1.0.0** (2026-10-29), see [Releases](https://github.com/shenhui027-arch/sr-doctor/releases). Servers are deployed with Docker; there is no installer |
+| v1.0.0 | SQL quality monitoring stages A–D developed and accepted locally; all 19 issues from the project-wide audit fixed |
 | Local verification | Local CI passes; on fixed-digest official `starrocks/*:3.5.14` Docker fixtures, the fingerprint, collection, trends, alerts and governance, multi-BE, release-audit and TLS verify-full E2E tests pass |
 | Production acceptance | **Pending**: the G1 read-only production pilot and G2 real-workload calibration have not been done, so it is not claimed to be production-safe; remote clusters are not collected by default and alert thresholds are marked as on trial |
 | Supported versions | StarRocks **3.1 and later** (audited 3.1–4.1); 2.5 and 3.0 are not supported. See [Supported StarRocks versions](#supported-starrocks-versions) |
