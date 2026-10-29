@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NotifyDeliveriesRequest",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/NotifyChannelKind"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "state": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/NotifyDeliveryState"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "NotifyChannelKind": {
+      "type": "string",
+      "enum": [
+        "email",
+        "feishu",
+        "dingtalk",
+        "aliyun_sms",
+        "tencent_sms"
+      ]
+    },
+    "NotifyDeliveryState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "sent"
+          ]
+        },
+        {
+          "description": "Waiting for its first attempt or a retry.",
+          "type": "string",
+          "enum": [
+            "pending"
+          ]
+        },
+        {
+          "description": "Every attempt failed; no further retry.",
+          "type": "string",
+          "enum": [
+            "failed"
+          ]
+        },
+        {
+          "description": "Not sent: over the SMS hourly limit, or the channel or target was switched off before it went out.",
+          "type": "string",
+          "enum": [
+            "skipped"
+          ]
+        }
+      ]
+    }
+  }
+}

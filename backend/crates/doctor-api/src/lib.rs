@@ -10,7 +10,9 @@ mod governance;
 mod history;
 mod history_load;
 mod history_trend;
+mod notify;
 pub use history::{HistoryConfig, SlicePlan, plan_slices};
+pub use notify::NotifyKey;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -145,6 +147,8 @@ pub struct ApiConfig {
     pub history: HistoryConfig,
     /// Account required by network deployments (optional elsewhere).
     pub access: Option<AccessConfig>,
+    /// Master key for notification secrets; `None` keeps notifications off.
+    pub notify_key: Option<NotifyKey>,
 }
 
 impl Default for ApiConfig {
@@ -158,6 +162,7 @@ impl Default for ApiConfig {
             frontend_dist: None,
             history: HistoryConfig::default(),
             access: None,
+            notify_key: None,
             build: embedded_build_capability(),
         }
     }
@@ -1044,6 +1049,31 @@ pub fn router(state: ApiState) -> Router {
             options(preflight).post(governance::alerts_resolve_rule_changed),
         )
         .route(
+            "/api/v1/notify/overview",
+            options(preflight).post(notify::overview_handler),
+        )
+        .route(
+            "/api/v1/notify/settings",
+            options(preflight).post(notify::settings),
+        )
+        .route(
+            "/api/v1/notify/channel",
+            options(preflight).post(notify::channel),
+        )
+        .route(
+            "/api/v1/notify/target",
+            options(preflight).post(notify::target),
+        )
+        .route(
+            "/api/v1/notify/target/delete",
+            options(preflight).post(notify::target_delete),
+        )
+        .route("/api/v1/notify/test", options(preflight).post(notify::test))
+        .route(
+            "/api/v1/notify/deliveries",
+            options(preflight).post(notify::deliveries),
+        )
+        .route(
             "/api/v1/governance/list",
             options(preflight).post(governance::governance_list),
         )
@@ -1127,6 +1157,7 @@ pub fn router(state: ApiState) -> Router {
 
 pub async fn serve(state: ApiState) -> std::io::Result<()> {
     let listener = tokio::net::TcpListener::bind(state.bind_addr()).await?;
+    tokio::spawn(notify::run_worker(state.clone()));
     let server = axum::serve(
         listener,
         router(state.clone()).into_make_service_with_connect_info::<SocketAddr>(),
@@ -10766,10 +10797,12 @@ mod tests {
                 .unwrap()
                 .starts_with("a-")
         );
+        // No outbound channel is set up: only in-app would deliver.
         assert_eq!(
             alerts["channels"][1],
-            serde_json::json!({ "name": "webhook", "available": false })
+            serde_json::json!({ "name": "email", "available": false })
         );
+        assert_eq!(alerts["channels"].as_array().unwrap().len(), 6);
         assert_eq!(alerts["counts"]["open"], "1");
         let alert = list[0]["alert_id"].as_str().unwrap().to_owned();
         let (_, status) = post(
@@ -10826,6 +10859,163 @@ mod tests {
             bytes.extend(std::fs::read(entry.unwrap().path()).unwrap());
         }
         assert!(!bytes.windows(25).any(|w| w == b"governance_secret_literal"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A one-message SMTP sink: accepts everything, returns the client's lines.
+    fn smtp_sink() -> (u16, std::thread::JoinHandle<Vec<String>>) {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut writer = stream.try_clone().unwrap();
+            let mut reader = BufReader::new(stream);
+            let mut seen = Vec::new();
+            writer.write_all(b"220 sink\r\n").unwrap();
+            let (mut line, mut data) = (String::new(), false);
+            while reader.read_line(&mut line).unwrap() > 0 {
+                let text = line.trim_end().to_owned();
+                line.clear();
+                seen.push(text.clone());
+                let reply: &[u8] = if data {
+                    if text != "." {
+                        continue;
+                    }
+                    data = false;
+                    b"250 queued\r\n"
+                } else if text.starts_with("EHLO") {
+                    b"250-sink\r\n250 AUTH PLAIN\r\n"
+                } else if text.starts_with("AUTH") {
+                    b"235 ok\r\n"
+                } else if text == "DATA" {
+                    data = true;
+                    b"354 go\r\n"
+                } else if text == "QUIT" {
+                    writer.write_all(b"221 bye\r\n").unwrap();
+                    break;
+                } else {
+                    b"250 ok\r\n"
+                };
+                writer.write_all(reply).unwrap();
+            }
+            seen
+        });
+        (port, handle)
+    }
+
+    #[tokio::test]
+    async fn n01_n06_notify_channels_targets_test_send_and_write_only_secrets() {
+        let dir = std::env::temp_dir().join(format!("doctor-api-notify-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("history.sqlite");
+        let factory = Arc::new(ConnectorTestFactory::connected());
+        // Without a master key notifications stay off.
+        let app = router(history_state(Arc::clone(&factory), &path));
+        let (status, body) =
+            history_post(app, "/api/v1/notify/overview", serde_json::json!({})).await;
+        assert_eq!(
+            (status, body["code"].as_str()),
+            (StatusCode::CONFLICT, Some("notify_key_unavailable"))
+        );
+        let state = ApiState::with_connector_factory(
+            ApiConfig {
+                history: HistoryConfig {
+                    path: Some(path.clone()),
+                    ..HistoryConfig::default()
+                },
+                notify_key: Some(NotifyKey {
+                    key: doctor_notify::SecretKey::generate().unwrap(),
+                    source: doctor_contracts::NotifyKeySource::File,
+                }),
+                ..ApiConfig::default()
+            },
+            "fresh-nonce",
+            Arc::new(TestClock::default()),
+            factory,
+        )
+        .unwrap();
+        let app = router(state);
+        let post =
+            |path: &'static str, body: serde_json::Value| history_post(app.clone(), path, body);
+        let (port, sink) = smtp_sink();
+        let (status, overview) = post(
+            "/api/v1/notify/channel",
+            serde_json::json!({
+                "config": { "kind": "email", "host": "127.0.0.1", "port": port, "security": "plain",
+                            "username": "alerts@example.com", "from_address": "alerts@example.com", "from_name": "SR Doctor" },
+                "enabled": true, "secret": "smtp-secret-value", "clear_secret": false
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{overview}");
+        assert_eq!(overview["channels"][0]["secret_saved"], true);
+        assert!(!overview.to_string().contains("smtp-secret-value"));
+        let target = |id: serde_json::Value| {
+            serde_json::json!({ "target_id": id, "kind": "email", "name": "DBA 值班", "enabled": true, "min_severity": "medium",
+                                "address": "dba@example.com", "webhook": null, "signing_secret": null, "clear_signing_secret": false })
+        };
+        let (status, overview) =
+            post("/api/v1/notify/target", target(serde_json::Value::Null)).await;
+        assert_eq!(status, StatusCode::OK, "{overview}");
+        let target_id = overview["targets"][0]["target_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert_eq!(overview["targets"][0]["address_hint"], "dba@example.com");
+        assert_eq!(overview["channels"][0]["enabled_targets"], 1);
+        let (status, result) = post(
+            "/api/v1/notify/test",
+            serde_json::json!({ "target": target(serde_json::json!(target_id)) }),
+        )
+        .await;
+        assert_eq!(
+            (status, result["state"].as_str()),
+            (StatusCode::OK, Some("sent")),
+            "{result}"
+        );
+        let seen = sink.join().unwrap();
+        assert!(
+            seen.contains(&"RCPT TO:<dba@example.com>".to_owned()),
+            "{seen:?}"
+        );
+        assert!(seen.iter().any(|line| line.starts_with("AUTH PLAIN ")));
+        let (_, log) = post(
+            "/api/v1/notify/deliveries",
+            serde_json::json!({ "kind": null, "target_id": null, "state": null }),
+        )
+        .await;
+        assert_eq!(log["deliveries"][0]["event"], "test");
+        assert_eq!(log["deliveries"][0]["state"], "sent");
+        assert_eq!(log["deliveries"][0]["target_id"], target_id.as_str());
+        assert_eq!(log["sent_24h"], 1);
+        // Bot webhooks must be on the official host.
+        let (status, body) = post(
+            "/api/v1/notify/target",
+            serde_json::json!({ "target_id": null, "kind": "feishu", "name": "群", "enabled": true, "min_severity": "high",
+                                "address": null, "webhook": "https://example.com/open-apis/bot/v2/hook/x",
+                                "signing_secret": null, "clear_signing_secret": false }),
+        )
+        .await;
+        assert_eq!(
+            (status, body["code"].as_str()),
+            (StatusCode::BAD_REQUEST, Some("invalid_notify_webhook"))
+        );
+        let (status, overview) = post(
+            "/api/v1/notify/target/delete",
+            serde_json::json!({ "target_id": target_id }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(overview["targets"].as_array().unwrap().len(), 0);
+        // The database holds the SMTP password only as ciphertext.
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes.extend(std::fs::read(path.with_extension("sqlite-wal")).unwrap_or_default());
+        assert!(
+            !bytes
+                .windows(17)
+                .any(|window| window == b"smtp-secret-value")
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

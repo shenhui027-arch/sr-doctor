@@ -12,11 +12,16 @@ use doctor_core::{
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 mod governance;
+mod notify;
 pub use governance::{
     AlertFacts, AlertUpsert, ItemUpdate, StoreChange, StoredAlert, StoredEvent, StoredItem,
 };
+pub use notify::{
+    DeliveryAttempt, DeliveryFilter, NewDelivery, SecretUpdate, StoredChannel, StoredDelivery,
+    StoredTarget, TargetWrite,
+};
 
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 // Privacy policy has its own revision, independent of fingerprint identity.
 const TEMPLATE_REDACTION_VERSION: &str = "literal-free-template.v2";
 
@@ -372,6 +377,9 @@ impl HistoryStore {
                 return Err(HistoryError::MigrationRequiresManualResolution);
             }
             tx.execute_batch(governance::MIGRATION_4)?;
+        }
+        if version < 5 {
+            tx.execute_batch(notify::MIGRATION_5)?;
         }
         if version < SCHEMA_VERSION {
             tx.execute(
@@ -807,6 +815,10 @@ impl HistoryStore {
         )? as u64;
         removed += tx.execute("DELETE FROM runs WHERE slice_end < ?1", params![cutoff])? as u64;
         removed += tx.execute(
+            "DELETE FROM notify_deliveries WHERE created_at < ?1 AND state <> 'pending'",
+            params![cutoff],
+        )? as u64;
+        removed += tx.execute(
             "DELETE FROM templates WHERE last_seen < ?1 AND NOT EXISTS (SELECT 1 FROM buckets b WHERE b.template_key = templates.template_key)",
             params![cutoff],
         )? as u64;
@@ -814,11 +826,12 @@ impl HistoryStore {
         Ok(removed)
     }
 
-    /// Everything goes, watermarks, alerts and governance records included;
-    /// the next run starts fresh.
+    /// Everything goes, watermarks, alerts, governance records and the
+    /// delivery log included; notification channels and targets stay.
+    /// The next run starts fresh.
     pub fn clear(&self) -> Result<()> {
         self.lock().execute_batch(
-            "DELETE FROM governance_events; DELETE FROM governance_items; DELETE FROM alerts; DELETE FROM exemplars; DELETE FROM buckets; DELETE FROM runs; DELETE FROM templates; DELETE FROM targets;",
+            "DELETE FROM notify_deliveries; DELETE FROM governance_events; DELETE FROM governance_items; DELETE FROM alerts; DELETE FROM exemplars; DELETE FROM buckets; DELETE FROM runs; DELETE FROM templates; DELETE FROM targets;",
         )?;
         Ok(())
     }

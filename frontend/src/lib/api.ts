@@ -18,6 +18,13 @@ import type {
   GovernanceListResponse,
   GovernanceTransitionRequest,
   HistoryAlertsResponse,
+  NotifyChannelSaveRequest,
+  NotifyDeliveriesRequest,
+  NotifyDeliveriesResponse,
+  NotifyOverviewResponse,
+  NotifySettings,
+  NotifyTargetInput,
+  NotifyTestResponse,
   HistoryCollectionRequest,
   HistorySeriesRequest,
   HistorySeriesResponse,
@@ -367,6 +374,51 @@ export class DoctorApi {
   /** Resolves the target's active alerts raised under an older rule version. */
   async resolveRuleChangedAlerts(target: string | null, signal?: AbortSignal): Promise<void> {
     await this.postJson<unknown>("/history/alerts/resolve-rule-changed", { target }, signal);
+  }
+
+  private notifyOverview(value: unknown): NotifyOverviewResponse {
+    if (!isRecord(value) || !isRecord(value.settings) || !Array.isArray(value.channels) || !Array.isArray(value.targets)) {
+      throw { code: "invalid_notify_overview", stage: "notify", message_id: "invalid_notify_overview", recoverability: "retry_same", details: {} } satisfies ApiFailure;
+    }
+    return value as NotifyOverviewResponse;
+  }
+
+  /** Channels, targets and rules. Secrets come back only as "saved". */
+  async readNotifyOverview(signal?: AbortSignal): Promise<NotifyOverviewResponse> {
+    return this.notifyOverview(await this.postJson<unknown>("/notify/overview", {}, signal));
+  }
+
+  async saveNotifySettings(settings: NotifySettings, signal?: AbortSignal): Promise<NotifyOverviewResponse> {
+    return this.notifyOverview(await this.postJson<unknown>("/notify/settings", settings, signal));
+  }
+
+  async saveNotifyChannel(request: NotifyChannelSaveRequest, signal?: AbortSignal): Promise<NotifyOverviewResponse> {
+    return this.notifyOverview(await this.postJson<unknown>("/notify/channel", request, signal));
+  }
+
+  async saveNotifyTarget(target: NotifyTargetInput, signal?: AbortSignal): Promise<NotifyOverviewResponse> {
+    return this.notifyOverview(await this.postJson<unknown>("/notify/target", target, signal));
+  }
+
+  async deleteNotifyTarget(targetId: string, signal?: AbortSignal): Promise<NotifyOverviewResponse> {
+    return this.notifyOverview(await this.postJson<unknown>("/notify/target/delete", { target_id: targetId }, signal));
+  }
+
+  /** Sends one test message to a saved or unsaved target; nothing is saved. */
+  async testNotifyTarget(target: NotifyTargetInput, signal?: AbortSignal): Promise<NotifyTestResponse> {
+    const value = await this.postJson<unknown>("/notify/test", { target }, signal);
+    if (!isRecord(value) || typeof value.state !== "string") {
+      throw { code: "invalid_notify_test", stage: "notify", message_id: "invalid_notify_test", recoverability: "retry_same", details: {} } satisfies ApiFailure;
+    }
+    return value as NotifyTestResponse;
+  }
+
+  async readNotifyDeliveries(request: NotifyDeliveriesRequest, signal?: AbortSignal): Promise<NotifyDeliveriesResponse> {
+    const value = await this.postJson<unknown>("/notify/deliveries", request, signal);
+    if (!isRecord(value) || !Array.isArray(value.deliveries) || !Array.isArray(value.sms_usage)) {
+      throw { code: "invalid_notify_deliveries", stage: "notify", message_id: "invalid_notify_deliveries", recoverability: "retry_same", details: {} } satisfies ApiFailure;
+    }
+    return value as NotifyDeliveriesResponse;
   }
 
   async readGovernance(target: string | null, signal?: AbortSignal): Promise<GovernanceListResponse> {

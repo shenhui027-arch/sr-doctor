@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NotifyTestResponse",
+  "type": "object",
+  "required": [
+    "duration_ms",
+    "state"
+  ],
+  "properties": {
+    "duration_ms": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/NotifyErrorClass"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "provider_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "$ref": "#/definitions/NotifyDeliveryState"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "NotifyDeliveryState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "sent"
+          ]
+        },
+        {
+          "description": "Waiting for its first attempt or a retry.",
+          "type": "string",
+          "enum": [
+            "pending"
+          ]
+        },
+        {
+          "description": "Every attempt failed; no further retry.",
+          "type": "string",
+          "enum": [
+            "failed"
+          ]
+        },
+        {
+          "description": "Not sent: over the SMS hourly limit, or the channel or target was switched off before it went out.",
+          "type": "string",
+          "enum": [
+            "skipped"
+          ]
+        }
+      ]
+    },
+    "NotifyErrorClass": {
+      "description": "Error categories only; provider messages and response bodies are never kept.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "network",
+            "timeout",
+            "tls",
+            "auth_failed",
+            "invalid_response",
+            "rate_limited",
+            "not_configured"
+          ]
+        },
+        {
+          "description": "The provider answered and refused; `provider_code` says why.",
+          "type": "string",
+          "enum": [
+            "rejected"
+          ]
+        },
+        {
+          "description": "Saved under another master key: the secret must be entered again.",
+          "type": "string",
+          "enum": [
+            "secret_unreadable"
+          ]
+        }
+      ]
+    }
+  }
+}

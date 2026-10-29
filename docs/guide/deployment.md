@@ -241,11 +241,14 @@ Start-Process "http://127.0.0.1:8000"
 
 | 数据 | 位置 | 内容 |
 |---|---|---|
-| 历史库 | Docker 卷 `sr-doctor_doctor-history`（本机进程见上文） | 脱敏 SQL 模板、指纹、小时聚合、告警与治理记录；默认保留 30 天 |
+| 历史库 | Docker 卷 `sr-doctor_doctor-history`（本机进程见上文） | 脱敏 SQL 模板、指纹、小时聚合、告警与治理记录；告警通知的渠道、发送对象（密钥只存密文）与投递记录；默认保留 30 天 |
+| 通知主密钥 | 同一个卷里的 `secret.key`，或 `.env` 的 `DOCTOR_SECRET_KEY` | 解密通知密钥用；见 [配置参考](configuration.md#告警通知的主密钥) |
 | 部署配置 | 根目录的 `.env`、`compose.override.yaml` | 端口、监听地址、登录密码等；备份里不含 |
 | StarRocks 口令 | 只在服务进程内存里 | 断开、空闲 15 分钟或重启后删除 |
 
-不会保存的：SQL 字面量、Profile 原文、StarRocks 口令。导入的 Profile 只在内存中分析。
+不会保存的：SQL 字面量、Profile 原文、StarRocks 口令、告警通知的消息正文。导入的 Profile 只在内存中分析。
+
+服务主动连出的地址只有：用户连接的 StarRocks，以及用户在“通知渠道”里填写的邮件服务器、飞书/钉钉官方地址（`open.feishu.cn`、`open.larksuite.com`、`oapi.dingtalk.com`）和短信平台（`dysmsapi.aliyuncs.com`、`sms.tencentcloudapi.com`）。服务器需要能访问这些地址，告警通知才能送达。
 
 ## 边界
 

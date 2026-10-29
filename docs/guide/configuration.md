@@ -13,6 +13,7 @@
 | `DOCTOR_ADMIN_PASSWORD` | `123456` | 登录密码，见[下文](#登录账号网络模式) |
 | `DOCTOR_COOKIE_SECURE` | `off` | 使用者经 HTTPS 访问时设为 `on`，会话 Cookie 会带 `Secure` 标记 |
 | `DOCTOR_COLLECTION_ALLOW_REMOTE` | 空 | 远端集群的后台采集开关，见[下文](#历史与采集) |
+| `DOCTOR_SECRET_KEY` | 空 | 告警通知密钥的主密钥，见[下文](#告警通知的主密钥) |
 
 `.env` 示例：
 
@@ -71,6 +72,20 @@ DOCTOR_COOKIE_SECURE=off
 - 断开不超过 24 小时，重新连接后补读；更早的部分记为“未采集”，不插值；
 - 历史数据保留 30 天，过期自动删除。
 
+## 告警通知的主密钥
+
+邮件口令、飞书/钉钉机器人的 Webhook 与签名密钥、短信平台的 AccessKey Secret 在界面里填写，用 AES-256-GCM 加密后存进历史库；界面和接口只显示“已保存”，不回显。加密用的主密钥：
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `DOCTOR_SECRET_KEY` | 未设置 | 64 位十六进制字符（32 字节），例如 `openssl rand -hex 32` 的输出。格式不对时服务拒绝启动 |
+
+- 未设置时，首次启动在历史库同目录生成 `secret.key`（Linux 上权限 600），之后一直使用它。容器部署时它和历史库在同一个 Docker 卷里，`./deploy.sh backup` 会把两者一起备份。
+- 想让数据库备份单独泄露时也读不出密钥，就把主密钥写进 `.env` 的 `DOCTOR_SECRET_KEY`，并把 `.env` 与备份分开保管。
+- 主密钥更换或丢失后，已保存的密钥无法解密：界面会标“需重新填写”，对应渠道在重新填写前不会发送。
+- 加密只防止数据库文件被单独复制或备份时泄露密钥，不防主机本身被攻破。
+- 历史库关闭（`DOCTOR_HISTORY=off`）或主密钥不可用时，告警通知不可用。
+
 ## 连接 StarRocks 的证书
 
 选择 TLS verify-full 时，使用系统信任的 CA 校验 FE 证书。私有 CA 用 `SSL_CERT_FILE` 指向 PEM 文件，容器部署的写法见 [部署指南](deployment.md#连接开启-ssl-的-starrocks)。
@@ -82,4 +97,5 @@ DOCTOR_COOKIE_SECURE=off
 - 连接只读：不执行 DDL/DML、多语句或 `EXPLAIN ANALYZE`；“运行时 Top”只接受一条 `SELECT`/`WITH`，超时 10 秒，丢弃结果行。
 - 连接会话空闲 15 分钟后过期，口令随之删除。
 - 上传的 Profile 不超过 34 MiB。
-- 不向外发送任何遥测，不把 SQL、Profile 或口令写入日志。
+- 不向外发送任何遥测，不把 SQL、Profile 或口令写入日志。告警通知只发往用户在“通知渠道”里填写的邮件服务器、飞书/钉钉官方地址与短信平台。
+- 告警通知：每次发送超时 10 秒；网络类失败按 1、5、30 分钟重试，共 4 次；同一时间最多排队 500 条；投递记录保留 30 天。

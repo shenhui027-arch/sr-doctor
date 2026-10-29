@@ -9,6 +9,7 @@ import { AlertsPanel } from "./AlertsPanel";
 import { GovernancePanel, type GovernanceCommand, type NoteDrafts } from "./GovernancePanel";
 import { failureId, useMonitorRead } from "./monitor-read";
 import { blockedStore, HistoryOffState, MonitorReadError, RefreshBar, TargetPicker } from "./MonitorStates";
+import { DeliveriesWorkspace, NotifyWorkspace } from "./NotifyWorkspace";
 import "./history.css";
 
 type MonitorContext = {
@@ -44,10 +45,15 @@ export function AlertsWorkspace({ target, targets = [], onTarget, store, generat
     work().then((value) => after?.(value)).catch((cause: unknown) => setActionError(failureId(cause, "request_failed")))
       .finally(() => { setBusy(false); alerts.refresh(); onChanged(); });
   };
+  const [view, setView] = useState<AlertsView>("alerts");
   const off = blocked ?? blockedStore(undefined, alerts.data ? null : alerts.error);
   if (off) return <HistoryOffState onOpenQueries={onOpenQueries} onRetry={() => { onRetryStatus(); alerts.refresh(); }} detail={store} store={off} text={text} />;
-  if (!alerts.data) return alerts.error ? <MonitorReadError error={alerts.error} onRetry={alerts.refresh} text={text} title={text("Alerts could not be read.", "告警暂时无法读取。")} /> : <p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>;
+  const views = <AlertsViews onView={setView} open={alerts.data?.counts.open ?? null} text={text} view={view} />;
+  if (view === "channels") return <>{views}<NotifyWorkspace text={text} /></>;
+  if (view === "deliveries") return <>{views}<DeliveriesWorkspace text={text} /></>;
+  if (!alerts.data) return <>{views}{alerts.error ? <MonitorReadError error={alerts.error} onRetry={alerts.refresh} text={text} title={text("Alerts could not be read.", "告警暂时无法读取。")} /> : <p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}</>;
   return <>
+    {views}
     {actionError && <p className="capability-error" role="alert">{governanceActionText(actionError, text)}</p>}
     <AlertsPanel
       alerts={alerts.data}
@@ -69,6 +75,18 @@ export function AlertsWorkspace({ target, targets = [], onTarget, store, generat
       </>}
     />
   </>;
+}
+
+type AlertsView = "alerts" | "channels" | "deliveries";
+
+/** The alert list, its outbound channels and their delivery log. */
+export function AlertsViews({ view, onView, open, text }: { view: AlertsView; onView(view: AlertsView): void; open: string | null; text: LocalizedText }): JSX.Element {
+  const tabs: [AlertsView, string][] = [["alerts", text("Alerts", "告警列表")], ["channels", text("Notification channels", "通知渠道")], ["deliveries", text("Delivery log", "投递记录")]];
+  return <div aria-label={text("Alert views", "告警视图")} className="history-tabs notify-views" role="tablist">
+    {tabs.map(([id, label]) => <button aria-selected={id === view} key={id} onClick={() => onView(id)} role="tab" type="button">
+      {label}{id === "alerts" && open !== null && <> <span className="tab-count">{open}</span></>}
+    </button>)}
+  </div>;
 }
 
 /** Why an alert or governance action was refused, in words; unknown codes keep the code. */

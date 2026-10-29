@@ -2,7 +2,7 @@ use std::{ffi::OsStr, path::PathBuf};
 
 use doctor_api::{
     AccessConfig, ApiConfig, ApiState, DEFAULT_ADMIN_PASSWORD, DEFAULT_ADMIN_USER,
-    DOCKER_LOOPBACK_PUBLISHED_BIND_ADDR, DeploymentMode, serve,
+    DOCKER_LOOPBACK_PUBLISHED_BIND_ADDR, DeploymentMode, NotifyKey, serve,
 };
 
 #[tokio::main]
@@ -22,6 +22,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?
     };
     config.history = history_config_from_environment(|name| std::env::var(name).ok())?;
+    config.notify_key = notify_key_from_environment(
+        std::env::var("DOCTOR_SECRET_KEY").ok().as_deref(),
+        config.history.path.as_deref(),
+    )?;
     if config
         .access
         .as_ref()
@@ -32,6 +36,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = ApiState::new(config)?;
     serve(state).await?;
     Ok(())
+}
+
+/// Notification secrets need the history store and a master key:
+/// `DOCTOR_SECRET_KEY` (64 hex characters) or `secret.key` beside the history
+/// file, created on first start. A malformed `DOCTOR_SECRET_KEY` stops the
+/// start; an unreadable key file only turns notifications off.
+fn notify_key_from_environment(
+    environment: Option<&str>,
+    history_path: Option<&std::path::Path>,
+) -> Result<Option<NotifyKey>, std::io::Error> {
+    let Some(history_path) = history_path else {
+        return Ok(None);
+    };
+    let file = history_path.with_file_name("secret.key");
+    match doctor_notify::SecretKey::load_or_create(environment, &file) {
+        Ok((key, source)) => Ok(Some(NotifyKey { key, source })),
+        Err(doctor_notify::KeyError::Malformed)
+            if environment.is_some_and(|value| !value.trim().is_empty()) =>
+        {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "DOCTOR_SECRET_KEY must be 64 hex characters",
+            ))
+        }
+        Err(error) => {
+            eprintln!("notify_unavailable {error}");
+            Ok(None)
+        }
+    }
 }
 
 /// The history file in the user's data directory. Earlier releases kept it

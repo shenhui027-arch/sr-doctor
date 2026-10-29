@@ -97,7 +97,10 @@ pub struct StoredAlert {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AlertUpsert {
-    Created,
+    /// A new alert with this id.
+    Created(i64),
+    /// A muted alert whose window ended while the regression is still there.
+    Reopened(i64),
     Updated,
     /// Muted and still inside the mute window: facts refreshed, no new alert.
     Suppressed,
@@ -230,7 +233,7 @@ impl HistoryStore {
                 let next_state = if state == "muted" && !still_muted {
                     "open".to_owned()
                 } else {
-                    state
+                    state.clone()
                 };
                 tx.execute(
                     "UPDATE alerts SET state = ?2, muted_until = CASE WHEN ?2 = 'muted' THEN muted_until ELSE NULL END, last_seen = ?3,
@@ -241,6 +244,8 @@ impl HistoryStore {
                 )?;
                 if still_muted {
                     AlertUpsert::Suppressed
+                } else if state == "muted" {
+                    AlertUpsert::Reopened(id)
                 } else {
                     AlertUpsert::Updated
                 }
@@ -252,7 +257,7 @@ impl HistoryStore {
                      VALUES (?1, ?2, 'open', NULL, ?3, ?3, NULL, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, NULL)",
                     params![target, template_key, now, f.severity, f.confidence, f.evidence, f.workload, clamp(f.baseline_median), clamp(f.current_median), f.relative_permille, f.bucket_start, f.exemplar, f.engine_version, f.rule_version],
                 )?;
-                AlertUpsert::Created
+                AlertUpsert::Created(tx.last_insert_rowid())
             }
         };
         tx.commit()?;
@@ -260,11 +265,12 @@ impl HistoryStore {
     }
 
     /// Back inside the baseline band: active alerts of the template resolve.
-    pub fn resolve_alerts(&self, target: &str, template_key: &str, now: i64) -> Result<u64> {
-        Ok(self.lock().execute(
-            &format!("UPDATE alerts SET state = 'resolved', resolved_at = ?3, muted_until = NULL WHERE target = ?1 AND template_key = ?2 AND state IN {ACTIVE}"),
-            params![target, template_key, now],
-        )? as u64)
+    /// Returns the ids that changed.
+    pub fn resolve_alerts(&self, target: &str, template_key: &str, now: i64) -> Result<Vec<i64>> {
+        let connection = self.lock();
+        let mut statement = connection.prepare(&format!("UPDATE alerts SET state = 'resolved', resolved_at = ?3, muted_until = NULL WHERE target = ?1 AND template_key = ?2 AND state IN {ACTIVE} RETURNING id"))?;
+        let ids = statement.query_map(params![target, template_key, now], |row| row.get(0))?;
+        ids.map(|id| id.map_err(Into::into)).collect()
     }
 
     /// Resolves the target's active alerts raised under another rule version.
@@ -547,7 +553,7 @@ mod tests {
         let store = HistoryStore::open_in_memory().unwrap();
         assert_eq!(
             store.upsert_alert("t", "k", &facts("high"), 100).unwrap(),
-            AlertUpsert::Created
+            AlertUpsert::Created(1)
         );
         assert_eq!(
             store.upsert_alert("t", "k", &facts("medium"), 200).unwrap(),
@@ -587,7 +593,7 @@ mod tests {
             store
                 .upsert_alert("t", "k", &facts("high"), 220 + 86_401)
                 .unwrap(),
-            AlertUpsert::Updated
+            AlertUpsert::Reopened(id)
         );
         let alerts = store.alerts("t", 10).unwrap();
         assert_eq!(
@@ -600,12 +606,12 @@ mod tests {
         );
         // Back in band: resolved; a later regression is a new alert; the old
         // one cannot be reopened while the new one is active.
-        assert_eq!(store.resolve_alerts("t", "k", 90_000).unwrap(), 1);
+        assert_eq!(store.resolve_alerts("t", "k", 90_000).unwrap(), vec![id]);
         assert_eq!(
             store
                 .upsert_alert("t", "k", &facts("high"), 91_000)
                 .unwrap(),
-            AlertUpsert::Created
+            AlertUpsert::Created(2)
         );
         assert_eq!(
             store.alert_action(id, "reopen", 91_001, 0).unwrap(),

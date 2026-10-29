@@ -1,0 +1,248 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NotifyDeliveriesResponse",
+  "type": "object",
+  "required": [
+    "deliveries",
+    "failed_24h",
+    "pending",
+    "retention_days",
+    "sent_24h",
+    "sms_usage"
+  ],
+  "properties": {
+    "deliveries": {
+      "description": "Newest first, at most 200.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/NotifyDeliveryView"
+      }
+    },
+    "failed_24h": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "pending": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "retention_days": {
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0.0
+    },
+    "sent_24h": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "sms_usage": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/NotifySmsUsage"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "NotifyChannelKind": {
+      "type": "string",
+      "enum": [
+        "email",
+        "feishu",
+        "dingtalk",
+        "aliyun_sms",
+        "tencent_sms"
+      ]
+    },
+    "NotifyDeliveryState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "sent"
+          ]
+        },
+        {
+          "description": "Waiting for its first attempt or a retry.",
+          "type": "string",
+          "enum": [
+            "pending"
+          ]
+        },
+        {
+          "description": "Every attempt failed; no further retry.",
+          "type": "string",
+          "enum": [
+            "failed"
+          ]
+        },
+        {
+          "description": "Not sent: over the SMS hourly limit, or the channel or target was switched off before it went out.",
+          "type": "string",
+          "enum": [
+            "skipped"
+          ]
+        }
+      ]
+    },
+    "NotifyDeliveryView": {
+      "type": "object",
+      "required": [
+        "alert_count",
+        "at_seconds",
+        "attempts",
+        "delivery_id",
+        "event",
+        "kind",
+        "state",
+        "target_name"
+      ],
+      "properties": {
+        "alert_count": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "at_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "attempts": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "cluster": {
+          "description": "The cluster (\"host:port\") the alerts came from; `None` for tests.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "delivery_id": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NotifyErrorClass"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "event": {
+          "$ref": "#/definitions/NotifyEvent"
+        },
+        "kind": {
+          "$ref": "#/definitions/NotifyChannelKind"
+        },
+        "next_attempt_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "provider_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/NotifyDeliveryState"
+        },
+        "target_id": {
+          "description": "`None` after the target was deleted, or for a test of an unsaved one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target_name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "NotifyErrorClass": {
+      "description": "Error categories only; provider messages and response bodies are never kept.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "network",
+            "timeout",
+            "tls",
+            "auth_failed",
+            "invalid_response",
+            "rate_limited",
+            "not_configured"
+          ]
+        },
+        {
+          "description": "The provider answered and refused; `provider_code` says why.",
+          "type": "string",
+          "enum": [
+            "rejected"
+          ]
+        },
+        {
+          "description": "Saved under another master key: the secret must be entered again.",
+          "type": "string",
+          "enum": [
+            "secret_unreadable"
+          ]
+        }
+      ]
+    },
+    "NotifyEvent": {
+      "type": "string",
+      "enum": [
+        "new_alerts",
+        "resolved",
+        "test"
+      ]
+    },
+    "NotifySmsUsage": {
+      "type": "object",
+      "required": [
+        "hourly_limit",
+        "kind",
+        "used"
+      ],
+      "properties": {
+        "hourly_limit": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "kind": {
+          "$ref": "#/definitions/NotifyChannelKind"
+        },
+        "used": {
+          "description": "Messages sent in the last 60 minutes.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

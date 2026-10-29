@@ -15,7 +15,9 @@ param(
 # alert (RD-01); the governance queue refuses hand transitions outside its
 # edges (RD-02) and only the comparator may close an item (RD-03). Nothing
 # on disk holds a literal or a credential. Serial, bounded, torn down in
-# `finally`.
+# `finally`. v1.0.1 adds outbound notifications: an email channel points at
+# a local test-only SMTP sink (smtp-sink.mjs); a test message and the
+# alert's message must arrive, and the SMTP password stays ciphertext.
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $fixtureDir = Join-Path $repoRoot 'dev\starrocks-3.5.14-multi-be'
@@ -32,6 +34,8 @@ $stage = 'initialization'
 $summary = [ordered]@{ project = 'd-alerts-governance-multi-be-low-resource'; status = 'FAIL'; evidence = 'real_docker_http_not_production'; started_utc = [DateTime]::UtcNow.ToString('o') }
 $docker = $null; $secret = $null; $startedApi = $null; $fixtureStarted = $false; $primaryFailure = $false; $generatedSecret = $false; $apiRun = 0
 $secretLiteral = 'd_governance_secret_literal'
+$sinkPort = 18025; $sinkOut = Join-Path $runtimeRoot "smtp-sink-$stamp.jsonl"; $sink = $null
+$smtpSecret = 'smtp-' + [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(12)).ToLowerInvariant()
 $timings = [ordered]@{ DOCTOR_COLLECTION_PERIOD_SECONDS = '5'; DOCTOR_COLLECTION_SLICE_SECONDS = '300'; DOCTOR_COLLECTION_LAG_SECONDS = '90'; DOCTOR_COLLECTION_BACKFILL_SECONDS = '600' }
 
 function Get-Sha256([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
@@ -42,7 +46,7 @@ function Get-FixtureState($Docker) {
         containers_present = @($names | Where-Object { $null -ne (Get-MultiBeIdentity -DockerExecutable $Docker -Name $_) })
         network_present = ($null -ne (Get-MultiBeNetworkLabel -DockerExecutable $Docker))
         data_root_present = (Test-Path -LiteralPath (Get-MultiBeDataRoot))
-        listening_ports = @(@($fixturePorts + $ApiPort) | Where-Object { Test-PortListening $_ })
+        listening_ports = @(@($fixturePorts + $ApiPort + $sinkPort) | Where-Object { Test-PortListening $_ })
     }
 }
 function Start-DoctorApi {
@@ -96,6 +100,7 @@ function Invoke-Workload([string[]]$Statements, [int]$Expected) {
     Require ([int]$row[0] -eq $Expected) "Expected $Expected audited gov_e2e queries, found $($row[0])."
     [int64]$row[1]
 }
+function Get-SinkMessages { if (Test-Path -LiteralPath $sinkOut) { @(Get-Content -LiteralPath $sinkOut -Encoding utf8 | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json }) } else { @() } }
 function Get-History { (& node --no-warnings (Join-Path $PSScriptRoot 'inspect-history.mjs') $historyPath 'gov_e2e') | ConvertFrom-Json }
 # The API keeps the database open; read it the way SQLite shares it.
 function Read-Shared([string]$Path) {
@@ -103,7 +108,7 @@ function Read-Shared([string]$Path) {
     try { $buffer = [IO.MemoryStream]::new(); $stream.CopyTo($buffer); [Text.Encoding]::Latin1.GetString($buffer.ToArray()) } finally { $stream.Dispose() }
 }
 function Test-NoSecretsOnDisk {
-    $needles = @($secretLiteral, $readerPassword, $secret)
+    $needles = @($secretLiteral, $readerPassword, $secret, $smtpSecret)
     $files = @(Get-ChildItem -LiteralPath $historyDir -File)
     $hits = @($files | Where-Object { $text = Read-Shared $_.FullName; @($needles | Where-Object { $text.Contains($_) }).Count -gt 0 })
     [ordered]@{ files = @($files | ForEach-Object { $_.Name }); bytes = ($files | Measure-Object Length -Sum).Sum; hits = $hits.Count }
@@ -179,6 +184,30 @@ GRANT SELECT ON TABLE gov_e2e.t TO USER workload_user;
 
     $stage = 'collect'
     Start-DoctorApi
+
+    # Outbound notifications before the first collection, so the alert the
+    # collector raises is queued for this target (N-07).
+    $stage = 'notify_setup'
+    Require (-not (Test-PortListening $sinkPort)) "SMTP sink port $sinkPort is already in use."
+    $sink = Start-Process -FilePath 'node' -ArgumentList @((Join-Path $PSScriptRoot 'smtp-sink.mjs'), $sinkPort, $sinkOut) -WindowStyle Hidden -PassThru
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    while (-not (Test-PortListening $sinkPort) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 200 }
+    Require (Test-PortListening $sinkPort) 'The SMTP sink did not start.'
+    $channel = Invoke-Post '/notify/channel' @{ config = @{ kind = 'email'; host = '127.0.0.1'; port = $sinkPort; security = 'plain'; username = 'e2e-sender'; from_address = 'sr-doctor@example.com'; from_name = 'SR Doctor E2E' }; enabled = $true; secret = $smtpSecret; clear_secret = $false }
+    $recipient = @{ target_id = $null; kind = 'email'; name = 'E2E DBA'; enabled = $true; min_severity = 'medium'; address = 'dba-e2e@example.com'; webhook = $null; signing_secret = $null; clear_signing_secret = $false }
+    $withTarget = Invoke-Post '/notify/target' $recipient
+    $recipient.target_id = $withTarget.targets[0].target_id
+    $test = Invoke-Post '/notify/test' @{ target = $recipient }
+    $testMail = @(Get-SinkMessages)
+    $summary.notify_setup = [ordered]@{
+        key_source = $withTarget.key_source
+        channel_secret_saved = $channel.channels[0].secret_saved
+        overview_leaks_secret = ($withTarget | ConvertTo-Json -Depth 10 -Compress).Contains($smtpSecret)
+        test = "$($test.state):$($test.error)"
+        test_mail = @($testMail | ForEach-Object { "$($_.to -join ','):$($_.subject)" })
+    }
+    Require ($channel.channels[0].secret_saved -and -not $summary.notify_setup.overview_leaks_secret) 'The channel secret was not saved write-only.'
+    Require ($test.state -eq 'sent' -and $testMail.Count -eq 1 -and $testMail[0].auth -and $testMail[0].to[0] -eq 'dba-e2e@example.com' -and $testMail[0].subject -like '*测试消息*') 'The test email did not arrive.'
     $connection = Connect-Reader
     # One 300 s slice plus the 90 s lag and a period: wait up to 600 s.
     $status = Wait-Watermark $connection $firstAt 600
@@ -202,6 +231,24 @@ GRANT SELECT ON TABLE gov_e2e.t TO USER workload_user;
     Require ($summary.rd01_alerts.exemplar_real -and $statusAfter.open_alerts -eq '1') 'The alert lacks a real exemplar or the badge count.'
     Require (-not $alertsRaw.Contains($secretLiteral) -and -not $alertsRaw.Contains($readerPassword)) 'The alerts response leaked a literal or a credential.'
     $alert = $mine[0]
+
+    # N-07: the worker sends the new alert to the email target once.
+    $stage = 'notify_alert'
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+    do { Start-Sleep -Seconds 2; $alertMail = @(Get-SinkMessages | Where-Object { $_.subject -like '*新告警*' }) } while ($alertMail.Count -eq 0 -and [DateTime]::UtcNow -lt $deadline)
+    $log = Invoke-Post '/notify/deliveries' @{ kind = $null; target_id = $null; state = $null }
+    $mail = @(Get-SinkMessages)
+    $mailText = ($mail | ConvertTo-Json -Depth 5 -Compress)
+    $summary.notify_alert = [ordered]@{
+        alert_mail = @($alertMail | ForEach-Object { $_.subject })
+        mentions_fingerprint = ($alertMail.Count -gt 0 -and $alertMail[0].text.Contains($alert.template_key.Substring(0, 4)))
+        deliveries = @($log.deliveries | ForEach-Object { "$($_.event):$($_.state):$($_.alert_count)" })
+        sent_24h = $log.sent_24h
+        mail_leaks = ($mailText.Contains($secretLiteral) -or $mailText.Contains($readerPassword) -or $mailText.Contains($smtpSecret))
+    }
+    Require ($alertMail.Count -eq 1 -and $summary.notify_alert.mentions_fingerprint) 'The alert email did not arrive exactly once with its fingerprint.'
+    Require (@($log.deliveries | Where-Object { $_.event -eq 'new_alerts' -and $_.state -eq 'sent' }).Count -eq 1) 'The delivery log does not show one sent alert message.'
+    Require (-not $summary.notify_alert.mail_leaks) 'An email carried a literal or a credential.'
 
     # RD-02 / RD-03 live: hand transitions only along the allowed edges; a
     # change makes it pending; the comparator, not the user, decides.
@@ -260,8 +307,9 @@ catch {
 finally {
     $cleanupFailure = $null
     try { Stop-DoctorApi } catch { $cleanupFailure = 'api_stop' }
+    if ($sink -and -not $sink.HasExited) { Stop-Process -Id $sink.Id -Force; $sink.WaitForExit(5000) | Out-Null }
     if ($null -ne $secret -and $apiRun -gt 0) {
-        $needles = @($secret, (Get-FixturePassword -Secret $secret -Role doctor_reader), $secretLiteral)
+        $needles = @($secret, (Get-FixturePassword -Secret $secret -Role doctor_reader), $secretLiteral, $smtpSecret)
         $logs = @(1..$apiRun | ForEach-Object { $run = $_; 'stdout', 'stderr' | ForEach-Object { Join-Path $runtimeRoot "doctor-api-d-$stamp-$run.$_.log" } } | Where-Object { Test-Path -LiteralPath $_ })
         $leaked = @($logs | Where-Object { $text = [IO.File]::ReadAllText($_); @($needles | Where-Object { $text.Contains($_) }).Count -gt 0 }).Count
         $summary.api_log_scan = if ($logs.Count -ne 2 * $apiRun) { 'NOT_RUN' } elseif ($leaked -gt 0) { 'FAIL' } else { 'PASS' }

@@ -1,0 +1,528 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NotifyOverviewResponse",
+  "type": "object",
+  "required": [
+    "channels",
+    "key_source",
+    "limitations",
+    "max_targets_per_channel",
+    "remote_collection_allowed",
+    "settings",
+    "targets"
+  ],
+  "properties": {
+    "channels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/NotifyChannelView"
+      }
+    },
+    "key_source": {
+      "$ref": "#/definitions/NotifyKeySource"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "max_targets_per_channel": {
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0.0
+    },
+    "remote_collection_allowed": {
+      "description": "Remote clusters raise no alert (so send nothing) until the G1 pilot passes and `DOCTOR_COLLECTION_ALLOW_REMOTE=after-g1` is set.",
+      "type": "boolean"
+    },
+    "settings": {
+      "$ref": "#/definitions/NotifySettings"
+    },
+    "targets": {
+      "description": "Grouped by channel, then by name.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/NotifyTargetView"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AliyunSmsRegion": {
+      "type": "string",
+      "enum": [
+        "cn_hangzhou",
+        "ap_southeast1"
+      ]
+    },
+    "EmailSecurity": {
+      "description": "TLS modes always verify the server certificate; there is no encrypt-without-verify mode.",
+      "oneOf": [
+        {
+          "description": "Implicit TLS, usually port 465.",
+          "type": "string",
+          "enum": [
+            "tls"
+          ]
+        },
+        {
+          "description": "Plain connection upgraded with STARTTLS, usually port 587.",
+          "type": "string",
+          "enum": [
+            "starttls"
+          ]
+        },
+        {
+          "description": "No encryption: password and message cross the network in clear text.",
+          "type": "string",
+          "enum": [
+            "plain"
+          ]
+        }
+      ]
+    },
+    "NotifyChannelConfig": {
+      "description": "Non-secret channel settings. The channel secret (SMTP password, SMS AccessKey Secret / SecretKey) travels separately and is never returned.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "from_address",
+            "host",
+            "kind",
+            "port",
+            "security"
+          ],
+          "properties": {
+            "from_address": {
+              "type": "string"
+            },
+            "from_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "host": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "email"
+              ]
+            },
+            "port": {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            },
+            "security": {
+              "$ref": "#/definitions/EmailSecurity"
+            },
+            "username": {
+              "description": "Empty: no SMTP authentication.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Every Feishu target carries its own webhook and signing secret.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "feishu"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Every DingTalk target carries its own webhook and signing secret.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "dingtalk"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "access_key_id",
+            "hourly_limit",
+            "kind",
+            "region",
+            "sign_name",
+            "template_code"
+          ],
+          "properties": {
+            "access_key_id": {
+              "type": "string"
+            },
+            "hourly_limit": {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "aliyun_sms"
+              ]
+            },
+            "region": {
+              "$ref": "#/definitions/AliyunSmsRegion"
+            },
+            "sign_name": {
+              "type": "string"
+            },
+            "template_code": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "hourly_limit",
+            "kind",
+            "region",
+            "sdk_app_id",
+            "secret_id",
+            "sign_name",
+            "template_id"
+          ],
+          "properties": {
+            "hourly_limit": {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "tencent_sms"
+              ]
+            },
+            "region": {
+              "$ref": "#/definitions/TencentSmsRegion"
+            },
+            "sdk_app_id": {
+              "type": "string"
+            },
+            "secret_id": {
+              "type": "string"
+            },
+            "sign_name": {
+              "type": "string"
+            },
+            "template_id": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "NotifyChannelKind": {
+      "type": "string",
+      "enum": [
+        "email",
+        "feishu",
+        "dingtalk",
+        "aliyun_sms",
+        "tencent_sms"
+      ]
+    },
+    "NotifyChannelView": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "enabled_targets",
+        "failing_targets",
+        "kind",
+        "secret_saved",
+        "secret_unreadable",
+        "targets"
+      ],
+      "properties": {
+        "config": {
+          "description": "`None` until saved once (always present for bot channels).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NotifyChannelConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "enabled_targets": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "failing_targets": {
+          "description": "Targets whose latest delivery failed.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "kind": {
+          "$ref": "#/definitions/NotifyChannelKind"
+        },
+        "secret_saved": {
+          "type": "boolean"
+        },
+        "secret_unreadable": {
+          "type": "boolean"
+        },
+        "targets": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "NotifyDeliveryBrief": {
+      "type": "object",
+      "required": [
+        "at_seconds",
+        "state"
+      ],
+      "properties": {
+        "at_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NotifyErrorClass"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/NotifyDeliveryState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "NotifyDeliveryState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "sent"
+          ]
+        },
+        {
+          "description": "Waiting for its first attempt or a retry.",
+          "type": "string",
+          "enum": [
+            "pending"
+          ]
+        },
+        {
+          "description": "Every attempt failed; no further retry.",
+          "type": "string",
+          "enum": [
+            "failed"
+          ]
+        },
+        {
+          "description": "Not sent: over the SMS hourly limit, or the channel or target was switched off before it went out.",
+          "type": "string",
+          "enum": [
+            "skipped"
+          ]
+        }
+      ]
+    },
+    "NotifyErrorClass": {
+      "description": "Error categories only; provider messages and response bodies are never kept.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "network",
+            "timeout",
+            "tls",
+            "auth_failed",
+            "invalid_response",
+            "rate_limited",
+            "not_configured"
+          ]
+        },
+        {
+          "description": "The provider answered and refused; `provider_code` says why.",
+          "type": "string",
+          "enum": [
+            "rejected"
+          ]
+        },
+        {
+          "description": "Saved under another master key: the secret must be entered again.",
+          "type": "string",
+          "enum": [
+            "secret_unreadable"
+          ]
+        }
+      ]
+    },
+    "NotifyKeySource": {
+      "oneOf": [
+        {
+          "description": "`DOCTOR_SECRET_KEY`.",
+          "type": "string",
+          "enum": [
+            "environment"
+          ]
+        },
+        {
+          "description": "`secret.key` beside the history file.",
+          "type": "string",
+          "enum": [
+            "file"
+          ]
+        }
+      ]
+    },
+    "NotifyLanguage": {
+      "type": "string",
+      "enum": [
+        "zh",
+        "en"
+      ]
+    },
+    "NotifySettings": {
+      "type": "object",
+      "required": [
+        "include_template",
+        "language",
+        "notify_resolved"
+      ],
+      "properties": {
+        "include_template": {
+          "description": "Add the literal-free SQL template to email and bot messages (never SMS).",
+          "type": "boolean"
+        },
+        "language": {
+          "$ref": "#/definitions/NotifyLanguage"
+        },
+        "notify_resolved": {
+          "description": "Also send when an alert is back inside its baseline band.",
+          "type": "boolean"
+        },
+        "public_url": {
+          "description": "Base address for the \"view alerts\" link, e.g. `http://10.0.0.5:8080`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "NotifySeverity": {
+      "description": "The lowest alert severity a target receives.",
+      "type": "string",
+      "enum": [
+        "medium",
+        "high"
+      ]
+    },
+    "NotifyTargetView": {
+      "type": "object",
+      "required": [
+        "address_hint",
+        "enabled",
+        "kind",
+        "min_severity",
+        "name",
+        "secret_unreadable",
+        "signing_secret_saved",
+        "target_id"
+      ],
+      "properties": {
+        "address_hint": {
+          "description": "The address in full for email; masked for phones and webhooks.",
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/definitions/NotifyChannelKind"
+        },
+        "last": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NotifyDeliveryBrief"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "min_severity": {
+          "$ref": "#/definitions/NotifySeverity"
+        },
+        "name": {
+          "type": "string"
+        },
+        "secret_unreadable": {
+          "type": "boolean"
+        },
+        "signing_secret_saved": {
+          "type": "boolean"
+        },
+        "target_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TencentSmsRegion": {
+      "type": "string",
+      "enum": [
+        "ap_guangzhou",
+        "ap_beijing",
+        "ap_nanjing"
+      ]
+    }
+  }
+}

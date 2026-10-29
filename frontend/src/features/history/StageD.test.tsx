@@ -19,7 +19,7 @@ const alerts: HistoryAlertsResponse = {
   target: "127.0.0.1:9030",
   alerts: [alert("1", "open", "150.0"), alert("2", "resolved", null)],
   counts: { open: "1", acknowledged: "0", resolved: "1", muted: "0", rule_changed: "0" },
-  channels: [{ name: "in_app", available: true }, { name: "webhook", available: false }, { name: "email", available: false }],
+  channels: [{ name: "in_app", available: true }, { name: "email", available: true }, { name: "feishu", available: false }, { name: "aliyun_sms", available: false }],
   rule: { min_severity: "medium", mute_hours: 24, current_hours: 3, baseline_hours: 168, calibrated: false },
   limitations: [],
 };
@@ -37,14 +37,15 @@ const item = (state: GovernanceItem["state"], allowed: GovernanceItem["allowed_t
 const renderItem = (value: GovernanceItem) => renderToStaticMarkup(<GovernancePanel busy={false} governance={{ items: [value], limitations: [] }} onCommand={noop} onOpenTrends={noop} onSelect={noop} selectedId="7" text={english} />);
 
 describe("alerts (design board D)", () => {
-  it("counts states, offers only the actions the state allows and lists no outbound channel", () => {
+  it("counts states, offers only the actions the state allows and says which outbound channels are on", () => {
     const html = renderAlerts("1");
     expect(html).toContain("New <span class=\"tab-count\">1</span>");
     expect(html).toContain(">Acknowledge<");
     expect(html).toContain(">Mute 24 hours<");
     expect(html).toContain(">Add to governance queue<");
     expect(html).not.toContain(">Reopen<");
-    expect(html.match(/Not available in this version/g)).toHaveLength(2);
+    expect(html).toContain("<dt>Email · SMTP</dt><dd>Enabled</dd>");
+    expect(html.match(/Off · set up under Notification channels/g)).toHaveLength(2);
     expect(html).toContain("Too few samples or a version change raises no alert");
     // The rules sit behind a disclosure instead of filling the page.
     expect(html).toMatch(/<details class="history-card history-details"><summary>Alert rules and channels<\/summary>/);
@@ -125,9 +126,10 @@ describe("governance drafts and copy (audit V1-15, V1-18)", () => {
     expect(html).not.toContain("比较器");
   });
 
-  it("localizes the channels that are not available", () => {
+  it("localizes the channels that are off", () => {
     const html = renderToStaticMarkup(<AlertsPanel alerts={alerts} busy={false} onAction={noop} onResolveRuleChanged={noop} onAddToQueue={noop} onOpenItem={noop} onOpenTrends={noop} onSelect={noop} selectedId="1" text={chinese} />);
-    expect(html.match(/当前版本暂不支持/g)).toHaveLength(2);
+    expect(html.match(/未启用 · 在“通知渠道”里设置/g)).toHaveLength(2);
+    expect(html).toContain("短信 · 阿里云");
     expect(html).not.toContain("Not available in this version");
   });
 });

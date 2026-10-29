@@ -1,0 +1,233 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NotifyChannelSaveRequest",
+  "type": "object",
+  "required": [
+    "clear_secret",
+    "config",
+    "enabled"
+  ],
+  "properties": {
+    "clear_secret": {
+      "type": "boolean"
+    },
+    "config": {
+      "$ref": "#/definitions/NotifyChannelConfig"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "secret": {
+      "description": "A new channel secret; `None` keeps the saved one.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AliyunSmsRegion": {
+      "type": "string",
+      "enum": [
+        "cn_hangzhou",
+        "ap_southeast1"
+      ]
+    },
+    "EmailSecurity": {
+      "description": "TLS modes always verify the server certificate; there is no encrypt-without-verify mode.",
+      "oneOf": [
+        {
+          "description": "Implicit TLS, usually port 465.",
+          "type": "string",
+          "enum": [
+            "tls"
+          ]
+        },
+        {
+          "description": "Plain connection upgraded with STARTTLS, usually port 587.",
+          "type": "string",
+          "enum": [
+            "starttls"
+          ]
+        },
+        {
+          "description": "No encryption: password and message cross the network in clear text.",
+          "type": "string",
+          "enum": [
+            "plain"
+          ]
+        }
+      ]
+    },
+    "NotifyChannelConfig": {
+      "description": "Non-secret channel settings. The channel secret (SMTP password, SMS AccessKey Secret / SecretKey) travels separately and is never returned.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "from_address",
+            "host",
+            "kind",
+            "port",
+            "security"
+          ],
+          "properties": {
+            "from_address": {
+              "type": "string"
+            },
+            "from_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "host": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "email"
+              ]
+            },
+            "port": {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            },
+            "security": {
+              "$ref": "#/definitions/EmailSecurity"
+            },
+            "username": {
+              "description": "Empty: no SMTP authentication.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Every Feishu target carries its own webhook and signing secret.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "feishu"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Every DingTalk target carries its own webhook and signing secret.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "dingtalk"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "access_key_id",
+            "hourly_limit",
+            "kind",
+            "region",
+            "sign_name",
+            "template_code"
+          ],
+          "properties": {
+            "access_key_id": {
+              "type": "string"
+            },
+            "hourly_limit": {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "aliyun_sms"
+              ]
+            },
+            "region": {
+              "$ref": "#/definitions/AliyunSmsRegion"
+            },
+            "sign_name": {
+              "type": "string"
+            },
+            "template_code": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "hourly_limit",
+            "kind",
+            "region",
+            "sdk_app_id",
+            "secret_id",
+            "sign_name",
+            "template_id"
+          ],
+          "properties": {
+            "hourly_limit": {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "tencent_sms"
+              ]
+            },
+            "region": {
+              "$ref": "#/definitions/TencentSmsRegion"
+            },
+            "sdk_app_id": {
+              "type": "string"
+            },
+            "secret_id": {
+              "type": "string"
+            },
+            "sign_name": {
+              "type": "string"
+            },
+            "template_id": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TencentSmsRegion": {
+      "type": "string",
+      "enum": [
+        "ap_guangzhou",
+        "ap_beijing",
+        "ap_nanjing"
+      ]
+    }
+  }
+}

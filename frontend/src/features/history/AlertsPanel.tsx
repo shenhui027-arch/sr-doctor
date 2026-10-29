@@ -4,10 +4,11 @@
 // and the one-click resolve of alerts left over from an older rule version.
 import { useState } from "react";
 import type { JSX, ReactNode } from "react";
-import type { AlertState, AlertView, HistoryAlertsResponse } from "../../../../contracts/generated/doctor-contracts";
+import type { AlertState, AlertView, HistoryAlertsResponse, NotifyChannelKind } from "../../../../contracts/generated/doctor-contracts";
 import type { LocalizedText } from "../../i18n/locale";
 import { metricText } from "../audit/audit-display";
 import { clockText } from "./CollectionPanel";
+import { NOTIFY_KINDS, kindName } from "./notify-text";
 
 type AlertTab = AlertState | "all";
 const TABS: AlertTab[] = ["open", "acknowledged", "resolved", "muted", "all"];
@@ -123,6 +124,7 @@ export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onRe
 }
 
 function FragmentChannel({ channel, text }: { channel: HistoryAlertsResponse["channels"][number]; text: LocalizedText }): JSX.Element {
-  const name = { in_app: text("In app · nav badge and this list", "应用内 · 导航角标与本列表"), webhook: "Webhook", email: text("Email", "邮件") }[channel.name] ?? channel.name;
-  return <><dt>{name}</dt><dd>{channel.available ? text("Enabled", "已启用") : <span className="planned">{text("Not available in this version", "当前版本暂不支持")}</span>}</dd></>;
+  const name = channel.name === "in_app" ? text("In app · nav badge and this list", "应用内 · 导航角标与本列表")
+    : NOTIFY_KINDS.includes(channel.name as NotifyChannelKind) ? kindName(channel.name as NotifyChannelKind, text) : channel.name;
+  return <><dt>{name}</dt><dd>{channel.available ? text("Enabled", "已启用") : <span className="planned">{text("Off · set up under Notification channels", "未启用 · 在“通知渠道”里设置")}</span>}</dd></>;
 }

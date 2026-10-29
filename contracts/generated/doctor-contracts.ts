@@ -706,6 +706,97 @@ export type HistoryLoadResponse = { target: string | null, start_seconds: number
  * Rows the collector read and the ones it could attribute to a template.
  */
 rows_read: string, rows_attributed: string, executions: string | null, errors: string | null, limitations: Array<string>, };
+export type NotifyChannelKind = "email" | "feishu" | "dingtalk" | "aliyun_sms" | "tencent_sms";
+export type NotifySeverity = "medium" | "high";
+export type NotifyLanguage = "zh" | "en";
+export type NotifySettings = {
+/**
+ * Also send when an alert is back inside its baseline band.
+ */
+notify_resolved: boolean,
+/**
+ * Add the literal-free SQL template to email and bot messages (never SMS).
+ */
+include_template: boolean, language: NotifyLanguage,
+/**
+ * Base address for the "view alerts" link, e.g. `http://10.0.0.5:8080`.
+ */
+public_url: string | null, };
+export type EmailSecurity = "tls" | "starttls" | "plain";
+export type AliyunSmsRegion = "cn_hangzhou" | "ap_southeast1";
+export type TencentSmsRegion = "ap_guangzhou" | "ap_beijing" | "ap_nanjing";
+export type NotifyChannelConfig = { "kind": "email", host: string, port: number, security: EmailSecurity,
+/**
+ * Empty: no SMTP authentication.
+ */
+username: string | null, from_address: string, from_name: string | null, } | { "kind": "feishu", } | { "kind": "dingtalk", } | { "kind": "aliyun_sms", access_key_id: string, sign_name: string, template_code: string, region: AliyunSmsRegion, hourly_limit: number, } | { "kind": "tencent_sms", secret_id: string, sdk_app_id: string, sign_name: string, template_id: string, region: TencentSmsRegion, hourly_limit: number, };
+export type NotifyChannelSaveRequest = { config: NotifyChannelConfig, enabled: boolean,
+/**
+ * A new channel secret; `None` keeps the saved one.
+ */
+secret: string | null, clear_secret: boolean, };
+export type NotifyTargetInput = { target_id: string | null, kind: NotifyChannelKind, name: string, enabled: boolean, min_severity: NotifySeverity,
+/**
+ * Email address (shown in full) or phone number (stored encrypted,
+ * shown masked). `None` keeps the saved phone number.
+ */
+address: string | null,
+/**
+ * Feishu / DingTalk webhook, stored encrypted.
+ */
+webhook: string | null, signing_secret: string | null, clear_signing_secret: boolean, };
+export type NotifyTargetDeleteRequest = { target_id: string, };
+export type NotifyTestRequest = { target: NotifyTargetInput, };
+export type NotifyEvent = "new_alerts" | "resolved" | "test";
+export type NotifyDeliveryState = "pending" | "sent" | "failed" | "skipped";
+export type NotifyErrorClass = "network" | "timeout" | "tls" | "auth_failed" | "rejected" | "invalid_response" | "rate_limited" | "not_configured" | "secret_unreadable";
+export type NotifyDeliveryBrief = { at_seconds: number, state: NotifyDeliveryState, error: NotifyErrorClass | null, provider_code: string | null, };
+export type NotifyChannelView = { kind: NotifyChannelKind, enabled: boolean,
+/**
+ * `None` until saved once (always present for bot channels).
+ */
+config: NotifyChannelConfig | null, secret_saved: boolean, secret_unreadable: boolean, targets: number, enabled_targets: number,
+/**
+ * Targets whose latest delivery failed.
+ */
+failing_targets: number, };
+export type NotifyTargetView = { target_id: string, kind: NotifyChannelKind, name: string, enabled: boolean, min_severity: NotifySeverity,
+/**
+ * The address in full for email; masked for phones and webhooks.
+ */
+address_hint: string, signing_secret_saved: boolean, secret_unreadable: boolean, last: NotifyDeliveryBrief | null, };
+export type NotifyKeySource = "environment" | "file";
+export type NotifyOverviewResponse = { settings: NotifySettings, channels: Array<NotifyChannelView>,
+/**
+ * Grouped by channel, then by name.
+ */
+targets: Array<NotifyTargetView>,
+/**
+ * Remote clusters raise no alert (so send nothing) until the G1 pilot
+ * passes and `DOCTOR_COLLECTION_ALLOW_REMOTE=after-g1` is set.
+ */
+remote_collection_allowed: boolean, key_source: NotifyKeySource, max_targets_per_channel: number, limitations: Array<string>, };
+export type NotifyTestResponse = { state: NotifyDeliveryState, error: NotifyErrorClass | null, provider_code: string | null, duration_ms: number, };
+export type NotifyDeliveriesRequest = { kind: NotifyChannelKind | null, target_id: string | null, state: NotifyDeliveryState | null, };
+export type NotifyDeliveryView = { delivery_id: string, at_seconds: number, kind: NotifyChannelKind,
+/**
+ * `None` after the target was deleted, or for a test of an unsaved one.
+ */
+target_id: string | null, target_name: string, event: NotifyEvent,
+/**
+ * The cluster ("host:port") the alerts came from; `None` for tests.
+ */
+cluster: string | null, alert_count: number, state: NotifyDeliveryState, attempts: number, next_attempt_seconds: number | null, error: NotifyErrorClass | null, provider_code: string | null, duration_ms: number | null, };
+export type NotifySmsUsage = { kind: NotifyChannelKind,
+/**
+ * Messages sent in the last 60 minutes.
+ */
+used: number, hourly_limit: number, };
+export type NotifyDeliveriesResponse = {
+/**
+ * Newest first, at most 200.
+ */
+deliveries: Array<NotifyDeliveryView>, sent_24h: number, failed_24h: number, pending: number, sms_usage: Array<NotifySmsUsage>, retention_days: number, };
 export type ProductSqlFingerprint = { "state": "exact", fingerprint: string, template: string, } | { "state": "partial", reason: ProductSqlFingerprintPartialReason, } | { "state": "unavailable", reason: ProductSqlFingerprintUnavailableReason, };
 export type ProductSqlFingerprintPartialReason = "statement_truncated";
 export type ProductSqlFingerprintUnavailableReason = "statement_sql_null" | "statement_not_read" | "conflicting_source_rows" | "empty_statement" | "lexical_error" | "unbalanced_parentheses" | "multiple_statements" | "unsupported_statement" | "massive_compound_predicate";

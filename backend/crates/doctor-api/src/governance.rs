@@ -18,7 +18,9 @@ use doctor_core::{
     ChangeVerdict, HISTORY_BUCKET_SECONDS, TREND_MIN_CURRENT_SAMPLES, TrendWindows, WindowStats,
     verify_change, window_stats,
 };
-use doctor_history::{AlertFacts, HistoryStore, ItemUpdate, StoreChange, StoredAlert, StoredItem};
+use doctor_history::{
+    AlertFacts, AlertUpsert, HistoryStore, ItemUpdate, StoreChange, StoredAlert, StoredItem,
+};
 
 use super::*;
 use crate::audit::no_store;
@@ -65,6 +67,7 @@ pub(crate) fn evaluate_alerts(
     now: i64,
 ) -> doctor_history::Result<()> {
     let windows = TrendWindows::ending_at(now, ALERT_CURRENT_HOURS, ALERT_BASELINE_HOURS);
+    let (mut raised, mut resolved) = (Vec::new(), Vec::new());
     for (template, trend) in evaluate(store, target, windows, windows.current_start)?.trends {
         let key = &template.template.template_key;
         match trend.verdict {
@@ -93,14 +96,20 @@ pub(crate) fn evaluate_alerts(
                     engine_version: trend.engine_version.clone(),
                     rule_version: trend.rule_version.clone(),
                 };
-                store.upsert_alert(target, key, &facts, now)?;
+                match store.upsert_alert(target, key, &facts, now)? {
+                    AlertUpsert::Created(id) | AlertUpsert::Reopened(id) => raised.push(id),
+                    AlertUpsert::Updated | AlertUpsert::Suppressed => {}
+                }
             }
             TrendVerdict::Stable | TrendVerdict::Improvement => {
-                store.resolve_alerts(target, key, now)?;
+                resolved.extend(store.resolve_alerts(target, key, now)?);
             }
             _ => {}
         }
     }
+    // Outbound notifications are best effort: a queue problem never blocks
+    // the in-app alerts.
+    let _ = crate::notify::enqueue_alert_events(store, target, &raised, &resolved, now);
     Ok(())
 }
 
@@ -219,6 +228,7 @@ pub(super) async fn alerts(
             let mut alerts = Vec::new();
             let mut counts = [0u64; 4];
             let mut rule_changed = 0u64;
+            let outbound = crate::notify::channel_states(&store)?;
             if let Some(target) = target.as_deref() {
                 evaluate_alerts(&store, target, now)?;
                 let templates = store.templates(target)?;
@@ -245,20 +255,15 @@ pub(super) async fn alerts(
                     muted: counts[AlertState::Muted as usize].to_string(),
                     rule_changed: rule_changed.to_string(),
                 },
-                channels: vec![
-                    AlertChannel {
-                        name: "in_app".into(),
-                        available: true,
-                    },
-                    AlertChannel {
-                        name: "webhook".into(),
-                        available: false,
-                    },
-                    AlertChannel {
-                        name: "email".into(),
-                        available: false,
-                    },
-                ],
+                channels: std::iter::once(AlertChannel {
+                    name: "in_app".into(),
+                    available: true,
+                })
+                .chain(outbound.into_iter().map(|(kind, available)| AlertChannel {
+                    name: kind.as_str().into(),
+                    available,
+                }))
+                .collect(),
                 rule: AlertRule {
                     min_severity: TrendSeverity::Medium,
                     mute_hours: ALERT_MUTE_HOURS,
@@ -269,7 +274,6 @@ pub(super) async fn alerts(
                 limitations: [
                     "alerts_only_from_regression_verdicts",
                     "unscored_and_not_comparable_raise_no_alert",
-                    "in_app_only_no_outbound_notification",
                     "rule_thresholds_pending_g2_calibration",
                 ]
                 .into_iter()
