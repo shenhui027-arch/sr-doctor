@@ -152,7 +152,7 @@ SELECT get_query_profile(last_query_id());
 - **导入记录**：Stream Load、Broker Load、INSERT，以及 Routine Load 的每个提交任务。可以按类型、结果、库表筛选；默认隐藏统计信息收集和审计日志产生的系统任务。
   - 取事务、规划、接收数据三段是 StarRocks 记录的毫秒值；写数据、提交发布两段 StarRocks 不记录，总耗时由开始与完成时间相减，只精确到秒。
   - 时间按 FE 的时区显示，不做换算。
-  - StarRocks 只在 FE 内存里保留最近 3 天、每类约 1000 条，导入频繁时会成批清掉已结束的记录；页面上方会给出当前能看到的最早一条。
+  - StarRocks 只在 FE 内存里保留最近 3 天、每类最多约 1000 条。Stream Load（含 Routine Load 的任务）一旦超过 `stream_load_task_keep_max_num`（默认 1000），FE 会一次清掉所有已结束的记录，可见条数可能骤降到个位数（3.5.14 实测：连续 1000 次后只剩最后 3 次）。页面上方会给出当前能看到的最早一条，概览里更早的小时标为“未知”或“可能不完整”。
 - **错误日志**：有过滤行的导入可以点 **错误日志**。内容来自 StarRocks 的 `information_schema.load_tracking_logs`，与 Stream Load 返回的 ErrorURL 相同，SR Doctor 不直接访问 BE 的 8040 端口。
   - 每次导入 StarRocks 最多记录约 50 行错误，每行只报第一个错误；原因分布按这些样本统计。
   - “非空列为 NULL”“超出分区”两类给出的是转换后的值，不是原始文本。

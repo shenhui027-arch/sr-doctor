@@ -24,7 +24,7 @@ export function LoadRecordsPanel({ records, filters, onFilters, onOpenLog, text 
   const unknownRows = summary.filtered_rows_unknown !== "0" || summary.loaded_rows_unknown !== "0";
   return <div className="history-page load-page">
     <p className="history-banner" role="status">
-      {text("StarRocks keeps only the last 3 days and about 1000 records per manager in FE memory, and drops finished ones in bulk when busy.", "StarRocks 只在 FE 内存中保留最近 3 天、每类最多约 1000 条导入记录，导入频繁时会成批清掉已结束的任务。")}
+      {text("StarRocks keeps only the last 3 days and at most about 1000 records per manager in FE memory; once Stream Load records pass 1000 it drops every finished one at once, so the count can fall to a handful.", "StarRocks 只在 FE 内存中保留最近 3 天、每类最多约 1000 条导入记录；Stream Load 记录超过 1000 条时会一次清掉所有已结束的任务，可见条数可能骤降到个位数。")}
       {records.earliest_create_time && <> {text("The oldest one still visible: ", "当前能看到的最早一条是 ")}<strong>{feTime(records.earliest_create_time)}</strong>{zone}{records.at_retention_limit ? text(" (at the limit; older ones are gone).", "（已到上限，更早的已不可查）。") : "。"}</>}
       {" "}<span className="history-muted">{text("Planned (L1): hourly aggregates and error logs kept for 30 days.", "Planned（L1）：采集入历史库后保留 30 天的小时聚合与错误日志。")}</span>
     </p>

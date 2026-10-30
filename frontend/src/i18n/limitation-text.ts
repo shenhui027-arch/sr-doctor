@@ -39,6 +39,7 @@ const limitations: Record<string, [string, string]> = {
   version_or_rule_changes_split_comparisons: ["A StarRocks version or rule change starts a new segment; segments are not compared.", "StarRocks 版本或规则变化会开始新的分段，分段之间不比较。"],
   weekday_and_hour_are_utc: ["Weekdays and hours are in UTC.", "星期与小时均按 UTC。"],
   overview_coverage_primary_concurrency_and_family_top_are_separate_non_atomic_reads: ["Overview sections are read separately and may differ slightly.", "概览各部分分开读取，可能略有出入。"],
+  plan_advisor_not_in_release: ["This StarRocks release has no Plan Advisor (added in 3.4).", "当前 StarRocks 版本没有 Plan Advisor（3.4 起提供）。"],
   profile_cache_availability_is_observed_at_fetch_time: ["Whether a Profile is still cached is known only when you fetch it.", "Profile 是否仍在缓存中，只有在拉取时才能确定。"],
   profile_evidence_and_audit_detail_are_non_atomic_reads: ["Profile evidence and audit details are read separately and may differ slightly.", "Profile 证据与审计详情分开读取，可能略有出入。"],
   profile_list_duration_not_normalized_in_v0_1: ["Profile list durations are shown as returned.", "Profile 列表中的耗时按原样展示。"],

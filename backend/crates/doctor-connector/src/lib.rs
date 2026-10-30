@@ -1062,8 +1062,17 @@ impl SessionManager {
             capabilities.profile_list =
                 probe(&mut *remote, RemoteOperation::ShowProfileList { limit: 1 })
                     .map_err(|error| error.connector("capability_probe"))?;
-            capabilities.plan_advisor = probe(&mut *remote, RemoteOperation::ShowPlanAdvisor)
-                .map_err(|error| error.connector("capability_probe"))?;
+            // Releases without Plan Advisor (3.1-3.3) answer `SHOW PLAN ADVISOR`
+            // with a parser error, which the fail-closed protocol policy treats
+            // as a broken session; the audited release profile already says.
+            capabilities.plan_advisor =
+                if release.as_ref().is_some_and(|profile| profile.plan_advisor) {
+                    probe(&mut *remote, RemoteOperation::ShowPlanAdvisor)
+                        .map_err(|error| error.connector("capability_probe"))?
+                } else {
+                    limitations.push("plan_advisor_not_in_release".into());
+                    CapabilityState::Unavailable
+                };
             capabilities.explain = CapabilityState::Unknown; // no synthetic Explain against user clusters
         } else {
             limitations.push("unsupported_version".into());
@@ -5667,6 +5676,31 @@ mod tests {
             drop(sessions);
             assert_eq!(factory.opened.load(Ordering::Relaxed), 1);
         }
+    }
+
+    #[test]
+    fn releases_without_plan_advisor_are_not_probed_for_it() {
+        // 3.2 and 3.3 answer `SHOW PLAN ADVISOR` with a parser error, which the
+        // fail-closed policy would turn into a failed connection.
+        let mut fake = FakeFactory::supported();
+        fake.version = "3.3.22-753696f".into();
+        let factory = Arc::new(fake);
+        let manager = session_manager(Arc::clone(&factory), Arc::new(TestClock::default()));
+        let view = manager.connect(request()).unwrap();
+        assert_eq!(view.state, ConnectionState::Connected);
+        assert_eq!(view.capabilities.plan_advisor, CapabilityState::Unavailable);
+        assert!(
+            view.limitations
+                .iter()
+                .any(|item| item == "plan_advisor_not_in_release")
+        );
+        assert!(
+            !factory
+                .operations
+                .lock()
+                .unwrap()
+                .contains(&Operation::Advisor)
+        );
     }
 
     #[test]

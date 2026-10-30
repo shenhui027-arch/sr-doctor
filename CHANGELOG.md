@@ -14,6 +14,12 @@
   - **错误日志**：按 job_id 读取 `information_schema.load_tracking_logs`（与 ErrorURL 同源），按原因分类显示被拒绝行；BE 已清理时如实说明。
   - 全部实时读取、不落盘；导入记录需要 3.3 及以上，Routine Load 需要 3.2 及以上（3.2 无积压）。
   - 新端点 `POST /api/v1/connections/{id}/loads/{overview,routine-jobs,records,error-log}`；导入记录新增按创建小时筛选（`created_hour`）。
+  - 保留期说明写明：Stream Load 记录超过 1000 条时，StarRocks 会一次清掉所有已结束的任务，可见条数可能骤降到个位数。
+
+### 修复
+
+- **3.1～3.3 无法连接**：连接时无条件执行 `SHOW PLAN ADVISOR`，3.4 之前没有该语句，报错后整次连接失败。现在按已审计的版本档案跳过，Plan Advisor 记为不可用并注明原因。
+- 审计页底部“数据覆盖与限制”折叠后仍留一大块空白。
 
 ## [1.0.1] — 2026-10-29 · 审计概览与多渠道告警通知
 

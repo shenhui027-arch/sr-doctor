@@ -46,7 +46,7 @@ export function LoadOverviewPanel({ overview, nowMs, onOpenHour, onOpenTable, on
     </div>
     <p className="history-banner neutral load-overview-foot" role="note">
       <span>
-        {text("StarRocks keeps only the last 3 days and about 1000 load records; ", "StarRocks 只保留最近 3 天、每类最多约 1000 条导入记录；")}
+        {text("StarRocks keeps only the last 3 days and at most about 1000 load records per kind, and clears finished Stream Loads all at once past 1000; ", "StarRocks 只保留最近 3 天、每类最多约 1000 条导入记录，Stream Load 超过 1000 条时会一次清空已结束的记录；")}
         {overview.at_retention_limit ? text("the limit is reached, older ones are gone.", "当前已到上限，更早的已不可查。") : text("older ones are gone.", "更早的已不可查。")}
         {overview.hidden_system !== "0" && text(` ${overview.hidden_system} system loads hidden.`, `另有 ${overview.hidden_system} 次系统任务已隐藏。`)}
       </span>
