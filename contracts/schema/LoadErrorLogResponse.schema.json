@@ -1,0 +1,170 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LoadErrorLogResponse",
+  "type": "object",
+  "required": [
+    "categories",
+    "entries",
+    "job_id",
+    "limitations",
+    "state",
+    "truncated"
+  ],
+  "properties": {
+    "categories": {
+      "description": "Counts over the sampled entries, largest first.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadErrorCategoryCount"
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadErrorEntry"
+      }
+    },
+    "job_id": {
+      "type": "string"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "state": {
+      "$ref": "#/definitions/LoadErrorLogState"
+    },
+    "truncated": {
+      "description": "More entries existed than `LOAD_ERROR_MAX_ENTRIES`, or the text was cut.",
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "LoadErrorCategory": {
+      "type": "string",
+      "enum": [
+        "out_of_range",
+        "too_long",
+        "column_count",
+        "null_in_non_nullable",
+        "out_of_partition",
+        "json_cast",
+        "json_structure",
+        "other"
+      ]
+    },
+    "LoadErrorCategoryCount": {
+      "type": "object",
+      "required": [
+        "category",
+        "count"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/definitions/LoadErrorCategory"
+        },
+        "column": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "target_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadErrorEntry": {
+      "type": "object",
+      "required": [
+        "category",
+        "index",
+        "reason",
+        "row_converted",
+        "truncated"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/definitions/LoadErrorCategory"
+        },
+        "column": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "reason": {
+          "type": "string"
+        },
+        "row": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "row_converted": {
+          "description": "StarRocks printed converted values (`[4, 'x', NULL]`), not the source text.",
+          "type": "boolean"
+        },
+        "target_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadErrorLogState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "available"
+          ]
+        },
+        {
+          "description": "The BE already deleted the file (48 hours by default).",
+          "type": "string",
+          "enum": [
+            "purged"
+          ]
+        },
+        {
+          "description": "The BE could not be reached for the file just now; try again.",
+          "type": "string",
+          "enum": [
+            "unavailable"
+          ]
+        },
+        {
+          "description": "StarRocks has no error log for this job.",
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        }
+      ]
+    }
+  }
+}

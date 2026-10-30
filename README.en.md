@@ -96,6 +96,16 @@ No cluster? **Import a Profile** on the first page to analyze a JSON or text Pro
 | Delivery log | Result, retries and error category of every send; 10-second timeout, network failures retry after 1/5/30 minutes; SMS has an hourly limit |
 | Content | Only the cluster, template fingerprint, severity, confidence and median change; no SQL literals, Profiles or passwords; Feishu and DingTalk only on their official hosts |
 
+### Loads (added after v1.0.1, not yet released)
+
+| Capability | What it does |
+|---|---|
+| Overview | Loads and failures per hour, the tables with the most filtered rows, the top 10 Routine Load partition lags and the begin-transaction / plan time distribution; click a chart for its records or job. The audit overview gets a load card too |
+| Routine Load | Job state, per-partition progress and lag, rates, error rows and why a job paused; read-only, no pause or resume |
+| Load records | Stream Load, Broker Load, INSERT and Routine Load task results, filtered rows, begin-transaction / plan / receive-data times in ms, source user and IP, per-table totals |
+| Error log | Open a load to see the rows StarRocks rejected and why (the ErrorURL text, read through read-only SQL), grouped by reason; says so when the BE has already cleaned it up |
+| Limits | Read live from `information_schema`, nothing stored; StarRocks keeps only the last 3 days / about 1000 records; complete from 3.3 |
+
 ## Screenshots
 
 <table>
@@ -121,6 +131,10 @@ No cluster? **Import a Profile** on the first page to analyze a JSON or text Pro
   <tr>
     <td><img src="docs/assets/screenshots/09-alerts.png" alt="Alerts"><br><sub><b>Alerts</b>: regression checks and their evidence</sub></td>
     <td><img src="docs/assets/screenshots/10-governance.png" alt="Governance queue"><br><sub><b>Governance queue</b>: pin a baseline, close after verification</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/13-load-overview.png" alt="Load overview"><br><sub><b>Load overview</b> (main branch): loads and failures per hour, tables with the most filtered rows, Routine Load lag, begin-transaction / plan times; hours before the oldest record are marked unknown</sub></td>
+    <td><img src="docs/assets/screenshots/14-load-records.png" alt="Load records"><br><sub><b>Load records</b> (main branch): opened from an hour in the overview, with phase times in ms, filtered rows and the error log</sub></td>
   </tr>
 </table>
 
@@ -180,6 +194,7 @@ Connecting to 2.5 or 3.0 shows "unsupported version" and reads no audit or Profi
 | Latest release | **v1.0.1** (2026-10-29), see [Releases](https://github.com/shenhui027-arch/sr-doctor/releases). Servers are deployed with Docker; there is no installer |
 | v1.0.0 | SQL quality monitoring stages A–D developed and accepted locally; all 19 issues from the project-wide audit fixed |
 | v1.0.1 | Adds the audit overview (window performance charts and the 30-day load view) and multi-channel alert notifications; local CI and the official 3.5.14 E2E pass (email checked against a local SMTP receiver); real Feishu, DingTalk, Alibaba Cloud and Tencent Cloud delivery is **pending verification** |
+| main branch | Adds the load workspace after v1.0.1 (overview, Routine Load, load records, error logs) and a load card in the audit overview; official 3.5.14 + Kafka E2E passes; not yet released |
 | Local verification | Local CI passes; on fixed-digest official `starrocks/*:3.5.14` Docker fixtures, the fingerprint, collection, trends, alerts and governance, multi-BE, release-audit and TLS verify-full E2E tests pass |
 | Production acceptance | **Pending**: the G1 read-only production pilot and G2 real-workload calibration have not been done, so it is not claimed to be production-safe; remote clusters are not collected by default and alert thresholds are marked as on trial |
 | Supported versions | StarRocks **3.1 and later** (audited 3.1–4.1); 2.5 and 3.0 are not supported. See [Supported StarRocks versions](#supported-starrocks-versions) |

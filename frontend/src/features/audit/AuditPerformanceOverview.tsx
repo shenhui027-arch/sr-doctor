@@ -2,7 +2,7 @@
 // chart with its selected-bucket aside, the latency histogram, failures by
 // errorCode, workload composition and the top repeated SQL. Every number and
 // every coordinate comes from the server; this file only lays them out.
-import { Fragment, useEffect, useMemo, useState, type JSX } from "react";
+import { Fragment, useEffect, useMemo, useState, type JSX, type ReactNode } from "react";
 import type {
   AuditAggregateFact,
   AuditConcurrencyPresentation,
@@ -56,6 +56,8 @@ export type AuditPerformanceOverviewProps = {
   onFilter(dimension: AuditPerformanceDimensionId, value: string): void;
   onOpenFamilies(): void;
   filterableUser: boolean;
+  /** The load card (task 52), drawn after the failure row. */
+  loadCard?: ReactNode;
   text: LocalizedText;
 };
 
@@ -108,6 +110,7 @@ export function AuditPerformanceView({ bucket, onBucket, response, ...props }: A
       <LatencyHistogram response={response} text={text} />
       <FailureBreakdown response={response} text={text} />
     </div>
+    {props.loadCard}
     <div className="audit-performance-row">
       <WorkloadComposition filterableUser={props.filterableUser} onFilter={props.onFilter} response={response} text={text} />
       <TopFamilies families={props.families} label={props.familySortLabel} onOpen={props.onOpenFamilies} text={text} />

@@ -1,0 +1,301 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LoadRecordsResponse",
+  "type": "object",
+  "required": [
+    "at_retention_limit",
+    "hidden_system",
+    "limitations",
+    "matched",
+    "records",
+    "summary",
+    "support",
+    "tables"
+  ],
+  "properties": {
+    "at_retention_limit": {
+      "description": "The visible window is probably cut by StarRocks' retention limits.",
+      "type": "boolean"
+    },
+    "earliest_create_time": {
+      "description": "The oldest record StarRocks still holds.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "fe_time_zone": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hidden_system": {
+      "type": "string"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "matched": {
+      "type": "string"
+    },
+    "records": {
+      "description": "Newest first, after filters, at most `LOAD_RECORDS_MAX`.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadRecord"
+      }
+    },
+    "summary": {
+      "$ref": "#/definitions/LoadRecordsSummary"
+    },
+    "support": {
+      "$ref": "#/definitions/LoadViewSupport"
+    },
+    "tables": {
+      "description": "Busiest tables by load count, at most 10.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadTableSummary"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "LoadRecord": {
+      "type": "object",
+      "required": [
+        "db",
+        "has_error_log",
+        "job_id",
+        "kind",
+        "label",
+        "state",
+        "state_class",
+        "system",
+        "table"
+      ],
+      "properties": {
+        "begin_txn_ms": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "client_ip": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "create_time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "db": {
+          "type": "string"
+        },
+        "error_message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filtered_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filtered_share_permyriad": {
+          "description": "Filtered over filtered plus loaded rows, 0..=10000; `None` when either count is unknown or both are zero.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "finish_time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "has_error_log": {
+          "type": "boolean"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "StarRocks' `TYPE` text: `STREAM_LOAD`, `ROUTINE_LOAD`, `BROKER`, `INSERT`, ...",
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "loaded_rows": {
+          "description": "`None` where StarRocks reports -1 (unknown) or nothing.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_ms": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "profile_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "receive_data_ms": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "type": "string"
+        },
+        "state_class": {
+          "$ref": "#/definitions/LoadStateClass"
+        },
+        "system": {
+          "type": "boolean"
+        },
+        "table": {
+          "type": "string"
+        },
+        "total_seconds": {
+          "description": "Finish minus create, in whole seconds (both strings are second precision).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unselected_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "user": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadRecordsSummary": {
+      "type": "object",
+      "required": [
+        "failed",
+        "filtered_rows",
+        "filtered_rows_unknown",
+        "loaded_rows",
+        "loaded_rows_unknown",
+        "loads"
+      ],
+      "properties": {
+        "begin_plan_p95_ms": {
+          "description": "Nearest-rank P95 of begin-transaction plus plan time, over records that report both; `None` with fewer than 20 such records.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failed": {
+          "type": "string"
+        },
+        "filtered_rows": {
+          "type": "string"
+        },
+        "filtered_rows_unknown": {
+          "type": "string"
+        },
+        "filtered_share_permyriad": {
+          "description": "Filtered over filtered plus loaded rows, 0..=10000; `None` when any count is unknown or both sums are zero.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "loaded_rows": {
+          "description": "Sums over records that report the count; unknown ones are counted apart and never added as zero.",
+          "type": "string"
+        },
+        "loaded_rows_unknown": {
+          "type": "string"
+        },
+        "loads": {
+          "description": "Records StarRocks still holds (system loads excluded unless asked).",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadStateClass": {
+      "type": "string",
+      "enum": [
+        "finished",
+        "cancelled",
+        "running",
+        "unknown"
+      ]
+    },
+    "LoadTableSummary": {
+      "type": "object",
+      "required": [
+        "failed",
+        "filtered_rows",
+        "filtered_unknown",
+        "loads",
+        "table"
+      ],
+      "properties": {
+        "failed": {
+          "type": "string"
+        },
+        "filtered_rows": {
+          "description": "Sum over records that report the count.",
+          "type": "string"
+        },
+        "filtered_unknown": {
+          "description": "Records whose filtered count StarRocks does not know; not in the sum.",
+          "type": "string"
+        },
+        "loads": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadViewSupport": {
+      "description": "What the connected version can show. 3.3+ is complete; 3.2 has Routine Load jobs without partition lag and no load records; 3.1 has neither.",
+      "type": "string",
+      "enum": [
+        "full",
+        "without_lag",
+        "unsupported_version"
+      ]
+    }
+  }
+}

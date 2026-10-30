@@ -10,6 +10,7 @@ mod governance;
 mod history;
 mod history_load;
 mod history_trend;
+mod loads;
 mod notify;
 pub use history::{HistoryConfig, SlicePlan, plan_slices};
 pub use notify::NotifyKey;
@@ -1116,6 +1117,22 @@ pub fn router(state: ApiState) -> Router {
         .route(
             "/api/v1/connections/{id}/audit/active-at",
             options(preflight).post(audit::active_at),
+        )
+        .route(
+            "/api/v1/connections/{id}/loads/routine-jobs",
+            options(preflight).post(loads::routine_jobs),
+        )
+        .route(
+            "/api/v1/connections/{id}/loads/records",
+            options(preflight).post(loads::records),
+        )
+        .route(
+            "/api/v1/connections/{id}/loads/error-log",
+            options(preflight).post(loads::error_log),
+        )
+        .route(
+            "/api/v1/connections/{id}/loads/overview",
+            options(preflight).post(loads::overview),
         )
         .route(
             "/api/v1/connections/{id}/audit/sql",
@@ -4675,6 +4692,31 @@ mod tests {
                         profile: self.0.profile.clone(),
                     })
                 }
+                RemoteOperation::RoutineLoadJobs { with_lag } => {
+                    assert!(with_lag, "3.5.14 reads the lag columns");
+                    let cell = |value: &str| (!value.is_empty()).then(|| value.to_owned());
+                    Ok(RemoteResponse::NullableRows(vec![[
+                        "10276", "events_rl", "2026-10-30 08:15:05", "2026-10-30 08:57:04", "", "dwd", "user_events", "PAUSED", "KAFKA", "0",
+                        r#"{"maxErrorNum":"1000"}"#, r#"{"topic":"events","property.sasl.password":"routine-load-secret"}"#,
+                        r#"{"receivedBytes":2393,"errorRows":1272,"loadedRows":200,"totalRows":1472}"#,
+                        r#"{"0":"200","1":"150"}"#, "ErrorReason{errCode = 102, msg='current error rows: 1272 is more than max error num: 1000'}",
+                        "http://127.0.0.1:8040/api/_load_error_log?file=error_log_1", "",
+                        r#"{"0": "201", "1": "48360"}"#, r#"{"0": "1", "1": "48210"}"#, r#"{"0": "1793348096695"}"#,
+                    ].into_iter().map(cell).collect()]))
+                }
+                RemoteOperation::LoadRecords => {
+                    let cell = |value: &str| (!value.is_empty()).then(|| value.to_owned());
+                    let row = |values: [&str; 16]| values.into_iter().map(cell).collect::<Vec<_>>();
+                    Ok(RemoteResponse::NullableRows(vec![
+                        row(["12", "l_bad2", "", "lr", "t", "etl", "CANCELLED", "STREAM_LOAD", "2", "0", "2", r#"{"begin_txn_time_ms": 1, "client_ip": "10.0.0.9", "plan_time_ms": 2, "receive_data_time_ms": 0}"#, "2026-10-30 08:10:32", "2026-10-30 08:10:32", "too many filtered rows", "select tracking_log from information_schema.load_tracking_logs where job_id=12"]),
+                        row(["11", "insert_x", "", "_statistics_", "column_statistics", "root", "FINISHED", "INSERT", "0", "0", "3", "{}", "2026-10-30 08:07:46", "2026-10-30 08:07:46", "", ""]),
+                    ]))
+                }
+                RemoteOperation::LoadTrackingLog { job_id } => Ok(RemoteResponse::NullableRows(vec![vec![(job_id == 12).then(|| {
+                    "Error: The field (name = name, pos = 1) is out of range. Type: VARCHAR(5), Value length: 11, Value: toolongname. Row: 3	toolongname	3
+Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
+".to_owned()
+                }).or_else(|| Some("Unable to canonicalize /data/error_log/x: No such file or directory".to_owned()))]])),
             }
         }
 
@@ -11017,5 +11059,119 @@ mod tests {
                 .any(|window| window == b"smtp-secret-value")
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn ld01_load_workspace_reads_jobs_records_and_one_error_log() {
+        let factory = Arc::new(ConnectorTestFactory::connected());
+        let app = router(connector_state(factory));
+        let connection_id = connector_connection_id(app.clone()).await;
+        let post = |path: &str, body: serde_json::Value| {
+            json_request(
+                Method::POST,
+                &format!("{CONNECTIONS_PATH}/{connection_id}/loads/{path}"),
+                "127.0.0.1:8000",
+                SocketAddr::from(([127, 0, 0, 1], 41000)),
+                &body.to_string(),
+            )
+        };
+        let read = |response: Response| async move {
+            let status = response.status();
+            let value: serde_json::Value =
+                from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+            (status, value)
+        };
+        let (status, jobs) = read(
+            app.clone()
+                .oneshot(post(
+                    "routine-jobs",
+                    serde_json::json!({ "connection_id": connection_id }),
+                ))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{jobs}");
+        assert_eq!(jobs["support"], "full");
+        let job = &jobs["jobs"][0];
+        assert_eq!(
+            (
+                job["state_class"].as_str(),
+                job["max_lag"].as_str(),
+                job["max_lag_partition"].as_str()
+            ),
+            (Some("paused"), Some("48210"), Some("1"))
+        );
+        assert_eq!(job["topic"], "events");
+        assert!(!jobs.to_string().contains("routine-load-secret"));
+        let (status, records) = read(app.clone().oneshot(post("records", serde_json::json!({ "connection_id": connection_id, "kind": null, "outcome": null, "table": null, "include_system": false }))).await.unwrap()).await;
+        assert_eq!(status, StatusCode::OK, "{records}");
+        assert_eq!(records["records"].as_array().unwrap().len(), 1);
+        assert_eq!(records["hidden_system"], "1");
+        assert_eq!(records["records"][0]["client_ip"], "10.0.0.9");
+        assert_eq!(records["records"][0]["has_error_log"], true);
+        let (status, overview) = read(
+            app.clone()
+                .oneshot(post(
+                    "overview",
+                    serde_json::json!({ "connection_id": connection_id, "kind": null, "include_system": false }),
+                ))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{overview}");
+        assert_eq!(overview["summary"]["loads"], "1");
+        assert_eq!(overview["routine"]["paused"], "1");
+        assert_eq!(overview["routine"]["lags"][0]["lag"], "48210");
+        assert_eq!(overview["hours"].as_array().unwrap().len(), 72);
+        assert!(!overview.to_string().contains("routine-load-secret"));
+        let (status, _) = read(
+            app.clone()
+                .oneshot(post(
+                    "records",
+                    serde_json::json!({ "connection_id": connection_id, "kind": null, "outcome": null, "table": null, "include_system": false, "created_hour": "2026-10-30 6" }),
+                ))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, log) = read(
+            app.clone()
+                .oneshot(post(
+                    "error-log",
+                    serde_json::json!({ "connection_id": connection_id, "job_id": "12" }),
+                ))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{log}");
+        assert_eq!(log["state"], "available");
+        assert_eq!(log["entries"][0]["category"], "too_long");
+        assert_eq!(log["entries"][1]["row_converted"], true);
+        let (_, purged) = read(
+            app.clone()
+                .oneshot(post(
+                    "error-log",
+                    serde_json::json!({ "connection_id": connection_id, "job_id": "99" }),
+                ))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(purged["state"], "purged");
+        let (status, _) = read(
+            app.clone()
+                .oneshot(post(
+                    "error-log",
+                    serde_json::json!({ "connection_id": connection_id, "job_id": "1 OR 1=1" }),
+                ))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 }

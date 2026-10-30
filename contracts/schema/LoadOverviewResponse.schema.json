@@ -1,0 +1,592 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LoadOverviewResponse",
+  "type": "object",
+  "required": [
+    "at_retention_limit",
+    "by_kind",
+    "hidden_system",
+    "hour_axis_ticks",
+    "hours",
+    "limitations",
+    "phases",
+    "records_outside_hours",
+    "routine",
+    "summary",
+    "support",
+    "tables"
+  ],
+  "properties": {
+    "at_retention_limit": {
+      "type": "boolean"
+    },
+    "by_kind": {
+      "description": "Most loads first.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadKindCount"
+      }
+    },
+    "complete_from": {
+      "description": "From here on every manager in scope still holds its records; hours between the two, and the hour holding this time unless it is on the hour, are `partial`. Equal to `earliest_create_time` when one manager covers the scope.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "earliest_create_time": {
+      "description": "The oldest record in scope; hours before it are `unknown`.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "failed_share_permyriad": {
+      "description": "Failed over loads, 0..=10000; `None` with no loads.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint16",
+      "minimum": 0.0
+    },
+    "fe_time_zone": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hidden_system": {
+      "type": "string"
+    },
+    "hour_axis_ticks": {
+      "description": "Top first: the axis top, its half and zero.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "hours": {
+      "description": "Oldest first, ending at the hour of the newest record.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadHourBucket"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "phases": {
+      "$ref": "#/definitions/LoadPhaseDistribution"
+    },
+    "records_outside_hours": {
+      "description": "Records in scope that no drawn hour holds (no readable creation time, or older than `LOAD_OVERVIEW_MAX_HOURS`).",
+      "type": "string"
+    },
+    "routine": {
+      "$ref": "#/definitions/RoutineLoadOverview"
+    },
+    "summary": {
+      "$ref": "#/definitions/LoadRecordsSummary"
+    },
+    "support": {
+      "description": "Load records; Routine Load has its own in `routine`.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/LoadViewSupport"
+        }
+      ]
+    },
+    "tables": {
+      "description": "Tables with filtered rows, most first.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadTableBar"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "LoadHourBucket": {
+      "type": "object",
+      "required": [
+        "coverage",
+        "failed",
+        "failed_permyriad",
+        "filtered_rows",
+        "filtered_unknown",
+        "hour",
+        "loads",
+        "loads_permyriad"
+      ],
+      "properties": {
+        "coverage": {
+          "$ref": "#/definitions/LoadHourCoverage"
+        },
+        "failed": {
+          "type": "string"
+        },
+        "failed_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "filtered_rows": {
+          "type": "string"
+        },
+        "filtered_unknown": {
+          "description": "Records of this hour whose filtered count is unknown.",
+          "type": "string"
+        },
+        "hour": {
+          "description": "`YYYY-MM-DD HH` in the FE time zone.",
+          "type": "string"
+        },
+        "loads": {
+          "type": "string"
+        },
+        "loads_permyriad": {
+          "description": "Bar heights against the axis top, 0..=10000.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "top_failed_count": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "top_failed_table": {
+          "description": "The table with the most failures in this hour, if any failed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadHourCoverage": {
+      "description": "How much of an hour the held records can speak for.",
+      "oneOf": [
+        {
+          "description": "Every FE load manager in scope still holds this hour.",
+          "type": "string",
+          "enum": [
+            "complete"
+          ]
+        },
+        {
+          "description": "Some manager in scope may already have dropped part of this hour: the counts are what is still held, a lower bound.",
+          "type": "string",
+          "enum": [
+            "partial"
+          ]
+        },
+        {
+          "description": "Before the oldest record in scope: nothing is held, counts are not zero loads.",
+          "type": "string",
+          "enum": [
+            "unknown"
+          ]
+        }
+      ]
+    },
+    "LoadKindCount": {
+      "type": "object",
+      "required": [
+        "failed",
+        "kind",
+        "loads"
+      ],
+      "properties": {
+        "failed": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "StarRocks' `TYPE` text.",
+          "type": "string"
+        },
+        "loads": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadPhaseBin": {
+      "type": "object",
+      "required": [
+        "begin_txn",
+        "begin_txn_permyriad",
+        "lower_ms",
+        "plan",
+        "plan_permyriad"
+      ],
+      "properties": {
+        "begin_txn": {
+          "type": "string"
+        },
+        "begin_txn_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "lower_ms": {
+          "type": "string"
+        },
+        "plan": {
+          "type": "string"
+        },
+        "plan_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "upper_ms": {
+          "description": "`None` for the open last bin.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadPhaseDistribution": {
+      "type": "object",
+      "required": [
+        "axis_ticks",
+        "begin_txn",
+        "bins",
+        "plan"
+      ],
+      "properties": {
+        "axis_ticks": {
+          "description": "Top first: the axis top, its half and zero.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "begin_txn": {
+          "$ref": "#/definitions/LoadPhaseQuantiles"
+        },
+        "bins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadPhaseBin"
+          }
+        },
+        "plan": {
+          "$ref": "#/definitions/LoadPhaseQuantiles"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadPhaseQuantiles": {
+      "type": "object",
+      "required": [
+        "samples"
+      ],
+      "properties": {
+        "p50_ms": {
+          "description": "Nearest rank; `None` with fewer than 20 samples.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "p95_ms": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "samples": {
+          "description": "Records that report this phase.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadRecordsSummary": {
+      "type": "object",
+      "required": [
+        "failed",
+        "filtered_rows",
+        "filtered_rows_unknown",
+        "loaded_rows",
+        "loaded_rows_unknown",
+        "loads"
+      ],
+      "properties": {
+        "begin_plan_p95_ms": {
+          "description": "Nearest-rank P95 of begin-transaction plus plan time, over records that report both; `None` with fewer than 20 such records.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failed": {
+          "type": "string"
+        },
+        "filtered_rows": {
+          "type": "string"
+        },
+        "filtered_rows_unknown": {
+          "type": "string"
+        },
+        "filtered_share_permyriad": {
+          "description": "Filtered over filtered plus loaded rows, 0..=10000; `None` when any count is unknown or both sums are zero.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "loaded_rows": {
+          "description": "Sums over records that report the count; unknown ones are counted apart and never added as zero.",
+          "type": "string"
+        },
+        "loaded_rows_unknown": {
+          "type": "string"
+        },
+        "loads": {
+          "description": "Records StarRocks still holds (system loads excluded unless asked).",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadTableBar": {
+      "type": "object",
+      "required": [
+        "failed",
+        "filtered_rows",
+        "filtered_unknown",
+        "loads",
+        "table",
+        "width_permyriad"
+      ],
+      "properties": {
+        "failed": {
+          "type": "string"
+        },
+        "filtered_rows": {
+          "type": "string"
+        },
+        "filtered_unknown": {
+          "type": "string"
+        },
+        "loads": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        },
+        "width_permyriad": {
+          "description": "Log-scaled against the largest, 0..=10000.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadViewSupport": {
+      "description": "What the connected version can show. 3.3+ is complete; 3.2 has Routine Load jobs without partition lag and no load records; 3.1 has neither.",
+      "type": "string",
+      "enum": [
+        "full",
+        "without_lag",
+        "unsupported_version"
+      ]
+    },
+    "RoutineLagBar": {
+      "type": "object",
+      "required": [
+        "db",
+        "job_id",
+        "job_name",
+        "lag",
+        "partition",
+        "state_class",
+        "table",
+        "width_permyriad"
+      ],
+      "properties": {
+        "consumed_message_ms": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "db": {
+          "type": "string"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "job_name": {
+          "type": "string"
+        },
+        "lag": {
+          "type": "string"
+        },
+        "partition": {
+          "type": "string"
+        },
+        "state_class": {
+          "$ref": "#/definitions/RoutineLoadStateClass"
+        },
+        "table": {
+          "type": "string"
+        },
+        "width_permyriad": {
+          "description": "Log-scaled against the largest, 0..=10000.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutineLoadOverview": {
+      "type": "object",
+      "required": [
+        "ended",
+        "error_rows",
+        "error_rows_unknown",
+        "lags",
+        "paused",
+        "paused_jobs",
+        "running",
+        "scheduling",
+        "support",
+        "truncated"
+      ],
+      "properties": {
+        "ended": {
+          "description": "Stopped or cancelled; StarRocks drops them after 3 days.",
+          "type": "string"
+        },
+        "error_rows": {
+          "description": "Lifetime error rows summed over jobs that report them.",
+          "type": "string"
+        },
+        "error_rows_unknown": {
+          "description": "Jobs that do not report error rows; not in the sum.",
+          "type": "string"
+        },
+        "lags": {
+          "description": "Largest partition lags of jobs that have not ended.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoutineLagBar"
+          }
+        },
+        "max_running_lag": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RoutineLagBar"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "paused": {
+          "type": "string"
+        },
+        "paused_jobs": {
+          "description": "Newest paused first, at most `LOAD_OVERVIEW_PAUSED`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoutinePausedJob"
+          }
+        },
+        "running": {
+          "type": "string"
+        },
+        "scheduling": {
+          "type": "string"
+        },
+        "support": {
+          "$ref": "#/definitions/LoadViewSupport"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutineLoadStateClass": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "running",
+            "paused",
+            "stopped",
+            "cancelled",
+            "unknown"
+          ]
+        },
+        {
+          "description": "`NEED_SCHEDULE`: waiting for the next task.",
+          "type": "string",
+          "enum": [
+            "scheduling"
+          ]
+        }
+      ]
+    },
+    "RoutinePausedJob": {
+      "type": "object",
+      "required": [
+        "db",
+        "job_id",
+        "name",
+        "table"
+      ],
+      "properties": {
+        "db": {
+          "type": "string"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "max_lag": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "pause_time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "table": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

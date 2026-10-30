@@ -18,6 +18,13 @@ import type {
   GovernanceListResponse,
   GovernanceTransitionRequest,
   HistoryAlertsResponse,
+  RoutineLoadJobsResponse,
+  LoadErrorLogRequest,
+  LoadErrorLogResponse,
+  LoadOverviewRequest,
+  LoadOverviewResponse,
+  LoadRecordsRequest,
+  LoadRecordsResponse,
   NotifyChannelSaveRequest,
   NotifyDeliveriesRequest,
   NotifyDeliveriesResponse,
@@ -445,6 +452,41 @@ export class DoctorApi {
 
   async clearHistory(signal?: AbortSignal): Promise<void> {
     await this.postJson<unknown>("/history/clear", {}, signal);
+  }
+
+  /** Task 51: Routine Load jobs, read live; nothing is stored. */
+  async readRoutineLoadJobs(connectionId: string, signal?: AbortSignal): Promise<RoutineLoadJobsResponse> {
+    const value = await this.postConnection<unknown>("loads/routine-jobs", { connection_id: connectionId }, signal);
+    if (!isRecord(value) || typeof value.support !== "string" || !Array.isArray(value.jobs)) {
+      throw { code: "invalid_routine_load_jobs", stage: "loads", message_id: "invalid_routine_load_jobs", recoverability: "retry_same", details: {} } satisfies ApiFailure;
+    }
+    return value as RoutineLoadJobsResponse;
+  }
+
+  async readLoadOverview(request: LoadOverviewRequest, signal?: AbortSignal): Promise<LoadOverviewResponse> {
+    const value = await this.postConnection<unknown>("loads/overview", request, signal);
+    if (!isRecord(value) || typeof value.support !== "string" || !Array.isArray(value.hours) || !isRecord(value.summary) || !isRecord(value.routine) || !isRecord(value.phases)) {
+      throw { code: "invalid_load_overview", stage: "loads", message_id: "invalid_load_overview", recoverability: "retry_same", details: {} } satisfies ApiFailure;
+    }
+    return value as LoadOverviewResponse;
+  }
+
+  async readLoadRecords(request: LoadRecordsRequest, signal?: AbortSignal): Promise<LoadRecordsResponse> {
+    const value = await this.postConnection<unknown>("loads/records", request, signal);
+    if (!isRecord(value) || typeof value.support !== "string" || !Array.isArray(value.records) || !isRecord(value.summary)) {
+      throw { code: "invalid_load_records", stage: "loads", message_id: "invalid_load_records", recoverability: "retry_same", details: {} } satisfies ApiFailure;
+    }
+    return value as LoadRecordsResponse;
+  }
+
+  /** One load's error log; rows are business data and are never cached. */
+  async readLoadErrorLog(connectionId: string, jobId: string, signal?: AbortSignal): Promise<LoadErrorLogResponse> {
+    const request: LoadErrorLogRequest = { connection_id: connectionId, job_id: jobId };
+    const value = await this.postConnection<unknown>("loads/error-log", request, signal);
+    if (!isRecord(value) || typeof value.state !== "string" || !Array.isArray(value.entries)) {
+      throw { code: "invalid_load_error_log", stage: "loads", message_id: "invalid_load_error_log", recoverability: "retry_same", details: {} } satisfies ApiFailure;
+    }
+    return value as LoadErrorLogResponse;
   }
 
   async readAuditOverview(request: AuditOverviewReadRequest, signal?: AbortSignal): Promise<AuditOverviewResponse> {

@@ -22,6 +22,8 @@ pub use history_trend::{
     TREND_MIN_RELATIVE_PERCENT, TemplateTrend, TrendBucket, TrendWindows, WindowStats,
     evaluate_template_trend, history_rule_version, trend_series, verify_change, window_stats,
 };
+mod load_error_log;
+pub use load_error_log::{LOAD_ERROR_LOG_MAX_BYTES, ParsedLoadErrorLog, parse_load_error_log};
 mod log_histogram;
 mod metrics;
 mod report;

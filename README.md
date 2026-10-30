@@ -94,6 +94,16 @@ docker compose up -d --build
 | 投递记录 | 每次发送的结果、重试与错误类别；超时 10 秒，网络类失败按 1/5/30 分钟重试；短信每小时有上限 |
 | 内容边界 | 只发集群、模板指纹、严重度、置信度与中位数变化，不含 SQL 字面量、Profile 或口令；飞书、钉钉只接受官方地址 |
 
+### 导入（v1.0.1 之后新增，尚未发布）
+
+| 能力 | 说明 |
+|---|---|
+| 概览 | 每小时导入次数与失败、过滤行最多的表、Routine Load 分区积压 Top 10、取事务/规划耗时分布；点图进入对应的记录或作业。审计概览里也有一张导入摘要卡 |
+| Routine Load | 作业状态、每个分区的消费进度与积压、速率、错误行、暂停原因；只读，不提供暂停或恢复 |
+| 导入记录 | Stream Load、Broker Load、INSERT 与 Routine Load 任务的结果、过滤行、取事务/规划/接收数据三段毫秒耗时、来源用户与 IP，按表汇总 |
+| 错误日志 | 点开即看 StarRocks 记录的被拒绝行与原因（与 ErrorURL 同源，经只读 SQL 读取），按原因分类；被 BE 清理时如实说明 |
+| 边界 | 全部实时读取 `information_schema`，不落盘；StarRocks 只保留最近 3 天 / 约 1000 条；3.3 起完整支持 |
+
 ## 截图
 
 <table>
@@ -119,6 +129,10 @@ docker compose up -d --build
   <tr>
     <td><img src="docs/assets/screenshots/09-alerts.png" alt="告警"><br><sub><b>告警</b>：回归判定与证据链</sub></td>
     <td><img src="docs/assets/screenshots/10-governance.png" alt="治理队列"><br><sub><b>治理队列</b>：钉住基线，验证后关闭</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/13-load-overview.png" alt="导入概览"><br><sub><b>导入概览</b>（main 分支）：每小时导入与失败、过滤行最多的表、Routine Load 积压、取事务/规划耗时；早于最早记录的时段标为未知</sub></td>
+    <td><img src="docs/assets/screenshots/14-load-records.png" alt="导入记录"><br><sub><b>导入记录</b>（main 分支）：从概览点小时进入，阶段毫秒耗时、过滤行与错误日志入口</sub></td>
   </tr>
 </table>
 
@@ -178,6 +192,7 @@ flowchart LR
 | 最近发布 | **v1.0.1**（2026-10-29），见 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。服务器部署统一用 Docker，不提供安装包 |
 | v1.0.0 | SQL 质量监控阶段 A～D 已完成开发与本机验收；全项目审计的 19 个问题已修复 |
 | v1.0.1 | 新增审计概览（时间窗性能图表与 30 天负载视图）和多渠道告警通知；本地 CI 与官方 3.5.14 E2E 通过（邮件经本地 SMTP 接收端验证）；飞书、钉钉、阿里云与腾讯云短信的真实发送 **待验证** |
+| main 分支 | v1.0.1 之后新增导入工作区（概览、Routine Load、导入记录、错误日志）与审计概览里的导入摘要卡，官方 3.5.14 + Kafka E2E 通过，尚未发布 |
 | 本机验证 | 本地 CI 全部通过；固定 digest 的官方 `starrocks/*:3.5.14` Docker 夹具上，指纹、采集、趋势、告警治理、多 BE、发布级审计、TLS verify-full 的 E2E 均通过 |
 | 生产验收 | **待验证**：G1 生产只读试点、G2 真实业务分布校准尚未进行。因此不宣称 Production-safe；远端集群默认不采集，告警阈值标为“规则试运行中” |
 | 支持版本 | StarRocks **3.1 及以后**（已审计 3.1～4.1），2.5、3.0 不支持；详见[支持的 StarRocks 版本](#支持的-starrocks-版本) |

@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LoadRecordsRequest",
+  "type": "object",
+  "required": [
+    "connection_id",
+    "include_system"
+  ],
+  "properties": {
+    "connection_id": {
+      "type": "string"
+    },
+    "created_hour": {
+      "description": "One hour of creation time, `YYYY-MM-DD HH` in the FE time zone, as the overview's hourly buckets name it (task 52).",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "include_system": {
+      "description": "Statistics collection and audit-log loads are hidden unless asked.",
+      "type": "boolean"
+    },
+    "kind": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/LoadKindFilter"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "outcome": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/LoadOutcomeFilter"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "table": {
+      "description": "Case-insensitive substring of `db.table`.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "LoadKindFilter": {
+      "type": "string",
+      "enum": [
+        "stream_load",
+        "routine_load",
+        "broker",
+        "insert"
+      ]
+    },
+    "LoadOutcomeFilter": {
+      "type": "string",
+      "enum": [
+        "failed",
+        "filtered",
+        "running"
+      ]
+    }
+  }
+}

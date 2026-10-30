@@ -17,6 +17,7 @@ import { advanceSqlExecutionAttempt, attemptForConnection, canDispatchSqlExecuti
 import { useLocale, type LocalizedText } from "./i18n/locale";
 import { doctorApi } from "./lib/api";
 import { CollectionCapsule, monitorGeneration, useHistoryStatus, type MonitoringTab } from "./features/history/history-status";
+import type { LoadFocus } from "./features/loads/LoadWorkspace";
 
 // Connected audit UI is not needed for offline Profile diagnosis.
 const AuditWorkloadWorkspace = lazy(() => import("./features/audit/AuditWorkloadWorkspace").then((module) => ({ default: module.AuditWorkloadWorkspace })));
@@ -27,11 +28,12 @@ const OfflineCompareForm = lazy(() => import("./features/compare/OfflineCompareF
 const HistoryWorkspace = lazy(() => import("./features/history/HistoryWorkspace").then((module) => ({ default: module.HistoryWorkspace })));
 const AlertsWorkspace = lazy(() => import("./features/history/MonitoringWorkspaces").then((module) => ({ default: module.AlertsWorkspace })));
 const GovernanceWorkspace = lazy(() => import("./features/history/MonitoringWorkspaces").then((module) => ({ default: module.GovernanceWorkspace })));
+const LoadWorkspace = lazy(() => import("./features/loads/LoadWorkspace").then((module) => ({ default: module.LoadWorkspace })));
 const RunningProfileEntry = lazy(() => import("./features/queries/RunningProfileEntry").then((module) => ({ default: module.RunningProfileEntry })));
 
 const workspaces = ["Queries", "Doctor", "Recommendations", "Compare"] as const;
 /** v1.0 monitoring views sit after the numbered flow, unnumbered. */
-const monitoringWorkspaces = ["Trends", "Alerts", "Governance"] as const;
+const monitoringWorkspaces = ["Trends", "Alerts", "Governance", "Loads"] as const;
 export type Workspace = (typeof workspaces)[number] | (typeof monitoringWorkspaces)[number];
 /** One switch for every way to pick a query; nothing else lives in the header. */
 export type QueryMode = "audit" | "profiles" | "running" | "sql";
@@ -213,6 +215,11 @@ export function App(): JSX.Element {
   const openTrends = (templateKey: string, target: string) => { if (target) setPickedTarget(target); setTrendFocus(templateKey); setMonitoringTab("trends"); setWorkspace("Trends"); };
   const openGovernanceItem = (itemId: string) => { setGovernanceFocus(itemId); setWorkspace("Governance"); };
   const openAlerts = Number(history.status?.open_alerts ?? "0");
+  // Paused Routine Load jobs as the load workspace last read them; a new session starts unknown.
+  const [pausedLoads, setPausedLoads] = useState<{ connectionId: string; count: number } | null>(null);
+  const [loadFocus, setLoadFocus] = useState<LoadFocus | null>(null);
+  const openLoads = (focus: LoadFocus) => { setLoadFocus(focus); setWorkspace("Loads"); };
+  const pausedLoadCount = pausedLoads && pausedLoads.connectionId === readySessionId ? pausedLoads.count : 0;
   const connected = (connection.phase === "ready" || connection.phase === "unsupported") && connectionSession !== null;
   const auditReady = canShowAuditWorkload(connectionSession);
   const activeQueryMode: QueryMode = queryMode ?? (auditReady ? "audit" : "profiles");
@@ -490,7 +497,7 @@ export function App(): JSX.Element {
             <button aria-current={workspace === item && !firstRun ? "page" : undefined} data-count={item === "Recommendations" && doctorReport ? recommendedFindings(doctorReport).length : undefined} data-step={index + 1} disabled={firstRun && !doctorReport && (item === "Doctor" || item === "Recommendations")} onClick={() => { if (item === "Doctor") setImporting(false); setWorkspace(item); }} type="button">{workspaceLabel(item, text)}</button>
           </Fragment>)}
           <span aria-hidden="true" className="workspace-nav-divider" />
-          {monitoringWorkspaces.map((item) => <button aria-current={workspace === item ? "page" : undefined} className="monitoring" data-count={item === "Alerts" && openAlerts > 0 ? openAlerts : undefined} key={item} onClick={() => setWorkspace(item)} type="button">{workspaceLabel(item, text)}</button>)}
+          {monitoringWorkspaces.map((item) => <button aria-current={workspace === item ? "page" : undefined} className="monitoring" data-count={item === "Alerts" && openAlerts > 0 ? openAlerts : item === "Loads" && pausedLoadCount > 0 ? pausedLoadCount : undefined} key={item} onClick={() => { if (item === "Loads") setLoadFocus(null); setWorkspace(item); }} type="button">{workspaceLabel(item, text)}</button>)}
         </nav>
         <div className="header-actions">
           <CollectionCapsule onOpen={() => { setMonitoringTab("collection"); setWorkspace("Trends"); }} status={history.status} />
@@ -531,7 +538,7 @@ export function App(): JSX.Element {
           </div>
           {/* Its own boundary: loading one view keeps the mode tabs above it in place. */}
           <div ref={queryViewRef}><Suspense fallback={<p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}>
-            {activeQueryMode === "audit" && <AuditWorkloadWorkspace baselineQueryId={compareBaseline?.connectionId === connectionSession?.connection_id ? compareBaseline?.query.query_id ?? null : null} onOpenCompare={acceptConnectedComparison} onOpenPlanCheck={(request) => { switchQueryMode("sql"); void requestExplain(request); }} onSetBaseline={setBaselineFromProfile} session={connectionSession} onConnect={() => setDialogOpen(true)} onDiscoveryChanged={invalidateConnectedArtifacts} onSessionExpired={expireConnection} onOpenDoctor={acceptConnectedReport} />}
+            {activeQueryMode === "audit" && <AuditWorkloadWorkspace baselineQueryId={compareBaseline?.connectionId === connectionSession?.connection_id ? compareBaseline?.query.query_id ?? null : null} onOpenCompare={acceptConnectedComparison} onOpenPlanCheck={(request) => { switchQueryMode("sql"); void requestExplain(request); }} onSetBaseline={setBaselineFromProfile} session={connectionSession} onConnect={() => setDialogOpen(true)} onDiscoveryChanged={invalidateConnectedArtifacts} onSessionExpired={expireConnection} onOpenDoctor={acceptConnectedReport} onOpenLoads={openLoads} />}
             {activeQueryMode === "profiles" && <QueriesWorkspace onConnect={() => setDialogOpen(true)} onImportProfile={openImport} onDiscoveryChanged={invalidateConnectedArtifacts} onSessionExpired={expireConnection} onOpenPlanCheck={(request) => { switchQueryMode("sql"); void requestExplain(request); }} onOpenCompare={acceptConnectedComparison} onOpenDoctor={acceptConnectedReport} session={connected ? connectionSession : null} />}
             {activeQueryMode === "running" && <RunningProfileEntry session={connectionSession} onDiscoveryChanged={invalidateConnectedArtifacts} onSessionExpired={expireConnection} onOpenDoctor={acceptRunningReport} />}
             {activeQueryMode === "sql" && (connectionSession?.state === "ready" ? <SqlAnalysisWorkspace
@@ -593,6 +600,7 @@ export function App(): JSX.Element {
         </>}
         {workspace === "Trends" && <HistoryWorkspace connectionId={readySessionId} focusTemplate={trendFocus} history={history} onOpenDoctor={acceptConnectedReport} onOpenItem={openGovernanceItem} onOpenQueries={() => setWorkspace("Queries")} onSessionExpired={expireConnection} onTab={setMonitoringTab} onTarget={setPickedTarget} onTargets={setKnownTargets} tab={monitoringTab} target={monitorTarget} />}
         {workspace === "Alerts" && <AlertsWorkspace generation={monitorGeneration(history.status)} onChanged={history.refresh} onOpenItem={openGovernanceItem} onOpenQueries={() => setWorkspace("Queries")} onOpenTrends={openTrends} onRetryStatus={history.refresh} store={history.status?.store} target={monitorTarget} targets={knownTargets} onTarget={setPickedTarget} />}
+        {workspace === "Loads" && <LoadWorkspace connectionId={readySessionId} focus={loadFocus} key={readySessionId ?? "none"} onOpenQueries={() => setWorkspace("Queries")} onPaused={(count) => { if (readySessionId) setPausedLoads({ connectionId: readySessionId, count }); }} />}
         {workspace === "Governance" && <GovernanceWorkspace focusId={governanceFocus} onOpenQueries={() => setWorkspace("Queries")} onOpenTrends={openTrends} onRetryStatus={history.refresh} store={history.status?.store} target={monitorTarget} targets={knownTargets} onTarget={setPickedTarget} />}
         </Suspense>
       </section>
@@ -639,6 +647,7 @@ function workspaceLabel(workspace: Workspace, text: LocalizedText): string {
     Trends: ["Trends", "趋势"],
     Alerts: ["Alerts", "告警"],
     Governance: ["Governance", "治理"],
+    Loads: ["Loads", "导入"],
   };
   return text(...labels[workspace]);
 }

@@ -15,8 +15,10 @@ use doctor_contracts::{
     AUDIT_FINGERPRINT_READ_LIMIT, AUDIT_FINGERPRINT_STATEMENT_CHARS, AuditFamilyRequest,
     AuditFamilySort, AuditMetricId, AuditMetricInput, AuditOccurrenceRequest,
     AuditOverviewFamilyTopSort, AuditOverviewPrimary, AuditOverviewRequest, AuditScope,
-    AuditStatementFilter, AuditStatementFilterCoverage, ExplainMode, OfficialProfileIdentity,
-    QueryListStatementFilterCoverage, RequestedSourceKind, RuntimeInventoryAcquisitionShape,
+    AuditStatementFilter, AuditStatementFilterCoverage, ExplainMode, LoadOverviewRequest,
+    LoadOverviewResponse, LoadRecordsRequest, LoadRecordsResponse, LoadViewSupport,
+    OfficialProfileIdentity, QueryListStatementFilterCoverage, RequestedSourceKind,
+    RoutineLoadJobsResponse, RuntimeInventoryAcquisitionShape,
 };
 use doctor_core::InputEnvelope;
 
@@ -26,6 +28,7 @@ mod mysql_text;
 pub use mysql_text::MysqlTextRemoteFactory;
 mod audit_family_session;
 mod audit_workload;
+mod load_monitor;
 pub use audit_family_session::{AuditFamilyDetailWorkload, PreparedAuditFamilyDetail};
 use audit_family_session::{
     SuccessfulProfileEvidence, family_bindings, occurrence_family_bindings, publish_family_bindings,
@@ -57,6 +60,11 @@ pub use audit_workload::{
     AuditPerformanceDimensionSource, AuditPerformanceErrorSource, AuditPerformanceSource,
     AuditPerformanceSummarySource, audit_performance_bucket_count, audit_performance_statement,
     decode_performance_source_rows, summary_cell as audit_performance_summary_cell,
+};
+pub use load_monitor::{
+    LOAD_RECORDS_READ_LIMIT, ROUTINE_LOAD_JOBS_LIMIT, build_load_overview, decode_load_records,
+    decode_routine_load_jobs, load_records_statement, load_support, load_tracking_log_statement,
+    routine_load_jobs_statement, routine_overview,
 };
 
 /// The release the connector fixtures report; every audited release (3.1–4.1) connects.
@@ -757,6 +765,16 @@ pub enum RemoteOperation {
         request: AuditSqlLookupRequest,
         at_milliseconds: i128,
         schema: AuditSchema,
+    },
+    /// Task 51: `information_schema.routine_load_jobs`, lag columns on 3.3+.
+    RoutineLoadJobs {
+        with_lag: bool,
+    },
+    /// Task 51: `information_schema.loads`, newest first, bounded.
+    LoadRecords,
+    /// Task 51: one job's `information_schema.load_tracking_logs` text.
+    LoadTrackingLog {
+        job_id: u64,
     },
     ShowProfileList {
         limit: u16,
@@ -2086,6 +2104,167 @@ impl SessionManager {
         )
     }
 
+    /// Task 51: Routine Load jobs, read live; nothing is stored.
+    pub fn routine_load_jobs_controlled(
+        &self,
+        connection_id: &str,
+        control: Option<&Arc<OperationControl>>,
+    ) -> Result<RoutineLoadJobsResponse, ConnectorError> {
+        self.with_supported_session_controlled(connection_id, control, |session| {
+            let (support, _) = load_support(session_version(session));
+            let fe_time_zone = session
+                .view
+                .time_zone
+                .as_ref()
+                .map(|zone| zone.system_time_zone.clone());
+            if support == LoadViewSupport::UnsupportedVersion {
+                return Ok(decode_routine_load_jobs(Vec::new(), support, fe_time_zone));
+            }
+            let rows = nullable_rows(
+                session
+                    .remote
+                    .run(RemoteOperation::RoutineLoadJobs {
+                        with_lag: support == LoadViewSupport::Full,
+                    })
+                    .map_err(|error| error.connector("routine_load_jobs"))?,
+                "routine_load_jobs",
+            )?;
+            Ok(decode_routine_load_jobs(rows, support, fe_time_zone))
+        })
+    }
+
+    /// Task 51: recent load records, read live and filtered here.
+    pub fn load_records_controlled(
+        &self,
+        connection_id: &str,
+        request: &LoadRecordsRequest,
+        control: Option<&Arc<OperationControl>>,
+    ) -> Result<LoadRecordsResponse, ConnectorError> {
+        self.with_supported_session_controlled(connection_id, control, |session| {
+            let (_, support) = load_support(session_version(session));
+            let fe_time_zone = session
+                .view
+                .time_zone
+                .as_ref()
+                .map(|zone| zone.system_time_zone.clone());
+            let audit_database = session
+                .audit_table
+                .as_source_name()
+                .split('.')
+                .next()
+                .map(str::to_owned);
+            if support == LoadViewSupport::UnsupportedVersion {
+                return Ok(decode_load_records(
+                    Vec::new(),
+                    request,
+                    support,
+                    fe_time_zone,
+                    None,
+                ));
+            }
+            let rows = nullable_rows(
+                session
+                    .remote
+                    .run(RemoteOperation::LoadRecords)
+                    .map_err(|error| error.connector("load_records"))?,
+                "load_records",
+            )?;
+            Ok(decode_load_records(
+                rows,
+                request,
+                support,
+                fe_time_zone,
+                audit_database.as_deref(),
+            ))
+        })
+    }
+
+    /// Task 52: the load overview, from one `loads` read and one
+    /// `routine_load_jobs` read in the same session; nothing is stored.
+    pub fn load_overview_controlled(
+        &self,
+        connection_id: &str,
+        request: &LoadOverviewRequest,
+        control: Option<&Arc<OperationControl>>,
+    ) -> Result<LoadOverviewResponse, ConnectorError> {
+        self.with_supported_session_controlled(connection_id, control, |session| {
+            let (routine_support, records_support) = load_support(session_version(session));
+            let fe_time_zone = session
+                .view
+                .time_zone
+                .as_ref()
+                .map(|zone| zone.system_time_zone.clone());
+            let audit_database = session
+                .audit_table
+                .as_source_name()
+                .split('.')
+                .next()
+                .map(str::to_owned);
+            let job_rows = if routine_support == LoadViewSupport::UnsupportedVersion {
+                Vec::new()
+            } else {
+                nullable_rows(
+                    session
+                        .remote
+                        .run(RemoteOperation::RoutineLoadJobs {
+                            with_lag: routine_support == LoadViewSupport::Full,
+                        })
+                        .map_err(|error| error.connector("routine_load_jobs"))?,
+                    "routine_load_jobs",
+                )?
+            };
+            let routine = decode_routine_load_jobs(job_rows, routine_support, fe_time_zone.clone());
+            let record_rows = if records_support == LoadViewSupport::UnsupportedVersion {
+                Vec::new()
+            } else {
+                nullable_rows(
+                    session
+                        .remote
+                        .run(RemoteOperation::LoadRecords)
+                        .map_err(|error| error.connector("load_records"))?,
+                    "load_records",
+                )?
+            };
+            Ok(build_load_overview(
+                record_rows,
+                request,
+                records_support,
+                fe_time_zone,
+                audit_database.as_deref(),
+                &routine,
+            ))
+        })
+    }
+
+    /// Task 51: one job's error log text, as StarRocks returns it.
+    pub fn load_tracking_log_controlled(
+        &self,
+        connection_id: &str,
+        job_id: u64,
+        control: Option<&Arc<OperationControl>>,
+    ) -> Result<Option<String>, ConnectorError> {
+        self.with_supported_session_controlled(connection_id, control, |session| {
+            let (_, support) = load_support(session_version(session));
+            if support == LoadViewSupport::UnsupportedVersion {
+                return Err(ConnectorError::new(
+                    ConnectorErrorCode::UnsupportedVersion,
+                    "load_error_log",
+                ));
+            }
+            let rows = nullable_rows(
+                session
+                    .remote
+                    .run(RemoteOperation::LoadTrackingLog { job_id })
+                    .map_err(|error| error.connector("load_error_log"))?,
+                "load_error_log",
+            )?;
+            Ok(rows
+                .into_iter()
+                .next()
+                .and_then(|row| row.into_iter().next().flatten()))
+        })
+    }
+
     pub fn audit_performance_controlled(
         &self,
         connection_id: &str,
@@ -3400,6 +3579,10 @@ fn audit_profile_context_row(row: &AuditOccurrenceSourceRow) -> Vec<String> {
     ]
 }
 
+fn session_version(session: &Session) -> Option<&str> {
+    Some(session.view.detected_version.as_str()).filter(|version| !version.is_empty())
+}
+
 fn audit_session_identity(session: &Session) -> AuditSessionIdentity {
     AuditSessionIdentity {
         connection_id: session.view.connection_id.clone(),
@@ -4272,6 +4455,7 @@ mod tests {
         ExplainVerbose,
         ExplainCosts,
         ProfiledSelect,
+        Loads,
     }
 
     struct FakeRemote {
@@ -4330,6 +4514,9 @@ mod tests {
                     ExplainMode::Costs => Operation::ExplainCosts,
                 },
                 RemoteOperation::ProfiledSelect { .. } => Operation::ProfiledSelect,
+                RemoteOperation::RoutineLoadJobs { .. }
+                | RemoteOperation::LoadRecords
+                | RemoteOperation::LoadTrackingLog { .. } => Operation::Loads,
             };
             self.operations.lock().unwrap().push(kind);
             match operation {
@@ -4658,6 +4845,9 @@ mod tests {
                         profile: self.profile.clone(),
                     })
                 }
+                RemoteOperation::RoutineLoadJobs { .. }
+                | RemoteOperation::LoadRecords
+                | RemoteOperation::LoadTrackingLog { .. } => Err(RemoteError::Unsupported),
             }
         }
         fn close(&mut self) {
@@ -5005,7 +5195,10 @@ mod tests {
                 | RemoteOperation::GetQueryProfile { .. }
                 | RemoteOperation::AnalyzeProfile { .. }
                 | RemoteOperation::Explain { .. }
-                | RemoteOperation::ProfiledSelect { .. } => Err(RemoteError::Unsupported),
+                | RemoteOperation::ProfiledSelect { .. }
+                | RemoteOperation::RoutineLoadJobs { .. }
+                | RemoteOperation::LoadRecords
+                | RemoteOperation::LoadTrackingLog { .. } => Err(RemoteError::Unsupported),
             }
         }
     }

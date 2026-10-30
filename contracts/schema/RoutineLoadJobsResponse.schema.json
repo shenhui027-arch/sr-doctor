@@ -1,0 +1,462 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RoutineLoadJobsResponse",
+  "type": "object",
+  "required": [
+    "jobs",
+    "limitations",
+    "summary",
+    "support",
+    "truncated"
+  ],
+  "properties": {
+    "fe_time_zone": {
+      "description": "The FE system time zone the time strings are in.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "jobs": {
+      "description": "Newest job first.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/RoutineLoadJob"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "summary": {
+      "description": "Counts and lags over `jobs`, summed by the server (task 52).",
+      "allOf": [
+        {
+          "$ref": "#/definitions/RoutineLoadOverview"
+        }
+      ]
+    },
+    "support": {
+      "$ref": "#/definitions/LoadViewSupport"
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "LoadViewSupport": {
+      "description": "What the connected version can show. 3.3+ is complete; 3.2 has Routine Load jobs without partition lag and no load records; 3.1 has neither.",
+      "type": "string",
+      "enum": [
+        "full",
+        "without_lag",
+        "unsupported_version"
+      ]
+    },
+    "RoutineLagBar": {
+      "type": "object",
+      "required": [
+        "db",
+        "job_id",
+        "job_name",
+        "lag",
+        "partition",
+        "state_class",
+        "table",
+        "width_permyriad"
+      ],
+      "properties": {
+        "consumed_message_ms": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "db": {
+          "type": "string"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "job_name": {
+          "type": "string"
+        },
+        "lag": {
+          "type": "string"
+        },
+        "partition": {
+          "type": "string"
+        },
+        "state_class": {
+          "$ref": "#/definitions/RoutineLoadStateClass"
+        },
+        "table": {
+          "type": "string"
+        },
+        "width_permyriad": {
+          "description": "Log-scaled against the largest, 0..=10000.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutineLoadJob": {
+      "type": "object",
+      "required": [
+        "db",
+        "has_error_log",
+        "job_id",
+        "name",
+        "partitions",
+        "source_type",
+        "state",
+        "state_class",
+        "statistics",
+        "table"
+      ],
+      "properties": {
+        "create_time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "current_tasks": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "db": {
+          "type": "string"
+        },
+        "end_time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "has_error_log": {
+          "type": "boolean"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "max_error_number": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_lag": {
+          "description": "The partition with the largest lag and that lag.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_lag_partition": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "other_message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "partitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoutineLoadPartition"
+          }
+        },
+        "pause_time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_type": {
+          "description": "`KAFKA`, `PULSAR`, ...",
+          "type": "string"
+        },
+        "state": {
+          "description": "StarRocks' own state text.",
+          "type": "string"
+        },
+        "state_class": {
+          "$ref": "#/definitions/RoutineLoadStateClass"
+        },
+        "statistics": {
+          "$ref": "#/definitions/RoutineLoadStatistics"
+        },
+        "table": {
+          "type": "string"
+        },
+        "topic": {
+          "description": "Only the topic is taken from the data source properties; broker lists and client properties (which may hold credentials) are not.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutineLoadOverview": {
+      "type": "object",
+      "required": [
+        "ended",
+        "error_rows",
+        "error_rows_unknown",
+        "lags",
+        "paused",
+        "paused_jobs",
+        "running",
+        "scheduling",
+        "support",
+        "truncated"
+      ],
+      "properties": {
+        "ended": {
+          "description": "Stopped or cancelled; StarRocks drops them after 3 days.",
+          "type": "string"
+        },
+        "error_rows": {
+          "description": "Lifetime error rows summed over jobs that report them.",
+          "type": "string"
+        },
+        "error_rows_unknown": {
+          "description": "Jobs that do not report error rows; not in the sum.",
+          "type": "string"
+        },
+        "lags": {
+          "description": "Largest partition lags of jobs that have not ended.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoutineLagBar"
+          }
+        },
+        "max_running_lag": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RoutineLagBar"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "paused": {
+          "type": "string"
+        },
+        "paused_jobs": {
+          "description": "Newest paused first, at most `LOAD_OVERVIEW_PAUSED`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoutinePausedJob"
+          }
+        },
+        "running": {
+          "type": "string"
+        },
+        "scheduling": {
+          "type": "string"
+        },
+        "support": {
+          "$ref": "#/definitions/LoadViewSupport"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutineLoadPartition": {
+      "type": "object",
+      "required": [
+        "partition"
+      ],
+      "properties": {
+        "consumed": {
+          "description": "The consumed position as StarRocks writes it: an offset, or a marker such as `OFFSET_ZERO`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "consumed_message_ms": {
+          "description": "Epoch milliseconds of the newest consumed message (`TIMESTAMP_PROGRESS`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lag": {
+          "description": "From `OFFSET_LAG`; `None` when StarRocks reports none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "partition": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutineLoadStateClass": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "running",
+            "paused",
+            "stopped",
+            "cancelled",
+            "unknown"
+          ]
+        },
+        {
+          "description": "`NEED_SCHEDULE`: waiting for the next task.",
+          "type": "string",
+          "enum": [
+            "scheduling"
+          ]
+        }
+      ]
+    },
+    "RoutineLoadStatistics": {
+      "description": "Lifetime counters from `STATISTICS`; every field may be missing.",
+      "type": "object",
+      "properties": {
+        "aborted_tasks": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "committed_tasks": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "load_rows_rate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "loaded_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "received_bytes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "received_bytes_rate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "task_execute_time_ms": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unselected_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutinePausedJob": {
+      "type": "object",
+      "required": [
+        "db",
+        "job_id",
+        "name",
+        "table"
+      ],
+      "properties": {
+        "db": {
+          "type": "string"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "max_lag": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "pause_time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "table": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

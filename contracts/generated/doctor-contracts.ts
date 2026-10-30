@@ -797,6 +797,270 @@ export type NotifyDeliveriesResponse = {
  * Newest first, at most 200.
  */
 deliveries: Array<NotifyDeliveryView>, sent_24h: number, failed_24h: number, pending: number, sms_usage: Array<NotifySmsUsage>, retention_days: number, };
+export type LoadViewSupport = "full" | "without_lag" | "unsupported_version";
+export type LoadReadRequest = { connection_id: string, };
+export type RoutineLoadStateClass = "running" | "scheduling" | "paused" | "stopped" | "cancelled" | "unknown";
+export type RoutineLoadPartition = { partition: string,
+/**
+ * The consumed position as StarRocks writes it: an offset, or a marker
+ * such as `OFFSET_ZERO`.
+ */
+consumed: string | null, latest: string | null,
+/**
+ * From `OFFSET_LAG`; `None` when StarRocks reports none.
+ */
+lag: string | null,
+/**
+ * Epoch milliseconds of the newest consumed message (`TIMESTAMP_PROGRESS`).
+ */
+consumed_message_ms: string | null, };
+export type RoutineLoadStatistics = { received_bytes: string | null, received_bytes_rate: string | null, loaded_rows: string | null, load_rows_rate: string | null, error_rows: string | null, total_rows: string | null, unselected_rows: string | null, committed_tasks: string | null, aborted_tasks: string | null, task_execute_time_ms: string | null, };
+export type RoutineLoadJob = { job_id: string, name: string, db: string, table: string,
+/**
+ * StarRocks' own state text.
+ */
+state: string, state_class: RoutineLoadStateClass, create_time: string | null, pause_time: string | null, end_time: string | null,
+/**
+ * `KAFKA`, `PULSAR`, ...
+ */
+source_type: string,
+/**
+ * Only the topic is taken from the data source properties; broker
+ * lists and client properties (which may hold credentials) are not.
+ */
+topic: string | null, current_tasks: string | null, statistics: RoutineLoadStatistics, max_error_number: string | null, partitions: Array<RoutineLoadPartition>,
+/**
+ * The partition with the largest lag and that lag.
+ */
+max_lag: string | null, max_lag_partition: string | null, reason: string | null, other_message: string | null, has_error_log: boolean, };
+export type RoutineLoadJobsResponse = { support: LoadViewSupport,
+/**
+ * The FE system time zone the time strings are in.
+ */
+fe_time_zone: string | null,
+/**
+ * Newest job first.
+ */
+jobs: Array<RoutineLoadJob>,
+/**
+ * Counts and lags over `jobs`, summed by the server (task 52).
+ */
+summary: RoutineLoadOverview, truncated: boolean, limitations: Array<string>, };
+export type LoadKindFilter = "stream_load" | "routine_load" | "broker" | "insert";
+export type LoadOutcomeFilter = "failed" | "filtered" | "running";
+export type LoadRecordsRequest = { connection_id: string, kind: LoadKindFilter | null, outcome: LoadOutcomeFilter | null,
+/**
+ * Case-insensitive substring of `db.table`.
+ */
+table: string | null,
+/**
+ * Statistics collection and audit-log loads are hidden unless asked.
+ */
+include_system: boolean,
+/**
+ * One hour of creation time, `YYYY-MM-DD HH` in the FE time zone, as
+ * the overview's hourly buckets name it (task 52).
+ */
+created_hour: string | null, };
+export type LoadStateClass = "finished" | "cancelled" | "running" | "unknown";
+export type LoadRecord = { job_id: string, label: string, db: string, table: string,
+/**
+ * StarRocks' `TYPE` text: `STREAM_LOAD`, `ROUTINE_LOAD`, `BROKER`, `INSERT`, ...
+ */
+kind: string, state: string, state_class: LoadStateClass, user: string | null, client_ip: string | null, create_time: string | null, finish_time: string | null,
+/**
+ * `None` where StarRocks reports -1 (unknown) or nothing.
+ */
+loaded_rows: string | null, filtered_rows: string | null,
+/**
+ * Filtered over filtered plus loaded rows, 0..=10000; `None` when
+ * either count is unknown or both are zero.
+ */
+filtered_share_permyriad: number | null, unselected_rows: string | null, begin_txn_ms: string | null, plan_ms: string | null, receive_data_ms: string | null,
+/**
+ * Finish minus create, in whole seconds (both strings are second precision).
+ */
+total_seconds: string | null, error_message: string | null, has_error_log: boolean, profile_id: string | null, system: boolean, };
+export type LoadTableSummary = { table: string, loads: string, failed: string,
+/**
+ * Sum over records that report the count.
+ */
+filtered_rows: string,
+/**
+ * Records whose filtered count StarRocks does not know; not in the sum.
+ */
+filtered_unknown: string, };
+export type LoadRecordsSummary = {
+/**
+ * Records StarRocks still holds (system loads excluded unless asked).
+ */
+loads: string, failed: string,
+/**
+ * Sums over records that report the count; unknown ones are counted
+ * apart and never added as zero.
+ */
+loaded_rows: string, filtered_rows: string, loaded_rows_unknown: string, filtered_rows_unknown: string,
+/**
+ * Filtered over filtered plus loaded rows, 0..=10000; `None` when any
+ * count is unknown or both sums are zero.
+ */
+filtered_share_permyriad: number | null,
+/**
+ * Nearest-rank P95 of begin-transaction plus plan time, over records
+ * that report both; `None` with fewer than 20 such records.
+ */
+begin_plan_p95_ms: string | null, };
+export type LoadRecordsResponse = { support: LoadViewSupport, fe_time_zone: string | null,
+/**
+ * Newest first, after filters, at most `LOAD_RECORDS_MAX`.
+ */
+records: Array<LoadRecord>, matched: string, summary: LoadRecordsSummary,
+/**
+ * Busiest tables by load count, at most 10.
+ */
+tables: Array<LoadTableSummary>,
+/**
+ * The oldest record StarRocks still holds.
+ */
+earliest_create_time: string | null,
+/**
+ * The visible window is probably cut by StarRocks' retention limits.
+ */
+at_retention_limit: boolean, hidden_system: string, limitations: Array<string>, };
+export type LoadErrorLogRequest = { connection_id: string, job_id: string, };
+export type LoadErrorCategory = "out_of_range" | "too_long" | "column_count" | "null_in_non_nullable" | "out_of_partition" | "json_cast" | "json_structure" | "other";
+export type LoadErrorEntry = { index: number, category: LoadErrorCategory, column: string | null, target_type: string | null, reason: string, row: string | null,
+/**
+ * StarRocks printed converted values (`[4, 'x', NULL]`), not the source text.
+ */
+row_converted: boolean, truncated: boolean, };
+export type LoadErrorCategoryCount = { category: LoadErrorCategory, column: string | null, target_type: string | null, count: number, };
+export type LoadErrorLogState = "available" | "purged" | "unavailable" | "none";
+export type LoadErrorLogResponse = { job_id: string, state: LoadErrorLogState, entries: Array<LoadErrorEntry>,
+/**
+ * Counts over the sampled entries, largest first.
+ */
+categories: Array<LoadErrorCategoryCount>,
+/**
+ * More entries existed than `LOAD_ERROR_MAX_ENTRIES`, or the text was cut.
+ */
+truncated: boolean, limitations: Array<string>, };
+export type LoadOverviewRequest = { connection_id: string, kind: LoadKindFilter | null, include_system: boolean, };
+export type LoadHourCoverage = "complete" | "partial" | "unknown";
+export type LoadHourBucket = {
+/**
+ * `YYYY-MM-DD HH` in the FE time zone.
+ */
+hour: string, coverage: LoadHourCoverage, loads: string, failed: string, filtered_rows: string,
+/**
+ * Records of this hour whose filtered count is unknown.
+ */
+filtered_unknown: string,
+/**
+ * Bar heights against the axis top, 0..=10000.
+ */
+loads_permyriad: number, failed_permyriad: number,
+/**
+ * The table with the most failures in this hour, if any failed.
+ */
+top_failed_table: string | null, top_failed_count: string | null, };
+export type LoadKindCount = {
+/**
+ * StarRocks' `TYPE` text.
+ */
+kind: string, loads: string, failed: string, };
+export type LoadTableBar = { table: string, loads: string, failed: string, filtered_rows: string, filtered_unknown: string,
+/**
+ * Log-scaled against the largest, 0..=10000.
+ */
+width_permyriad: number, };
+export type LoadPhaseBin = { lower_ms: string,
+/**
+ * `None` for the open last bin.
+ */
+upper_ms: string | null, begin_txn: string, plan: string, begin_txn_permyriad: number, plan_permyriad: number, };
+export type LoadPhaseQuantiles = {
+/**
+ * Records that report this phase.
+ */
+samples: string,
+/**
+ * Nearest rank; `None` with fewer than 20 samples.
+ */
+p50_ms: string | null, p95_ms: string | null, };
+export type LoadPhaseDistribution = { bins: Array<LoadPhaseBin>,
+/**
+ * Top first: the axis top, its half and zero.
+ */
+axis_ticks: Array<string>, begin_txn: LoadPhaseQuantiles, plan: LoadPhaseQuantiles, };
+export type RoutineLagBar = { job_id: string, job_name: string, db: string, table: string, partition: string, lag: string, state_class: RoutineLoadStateClass, consumed_message_ms: string | null,
+/**
+ * Log-scaled against the largest, 0..=10000.
+ */
+width_permyriad: number, };
+export type RoutinePausedJob = { job_id: string, name: string, db: string, table: string, max_lag: string | null, pause_time: string | null, reason: string | null, };
+export type RoutineLoadOverview = { support: LoadViewSupport, running: string, scheduling: string, paused: string,
+/**
+ * Stopped or cancelled; StarRocks drops them after 3 days.
+ */
+ended: string,
+/**
+ * Lifetime error rows summed over jobs that report them.
+ */
+error_rows: string,
+/**
+ * Jobs that do not report error rows; not in the sum.
+ */
+error_rows_unknown: string,
+/**
+ * Largest partition lags of jobs that have not ended.
+ */
+lags: Array<RoutineLagBar>, max_running_lag: RoutineLagBar | null,
+/**
+ * Newest paused first, at most `LOAD_OVERVIEW_PAUSED`.
+ */
+paused_jobs: Array<RoutinePausedJob>, truncated: boolean, };
+export type LoadOverviewResponse = {
+/**
+ * Load records; Routine Load has its own in `routine`.
+ */
+support: LoadViewSupport, fe_time_zone: string | null, summary: LoadRecordsSummary,
+/**
+ * Failed over loads, 0..=10000; `None` with no loads.
+ */
+failed_share_permyriad: number | null,
+/**
+ * Most loads first.
+ */
+by_kind: Array<LoadKindCount>,
+/**
+ * Oldest first, ending at the hour of the newest record.
+ */
+hours: Array<LoadHourBucket>,
+/**
+ * Records in scope that no drawn hour holds (no readable creation
+ * time, or older than `LOAD_OVERVIEW_MAX_HOURS`).
+ */
+records_outside_hours: string,
+/**
+ * Top first: the axis top, its half and zero.
+ */
+hour_axis_ticks: Array<string>,
+/**
+ * Tables with filtered rows, most first.
+ */
+tables: Array<LoadTableBar>, phases: LoadPhaseDistribution, routine: RoutineLoadOverview,
+/**
+ * The oldest record in scope; hours before it are `unknown`.
+ */
+earliest_create_time: string | null,
+/**
+ * From here on every manager in scope still holds its records; hours
+ * between the two, and the hour holding this time unless it is on the
+ * hour, are `partial`. Equal to `earliest_create_time` when
+ * one manager covers the scope.
+ */
+complete_from: string | null, at_retention_limit: boolean, hidden_system: string, limitations: Array<string>, };
 export type ProductSqlFingerprint = { "state": "exact", fingerprint: string, template: string, } | { "state": "partial", reason: ProductSqlFingerprintPartialReason, } | { "state": "unavailable", reason: ProductSqlFingerprintUnavailableReason, };
 export type ProductSqlFingerprintPartialReason = "statement_truncated";
 export type ProductSqlFingerprintUnavailableReason = "statement_sql_null" | "statement_not_read" | "conflicting_source_rows" | "empty_statement" | "lexical_error" | "unbalanced_parentheses" | "multiple_statements" | "unsupported_statement" | "massive_compound_predicate";

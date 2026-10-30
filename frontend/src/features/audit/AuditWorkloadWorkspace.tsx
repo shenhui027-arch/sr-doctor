@@ -40,6 +40,8 @@ import { AuditFamilyAside, AuditFamilyList, AuditFingerprintFamilyList, AuditKpi
 import { AuditSimilarAside, AuditSimilarSqlList } from "./AuditSimilarSql";
 import { AuditPerformanceOverview } from "./AuditPerformanceOverview";
 import { AuditHistoryLoad } from "./AuditHistoryLoad";
+import { LoadSummaryCard } from "../loads/LoadSummaryCard";
+import type { LoadFocus } from "../loads/LoadWorkspace";
 import { countText } from "../../lib/duration-display";
 import { compactQueryId } from "../../lib/query-id";
 import { SqlText, SqlToggleButton } from "../shell/SqlText";
@@ -47,7 +49,7 @@ import { auditClockText, auditDigestUnavailable, auditMillisecondsText, errorPro
 export { metricText } from "./audit-display";
 import "./audit-workload.css";
 
-type AuditApi = Pick<DoctorApi, "compareConnectedProfiles" | "fetchConnectedProfile" | "readAuditSql" | "readAuditFamilyDetail" | "readAuditOverview" | "readAuditActiveAt" | "readAuditOccurrences"> & Partial<Pick<DoctorApi, "readAuditFingerprintFamilies" | "readAuditSimilarSql" | "readAuditPerformance" | "readHistoryLoad">>;
+type AuditApi = Pick<DoctorApi, "compareConnectedProfiles" | "fetchConnectedProfile" | "readAuditSql" | "readAuditFamilyDetail" | "readAuditOverview" | "readAuditActiveAt" | "readAuditOccurrences"> & Partial<Pick<DoctorApi, "readAuditFingerprintFamilies" | "readAuditSimilarSql" | "readAuditPerformance" | "readHistoryLoad" | "readLoadOverview">>;
 /** Unofficial fingerprint groups of the digest-missing executions in the admitted families window. */
 type FingerprintState = { response: AuditFingerprintFamilyResponse | null; loading: boolean; error: string | null };
 /** The family selected in the repeated-SQL table and its member ranking (design board 01 aside). */
@@ -70,6 +72,8 @@ export type AuditWorkloadWorkspaceProps = {
   onOpenDoctor?(profile: ProfileFetchResponse): void;
   onOpenPlanCheck?(request: ExplainRequest): void;
   onSetBaseline?(profile: ProfileFetchResponse): void;
+  /** Opens the load workspace; with it the overview shows the load card (task 52). */
+  onOpenLoads?(focus: LoadFocus): void;
   /** remote_timeout: the backend discarded the session after a timed-out read, not an idle expiry. */
   onSessionExpired?(reason?: "remote_timeout"): void;
   session: ConnectionSessionView | null;
@@ -91,6 +95,7 @@ export function AuditWorkloadWorkspace({
   onOpenPlanCheck,
   onSessionExpired,
   onSetBaseline,
+  onOpenLoads,
   session,
 }: AuditWorkloadWorkspaceProps): JSX.Element {
   const { text } = useLocale();
@@ -733,6 +738,7 @@ export function AuditWorkloadWorkspace({
   const moreFiltersId = "audit-more-filters";
   const readPerformance = api.readAuditPerformance;
   const readHistoryLoad = api.readHistoryLoad;
+  const readLoadOverview = api.readLoadOverview;
   const overviewView = overviewShown && readPerformance !== undefined && (view === "families" || view === "occurrences");
   const viewSwitch = <div aria-label={text("View", "视图")} className="audit-view-switch" role="group">
     {readPerformance && <button aria-pressed={overviewView} disabled={loading} onClick={() => { setOverviewShown(true); if (mode === "similar") chooseMode("families"); }} type="button">{text("Overview", "概览")}</button>}
@@ -824,6 +830,7 @@ export function AuditWorkloadWorkspace({
         onDrill={drillToWindow}
         onFilter={filterDimension}
         onOpenFamilies={() => { setOverviewShown(false); if (mode !== "families") chooseMode("families"); }}
+        loadCard={readLoadOverview && onOpenLoads ? <LoadSummaryCard api={{ readLoadOverview: readLoadOverview.bind(api) }} connectionId={session.connection_id} describeFailure={describePerformanceFailure} onOpen={onOpenLoads} text={text} /> : undefined}
         scope={currentOverview.scope}
         text={text}
       />

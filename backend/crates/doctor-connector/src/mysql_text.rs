@@ -513,6 +513,15 @@ impl Remote for MysqlTextRemote {
                 .map_err(|_| RemoteError::Protocol)
                 .and_then(|statement| self.audit_query(&statement))
                 .map(RemoteResponse::NullableRows),
+            RemoteOperation::RoutineLoadJobs { with_lag } => self
+                .audit_query(&crate::routine_load_jobs_statement(with_lag))
+                .map(RemoteResponse::NullableRows),
+            RemoteOperation::LoadRecords => self
+                .audit_query(&crate::load_records_statement())
+                .map(RemoteResponse::NullableRows),
+            RemoteOperation::LoadTrackingLog { job_id } => self
+                .audit_query(&crate::load_tracking_log_statement(job_id))
+                .map(RemoteResponse::NullableRows),
             RemoteOperation::ShowProfileList { limit } => self
                 .query(&format!("SHOW PROFILELIST LIMIT {limit}"))
                 .map(RemoteResponse::Rows),
