@@ -15,7 +15,7 @@
 [![StarRocks](https://img.shields.io/badge/StarRocks-3.1～4.1-1f55e0.svg)](docs/guide/faq.md)
 [![Backend](https://img.shields.io/badge/backend-Rust%20%2F%20Axum-b7410e.svg)](docs/development/architecture.md)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
-[![Status](https://img.shields.io/badge/v1.0.1-local%20verified%20·%20production%20pending-orange.svg)](#项目状态)
+[![Status](https://img.shields.io/badge/v1.0.2-local%20verified%20·%20production%20pending-orange.svg)](#项目状态)
 
 [快速开始](#快速开始) · [功能](#功能) · [截图](#截图) · [文档](#文档) · [安全](SECURITY.md) · [参与开发](CONTRIBUTING.md) · [更新日志](CHANGELOG.md)
 
@@ -94,7 +94,7 @@ docker compose up -d --build
 | 投递记录 | 每次发送的结果、重试与错误类别；超时 10 秒，网络类失败按 1/5/30 分钟重试；短信每小时有上限 |
 | 内容边界 | 只发集群、模板指纹、严重度、置信度与中位数变化，不含 SQL 字面量、Profile 或口令；飞书、钉钉只接受官方地址 |
 
-### 导入（v1.0.1 之后新增，尚未发布）
+### 导入（v1.0.2）
 
 | 能力 | 说明 |
 |---|---|
@@ -189,10 +189,10 @@ flowchart LR
 
 | | 状态 |
 |---|---|
-| 最近发布 | **v1.0.1**（2026-10-29），见 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。服务器部署统一用 Docker，不提供安装包 |
+| 最近发布 | **v1.0.2**（2026-10-30），见 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。服务器部署统一用 Docker，不提供安装包 |
 | v1.0.0 | SQL 质量监控阶段 A～D 已完成开发与本机验收；全项目审计的 19 个问题已修复 |
 | v1.0.1 | 新增审计概览（时间窗性能图表与 30 天负载视图）和多渠道告警通知；本地 CI 与官方 3.5.14 E2E 通过（邮件经本地 SMTP 接收端验证）；飞书、钉钉、阿里云与腾讯云短信的真实发送 **待验证** |
-| main 分支 | v1.0.1 之后新增导入工作区（概览、Routine Load、导入记录、错误日志）与审计概览里的导入摘要卡，官方 3.5.14 + Kafka E2E 通过，尚未发布 |
+| v1.0.2 | 新增导入工作区（概览、Routine Load、导入记录、错误日志）与审计概览里的导入摘要卡，修复 3.1～3.3 无法连接；官方 3.5.14 + Kafka E2E 与 3.2～4.1 官方镜像导入冒烟通过 |
 | 本机验证 | 本地 CI 全部通过；固定 digest 的官方 `starrocks/*:3.5.14` Docker 夹具上，指纹、采集、趋势、告警治理、多 BE、发布级审计、TLS verify-full 的 E2E 均通过 |
 | 生产验收 | **待验证**：G1 生产只读试点、G2 真实业务分布校准尚未进行。因此不宣称 Production-safe；远端集群默认不采集，告警阈值标为“规则试运行中” |
 | 支持版本 | StarRocks **3.1 及以后**（已审计 3.1～4.1），2.5、3.0 不支持；详见[支持的 StarRocks 版本](#支持的-starrocks-版本) |

@@ -84,7 +84,7 @@ test("Candidate package uses a strict allowlist, hashes every payload file, and 
     assert.ok(launcher.includes("$env:DOCTOR_PORT = $previousPort"));
     const verified = verifyCandidate(candidate.run_root);
     assert.ok(verified.package_file_count > 10);
-    assert.equal(verified.product_version, "1.0.1");
+    assert.equal(verified.product_version, "1.0.2");
 
     const releaseManifest = JSON.parse(readFileSync(candidate.release_manifest, "utf8"));
     const candidateManifest = JSON.parse(readFileSync(join(candidate.run_root, "candidate", "candidate-manifest.json"), "utf8"));
@@ -105,8 +105,8 @@ test("Candidate package uses a strict allowlist, hashes every payload file, and 
     ]);
     assert.equal(listed.some((path) => /northstar|raw-profile|runtime\//i.test(path)), false);
     assert.equal(releaseManifest.entrypoints.bind_address, "127.0.0.1:8000");
-    assert.equal(candidateManifest.product_version, "1.0.1");
-    assert.equal(releaseManifest.product_version, "1.0.1");
+    assert.equal(candidateManifest.product_version, "1.0.2");
+    assert.equal(releaseManifest.product_version, "1.0.2");
     assert.equal(candidateManifest.build.executed, false);
     assert.equal(candidateManifest.build.embedded_identity, null);
     assert.equal(candidateManifest.license_review.status, "complete");
@@ -118,12 +118,12 @@ test("Candidate package uses a strict allowlist, hashes every payload file, and 
     const cyclonedx = JSON.parse(readFileSync(join(candidate.run_root, "candidate", "sbom", "cyclonedx-1.5.json"), "utf8"));
     assert.equal(cyclonedx.bomFormat, "CycloneDX");
     assert.equal(cyclonedx.specVersion, "1.5");
-    assert.equal(cyclonedx.metadata.component.version, "1.0.1");
+    assert.equal(cyclonedx.metadata.component.version, "1.0.2");
     assert.ok(cyclonedx.components.length > 0);
     assert.equal(cyclonedx.components.every((component) => component.name && component.version), true);
 
     const support = readFileSync(join(candidate.run_root, "candidate", "docs", "SUPPORT.md"), "utf8");
-    assert.match(support, /^# v1\.0\.1 Candidate support/);
+    assert.match(support, /^# v1\.0\.2 Candidate support/);
     // The current product rejects EXPLAIN ANALYZE; the native path belongs to the frozen v0.2 line only.
     assert.doesNotMatch(support, /Native execution/);
     assert.match(support, /Multi-statements, EXPLAIN ANALYZE, DDL, DML, INSERT/);

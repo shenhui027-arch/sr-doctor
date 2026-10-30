@@ -15,7 +15,7 @@ Every conclusion comes with evidence; when the evidence is not enough, it says s
 [![StarRocks](https://img.shields.io/badge/StarRocks-3.1～4.1-1f55e0.svg)](docs/guide/faq.md)
 [![Backend](https://img.shields.io/badge/backend-Rust%20%2F%20Axum-b7410e.svg)](docs/development/architecture.md)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
-[![Status](https://img.shields.io/badge/v1.0.1-local%20verified%20·%20production%20pending-orange.svg)](#project-status)
+[![Status](https://img.shields.io/badge/v1.0.2-local%20verified%20·%20production%20pending-orange.svg)](#project-status)
 
 [Quick start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) · [Docs](#documentation) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
@@ -96,7 +96,7 @@ No cluster? **Import a Profile** on the first page to analyze a JSON or text Pro
 | Delivery log | Result, retries and error category of every send; 10-second timeout, network failures retry after 1/5/30 minutes; SMS has an hourly limit |
 | Content | Only the cluster, template fingerprint, severity, confidence and median change; no SQL literals, Profiles or passwords; Feishu and DingTalk only on their official hosts |
 
-### Loads (added after v1.0.1, not yet released)
+### Loads (v1.0.2)
 
 | Capability | What it does |
 |---|---|
@@ -191,10 +191,10 @@ Connecting to 2.5 or 3.0 shows "unsupported version" and reads no audit or Profi
 
 | | Status |
 |---|---|
-| Latest release | **v1.0.1** (2026-10-29), see [Releases](https://github.com/shenhui027-arch/sr-doctor/releases). Servers are deployed with Docker; there is no installer |
+| Latest release | **v1.0.2** (2026-10-30), see [Releases](https://github.com/shenhui027-arch/sr-doctor/releases). Servers are deployed with Docker; there is no installer |
 | v1.0.0 | SQL quality monitoring stages A–D developed and accepted locally; all 19 issues from the project-wide audit fixed |
 | v1.0.1 | Adds the audit overview (window performance charts and the 30-day load view) and multi-channel alert notifications; local CI and the official 3.5.14 E2E pass (email checked against a local SMTP receiver); real Feishu, DingTalk, Alibaba Cloud and Tencent Cloud delivery is **pending verification** |
-| main branch | Adds the load workspace after v1.0.1 (overview, Routine Load, load records, error logs) and a load card in the audit overview; official 3.5.14 + Kafka E2E passes; not yet released |
+| v1.0.2 | Adds the load workspace (overview, Routine Load, load records, error logs) and a load card in the audit overview, and fixes connecting to 3.1–3.3; the official 3.5.14 + Kafka E2E and load smoke tests on official 3.2–4.1 images pass |
 | Local verification | Local CI passes; on fixed-digest official `starrocks/*:3.5.14` Docker fixtures, the fingerprint, collection, trends, alerts and governance, multi-BE, release-audit and TLS verify-full E2E tests pass |
 | Production acceptance | **Pending**: the G1 read-only production pilot and G2 real-workload calibration have not been done, so it is not claimed to be production-safe; remote clusters are not collected by default and alert thresholds are marked as on trial |
 | Supported versions | StarRocks **3.1 and later** (audited 3.1–4.1); 2.5 and 3.0 are not supported. See [Supported StarRocks versions](#supported-starrocks-versions) |
