@@ -14,7 +14,7 @@ const job = (id: string, name: string, state: string, stateClass: RoutineLoadJob
   job_id: id, name, db: "ods", table: "orders", state, state_class: stateClass, create_time: "2026-10-30 08:15:05", pause_time: stateClass === "paused" ? "2026-10-30 08:57:04" : null, end_time: null,
   source_type: "KAFKA", topic: "orders", current_tasks: "1",
   statistics: { received_bytes: "44291456", received_bytes_rate: "2700000", loaded_rows: "9812004", load_rows_rate: "3120", error_rows: stateClass === "paused" ? "1272" : "12", total_rows: "9812016", unselected_rows: "0", committed_tasks: "18442", aborted_tasks: "3", task_execute_time_ms: "543" },
-  max_error_number: "1000",
+  max_error_number: "1000", desired_tasks: "3", max_batch_interval_seconds: "10",
   partitions: [
     { partition: "0", consumed: "2451002", latest: "2451310", lag: "308", consumed_message_ms: String(NOW - 7_000) },
     { partition: "3", consumed: "2398004", latest: "2446214", lag, consumed_message_ms: String(NOW - 640_000) },
@@ -29,7 +29,7 @@ const jobs: RoutineLoadJobsResponse = {
   support: "full", fe_time_zone: "Asia/Shanghai", truncated: false, limitations: [],
   jobs: [job("1", "orders_rl", "RUNNING", "running", "48210"), job("2", "events_rl", "PAUSED", "paused", "240784")],
   summary: {
-    support: "full", running: "1", scheduling: "0", paused: "1", ended: "0", error_rows: "1284", error_rows_unknown: "0", truncated: false, paused_jobs: [], max_running_lag: null,
+    support: "full", jobs: "2", running: "1", scheduling: "0", paused: "1", ended: "0", error_rows: "1284", error_rows_unknown: "0", truncated: false, paused_jobs: [], max_running_lag: null,
     lags: [{ job_id: "2", job_name: "events_rl", db: "ods", table: "orders", partition: "3", lag: "240784", state_class: "paused", consumed_message_ms: null, width_permyriad: 10_000 }],
   },
 };
@@ -69,8 +69,8 @@ const records: LoadRecordsResponse = {
   summary: { loads: "1000", failed: "17", loaded_rows: "48200000", filtered_rows: "3204", loaded_rows_unknown: "0", filtered_rows_unknown: "0", filtered_share_permyriad: 1, begin_plan_p95_ms: "142" },
   tables: [{ table: "ods.orders", loads: "612", failed: "11", filtered_rows: "2980", filtered_unknown: "0" }],
   records: [
-    { job_id: "12", label: "orders_0915", db: "ods", table: "orders", kind: "STREAM_LOAD", state: "FINISHED", state_class: "finished", user: "etl_writer", client_ip: "10.2.8.14", create_time: "2026-10-30 09:15:02", finish_time: "2026-10-30 09:15:05", loaded_rows: "48002", filtered_rows: "6", filtered_share_permyriad: 1, unselected_rows: "0", begin_txn_ms: "3", plan_ms: "4", receive_data_ms: "2102", total_seconds: "3", error_message: null, has_error_log: true, profile_id: "4f4a7a79-8693-5fe0-68c3-f71b70ab9e82", system: false },
-    { job_id: "11", label: "orders_0612", db: "ods", table: "orders", kind: "STREAM_LOAD", state: "CANCELLED", state_class: "cancelled", user: null, client_ip: null, create_time: "2026-10-30 06:12:40", finish_time: null, loaded_rows: null, filtered_rows: null, filtered_share_permyriad: null, unselected_rows: null, begin_txn_ms: null, plan_ms: null, receive_data_ms: null, total_seconds: null, error_message: "Label [orders_0612] has already been used.", has_error_log: false, profile_id: null, system: false },
+    { job_id: "12", label: "orders_0915", db: "ods", table: "orders", kind: "STREAM_LOAD", state: "FINISHED", state_class: "finished", user: "etl_writer", client_ip: "10.2.8.14", create_time: "2026-10-30 09:15:02", finish_time: "2026-10-30 09:15:05", loaded_rows: "48002", filtered_rows: "6", filtered_share_permyriad: 1, unselected_rows: "0", begin_txn_ms: "3", plan_ms: "4", receive_data_ms: "2102", total_seconds: "3", scan_rows: "0", scan_bytes: "1048576", commit_time: "2026-10-30 09:15:04", execute_seconds: "2", publish_seconds: "1", timeout_seconds: "600", timeout_share_permyriad: 50, priority: "NORMAL", error_message: null, has_error_log: true, profile_id: "4f4a7a79-8693-5fe0-68c3-f71b70ab9e82", system: false },
+    { job_id: "11", label: "orders_0612", db: "ods", table: "orders", kind: "STREAM_LOAD", state: "CANCELLED", state_class: "cancelled", user: null, client_ip: null, create_time: "2026-10-30 06:12:40", finish_time: null, loaded_rows: null, filtered_rows: null, filtered_share_permyriad: null, unselected_rows: null, begin_txn_ms: null, plan_ms: null, receive_data_ms: null, total_seconds: null, scan_rows: null, scan_bytes: null, commit_time: null, execute_seconds: null, publish_seconds: null, timeout_seconds: null, timeout_share_permyriad: null, priority: null, error_message: "Label [orders_0612] has already been used.", has_error_log: false, profile_id: null, system: false },
   ],
 };
 

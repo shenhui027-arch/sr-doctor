@@ -3,8 +3,10 @@
   "title": "LoadOverviewResponse",
   "type": "object",
   "required": [
+    "all_loads",
     "at_retention_limit",
     "by_kind",
+    "groups",
     "hidden_system",
     "hour_axis_ticks",
     "hours",
@@ -14,11 +16,27 @@
     "routine",
     "summary",
     "support",
-    "tables"
+    "tables",
+    "volume_axis_ticks",
+    "volume_unit"
   ],
   "properties": {
+    "all_loads": {
+      "description": "Visible records of every group.",
+      "type": "string"
+    },
     "at_retention_limit": {
       "type": "boolean"
+    },
+    "batch": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/BatchLoadDetail"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "by_kind": {
       "description": "Most loads first.",
@@ -56,6 +74,13 @@
         "null"
       ]
     },
+    "groups": {
+      "description": "Task 56: every group among the visible records, whatever `kind` selects, in `LoadKindGroup` order; groups without records are left out.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadGroupSummary"
+      }
+    },
     "hidden_system": {
       "type": "string"
     },
@@ -89,6 +114,27 @@
     "routine": {
       "$ref": "#/definitions/RoutineLoadOverview"
     },
+    "routine_detail": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/RoutineLoadDetail"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "stream": {
+      "description": "Only for the matching `kind`.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/StreamLoadDetail"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "summary": {
       "$ref": "#/definitions/LoadRecordsSummary"
     },
@@ -106,10 +152,290 @@
       "items": {
         "$ref": "#/definitions/LoadTableBar"
       }
+    },
+    "volume_axis_ticks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "volume_unit": {
+      "$ref": "#/definitions/LoadVolumeUnit"
     }
   },
   "additionalProperties": false,
   "definitions": {
+    "BatchLoadDetail": {
+      "description": "INSERT or Broker Load: second-precision timings, source and sink counts.",
+      "type": "object",
+      "required": [
+        "counts_unknown",
+        "duration",
+        "failure_reasons",
+        "near_timeout_count",
+        "running_states",
+        "scan_bytes",
+        "scan_rows",
+        "slowest",
+        "tables"
+      ],
+      "properties": {
+        "counts_unknown": {
+          "type": "string"
+        },
+        "duration": {
+          "$ref": "#/definitions/LoadDurationDistribution"
+        },
+        "failure_reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadFailureReason"
+          }
+        },
+        "near_timeout_count": {
+          "type": "string"
+        },
+        "running_states": {
+          "description": "Loads not yet finished, by StarRocks' state.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadStateCount"
+          }
+        },
+        "scan_bytes": {
+          "type": "string"
+        },
+        "scan_rows": {
+          "type": "string"
+        },
+        "slowest": {
+          "description": "Slowest finished first, at most `LOAD_OVERVIEW_SLOWEST`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadSlowRecord"
+          }
+        },
+        "tables": {
+          "description": "Most rows written first, at most `LOAD_OVERVIEW_TABLES`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadGroupTable"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadDurationBin": {
+      "type": "object",
+      "required": [
+        "loads",
+        "lower_seconds",
+        "permyriad"
+      ],
+      "properties": {
+        "loads": {
+          "type": "string"
+        },
+        "lower_seconds": {
+          "type": "string"
+        },
+        "permyriad": {
+          "description": "Against the fullest bin, 0..=10000.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "upper_seconds": {
+          "description": "`None` for the open last bin.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadDurationDistribution": {
+      "description": "Finish minus create in whole seconds, over finished records.",
+      "type": "object",
+      "required": [
+        "bins",
+        "samples"
+      ],
+      "properties": {
+        "bins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadDurationBin"
+          }
+        },
+        "max_seconds": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "p50_seconds": {
+          "description": "Nearest rank; `None` below 20 samples.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "p95_seconds": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "samples": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadFailureReason": {
+      "type": "object",
+      "required": [
+        "loads",
+        "reason",
+        "width_permyriad"
+      ],
+      "properties": {
+        "latest_table": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latest_time": {
+          "description": "When the newest failure of this reason finished (its creation time when the finish time is unknown); `latest_table` is the same record's.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "loads": {
+          "type": "string"
+        },
+        "reason": {
+          "description": "`filtered_ratio`, `timeout`, `label_exists` or `other` for Stream Load; the `type:` StarRocks writes (`TIMEOUT`, `LOAD_RUN_FAIL`, ...) for INSERT and Broker Load.",
+          "type": "string"
+        },
+        "width_permyriad": {
+          "description": "Against the most frequent reason, 0..=10000.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadGroupSummary": {
+      "type": "object",
+      "required": [
+        "failed",
+        "filtered_rows",
+        "filtered_unknown",
+        "group",
+        "loads",
+        "sink_rows",
+        "sink_rows_unknown"
+      ],
+      "properties": {
+        "failed": {
+          "type": "string"
+        },
+        "filtered_rows": {
+          "type": "string"
+        },
+        "filtered_unknown": {
+          "type": "string"
+        },
+        "group": {
+          "$ref": "#/definitions/LoadKindGroup"
+        },
+        "loads": {
+          "type": "string"
+        },
+        "sink_rows": {
+          "description": "`SINK_ROWS` summed over records that report it.",
+          "type": "string"
+        },
+        "sink_rows_unknown": {
+          "type": "string"
+        },
+        "total_p95_seconds": {
+          "description": "Nearest rank of finish minus create (whole seconds) over finished records; `None` below 20 of them.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadGroupTable": {
+      "description": "One table of one group. Sums cover records that report the value; `counts_unknown` records lack at least one of them.",
+      "type": "object",
+      "required": [
+        "counts_unknown",
+        "failed",
+        "filtered_rows",
+        "loads",
+        "scan_bytes",
+        "scan_rows",
+        "sink_rows",
+        "table"
+      ],
+      "properties": {
+        "counts_unknown": {
+          "type": "string"
+        },
+        "failed": {
+          "type": "string"
+        },
+        "filtered_rows": {
+          "type": "string"
+        },
+        "loads": {
+          "type": "string"
+        },
+        "plan_p95_ms": {
+          "description": "Stream Load only; `None` below 20 samples.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "priority": {
+          "description": "The most common priority (INSERT and Broker Load).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scan_bytes": {
+          "type": "string"
+        },
+        "scan_rows": {
+          "type": "string"
+        },
+        "sink_rows": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        },
+        "total_p95_seconds": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "LoadHourBucket": {
       "type": "object",
       "required": [
@@ -120,7 +446,9 @@
         "filtered_unknown",
         "hour",
         "loads",
-        "loads_permyriad"
+        "loads_permyriad",
+        "segments",
+        "volume_unknown"
       ],
       "properties": {
         "coverage": {
@@ -154,6 +482,13 @@
           "format": "uint16",
           "minimum": 0.0
         },
+        "segments": {
+          "description": "Task 56: loads of each group, stacked in `LoadKindGroup` order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadHourSegment"
+          }
+        },
         "top_failed_count": {
           "type": [
             "string",
@@ -166,6 +501,24 @@
             "string",
             "null"
           ]
+        },
+        "volume": {
+          "description": "Bytes for Stream Load, rows written otherwise (`volume_unit`), over records that report it; `volume_unknown` counts the others. `None` when the hour has loads and none of them reports it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "volume_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "volume_unknown": {
+          "type": "string"
         }
       },
       "additionalProperties": false
@@ -196,6 +549,29 @@
         }
       ]
     },
+    "LoadHourSegment": {
+      "type": "object",
+      "required": [
+        "group",
+        "loads",
+        "permyriad"
+      ],
+      "properties": {
+        "group": {
+          "$ref": "#/definitions/LoadKindGroup"
+        },
+        "loads": {
+          "type": "string"
+        },
+        "permyriad": {
+          "description": "Against the hour axis top, 0..=10000.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
     "LoadKindCount": {
       "type": "object",
       "required": [
@@ -217,6 +593,17 @@
       },
       "additionalProperties": false
     },
+    "LoadKindGroup": {
+      "description": "Task 56: the overview shows each group with only the measures StarRocks reports for it.",
+      "type": "string",
+      "enum": [
+        "stream_load",
+        "insert",
+        "routine_load",
+        "broker",
+        "other"
+      ]
+    },
     "LoadPhaseBin": {
       "type": "object",
       "required": [
@@ -224,7 +611,9 @@
         "begin_txn_permyriad",
         "lower_ms",
         "plan",
-        "plan_permyriad"
+        "plan_permyriad",
+        "receive_data",
+        "receive_data_permyriad"
       ],
       "properties": {
         "begin_txn": {
@@ -246,6 +635,14 @@
           "format": "uint16",
           "minimum": 0.0
         },
+        "receive_data": {
+          "type": "string"
+        },
+        "receive_data_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
         "upper_ms": {
           "description": "`None` for the open last bin.",
           "type": [
@@ -262,7 +659,8 @@
         "axis_ticks",
         "begin_txn",
         "bins",
-        "plan"
+        "plan",
+        "receive_data"
       ],
       "properties": {
         "axis_ticks": {
@@ -282,6 +680,9 @@
           }
         },
         "plan": {
+          "$ref": "#/definitions/LoadPhaseQuantiles"
+        },
+        "receive_data": {
           "$ref": "#/definitions/LoadPhaseQuantiles"
         }
       },
@@ -363,6 +764,115 @@
       },
       "additionalProperties": false
     },
+    "LoadSlowRecord": {
+      "type": "object",
+      "required": [
+        "execute_permyriad",
+        "job_id",
+        "label",
+        "publish_permyriad",
+        "table",
+        "total_seconds"
+      ],
+      "properties": {
+        "execute_permyriad": {
+          "description": "Segment lengths against the slowest listed, 0..=10000.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "execute_seconds": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "publish_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "publish_seconds": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "table": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timeout_share_permyriad": {
+          "description": "As `LoadRecord::timeout_share_permyriad`; may exceed 10000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "total_seconds": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadSource": {
+      "type": "object",
+      "required": [
+        "failed",
+        "loads"
+      ],
+      "properties": {
+        "client_ip": {
+          "description": "`RUNTIME_DETAILS.client_ip`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failed": {
+          "type": "string"
+        },
+        "loads": {
+          "type": "string"
+        },
+        "user": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadStateCount": {
+      "type": "object",
+      "required": [
+        "loads",
+        "state"
+      ],
+      "properties": {
+        "loads": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "LoadTableBar": {
       "type": "object",
       "required": [
@@ -406,6 +916,202 @@
         "without_lag",
         "unsupported_version"
       ]
+    },
+    "LoadVolumeUnit": {
+      "type": "string",
+      "enum": [
+        "bytes",
+        "rows"
+      ]
+    },
+    "RoutineJobHealth": {
+      "description": "One Routine Load job's lifetime counters and what follows from them.",
+      "type": "object",
+      "required": [
+        "db",
+        "job_id",
+        "name",
+        "state",
+        "state_class",
+        "table"
+      ],
+      "properties": {
+        "abort_share_permyriad": {
+          "description": "Aborted over committed plus aborted, 0..=10000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "aborted_tasks": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "average_task_ms": {
+          "description": "Task execution time over committed tasks.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "committed_tasks": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "current_tasks": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "db": {
+          "type": "string"
+        },
+        "desired_tasks": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_share_permyriad": {
+          "description": "Error over total rows, 0..=10000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "load_rows_rate": {
+          "description": "StarRocks' lifetime averages (rows or bytes over task execution time); `None` before the first committed task.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "loaded_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_batch_interval_seconds": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_lag": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_lag_partition": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "newest_consumed_ms": {
+          "description": "The newest consumed message over partitions, epoch milliseconds.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "received_bytes_rate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "type": "string"
+        },
+        "state_class": {
+          "$ref": "#/definitions/RoutineLoadStateClass"
+        },
+        "table": {
+          "type": "string"
+        },
+        "total_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutineJobIssue": {
+      "type": "object",
+      "required": [
+        "job_id",
+        "name",
+        "state",
+        "state_class"
+      ],
+      "properties": {
+        "aborted_tasks": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_share_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "type": "string"
+        },
+        "state_class": {
+          "$ref": "#/definitions/RoutineLoadStateClass"
+        },
+        "time": {
+          "description": "Pause time for a paused job, end time for an ended one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "RoutineLagBar": {
       "type": "object",
@@ -456,12 +1162,103 @@
       },
       "additionalProperties": false
     },
+    "RoutineLoadDetail": {
+      "type": "object",
+      "required": [
+        "held_tasks",
+        "issues",
+        "jobs",
+        "rows_unknown",
+        "tasks",
+        "tasks_unknown"
+      ],
+      "properties": {
+        "abort_share_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "aborted_tasks": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "average_task_ms": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "committed_tasks": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_rows": {
+          "description": "Over jobs that report both counts; `None` when none does.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_share_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "held_tasks": {
+          "description": "Routine Load tasks among the held load records (3.3+).",
+          "type": "string"
+        },
+        "issues": {
+          "description": "Paused, then ended jobs, newest first.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoutineJobIssue"
+          }
+        },
+        "jobs": {
+          "description": "Newest job first, as read.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoutineJobHealth"
+          }
+        },
+        "rows_unknown": {
+          "description": "Jobs left out of the row counts because one of them is unknown.",
+          "type": "string"
+        },
+        "tasks": {
+          "$ref": "#/definitions/LoadDurationDistribution"
+        },
+        "tasks_unknown": {
+          "description": "Jobs left out of the task counts because one of them is unknown.",
+          "type": "string"
+        },
+        "total_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "RoutineLoadOverview": {
       "type": "object",
       "required": [
         "ended",
         "error_rows",
         "error_rows_unknown",
+        "jobs",
         "lags",
         "paused",
         "paused_jobs",
@@ -481,6 +1278,10 @@
         },
         "error_rows_unknown": {
           "description": "Jobs that do not report error rows; not in the sum.",
+          "type": "string"
+        },
+        "jobs": {
+          "description": "Every job read.",
           "type": "string"
         },
         "lags": {
@@ -583,6 +1384,76 @@
           ]
         },
         "table": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "StreamLoadDetail": {
+      "type": "object",
+      "required": [
+        "failure_reasons",
+        "near_timeout",
+        "near_timeout_count",
+        "received_bytes",
+        "received_bytes_unknown",
+        "sources",
+        "tables",
+        "total",
+        "unselected_rows",
+        "unselected_unknown"
+      ],
+      "properties": {
+        "failure_reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadFailureReason"
+          }
+        },
+        "near_timeout": {
+          "description": "Highest timeout share first, at most `LOAD_OVERVIEW_SLOWEST`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadSlowRecord"
+          }
+        },
+        "near_timeout_count": {
+          "type": "string"
+        },
+        "publish_p95_seconds": {
+          "description": "Finish minus commit; `None` below 20 samples.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "received_bytes": {
+          "description": "`SCAN_BYTES`: what clients sent.",
+          "type": "string"
+        },
+        "received_bytes_unknown": {
+          "type": "string"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadSource"
+          }
+        },
+        "tables": {
+          "description": "Most loads first, at most `LOAD_OVERVIEW_TABLES`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadGroupTable"
+          }
+        },
+        "total": {
+          "$ref": "#/definitions/LoadDurationDistribution"
+        },
+        "unselected_rows": {
+          "type": "string"
+        },
+        "unselected_unknown": {
           "type": "string"
         }
       },

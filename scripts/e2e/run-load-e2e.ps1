@@ -170,6 +170,9 @@ FROM KAFKA ('kafka_broker_list' = '127.0.0.1:9092', 'kafka_topic' = 'ld', 'prope
     $deadline = [DateTime]::UtcNow.AddSeconds(120)
     do { Start-Sleep -Seconds 3; $stats = (Invoke-Sql "SELECT STATISTICS FROM information_schema.routine_load_jobs WHERE NAME = 'ld_kafka';" | Select-Object -Last 1) } while ($stats -notmatch '"loadedRows":200' -and [DateTime]::UtcNow -lt $deadline)
     Require ($stats -match '"loadedRows":200') "Routine Load did not load 200 rows: $stats"
+    # Task 56: one INSERT that writes and one that strict mode cancels, for the INSERT view.
+    Invoke-Sql "INSERT INTO lr.t WITH LABEL ld_insert_ok SELECT id + 100, name, v, dt FROM lr.t;" | Out-Null
+    Invoke-InContainer $srName "mysql -h127.0.0.1 -P9030 -uroot -N -e `"INSERT INTO lr.t WITH LABEL ld_insert_bad (id, name, v, dt) VALUES (900, 'much-too-long', 1, '2026-01-05')`" >/dev/null 2>&1 || true" | Out-Null
     if ($WithAuditLoader) {
         $stage = 'audit_workload'
         foreach ($sql in 'SELECT COUNT(*) FROM lr.k;', 'SELECT name, SUM(v) FROM lr.k GROUP BY name ORDER BY 2 DESC LIMIT 5;', 'SELECT COUNT(*) FROM lr.t;', 'SELECT id FROM lr.k WHERE v > 100 ORDER BY id LIMIT 3;') {
@@ -276,8 +279,30 @@ FROM KAFKA ('kafka_broker_list' = '127.0.0.1:9092', 'kafka_topic' = 'ld', 'prope
     Require ($hourRecords.matched -eq $lastHour.loads) 'The hour filter does not match the hour bucket.'
     $badHour = try { Invoke-Post "/connections/$id/loads/records" @{ connection_id = $id; kind = $null; outcome = $null; table = $null; include_system = $false; created_hour = "$($lastHour.hour):00" } | Out-Null; 'accepted' } catch { [int]$_.Exception.Response.StatusCode }
     Require ($badHour -eq 400) 'A malformed hour was accepted.'
-    $inserts = (Invoke-Post "/connections/$id/loads/overview" @{ connection_id = $id; kind = 'insert'; include_system = $false }).body
-    Require ($inserts.summary.loads -eq '0' -and $inserts.hours.Count -eq 0) 'The overview type filter does not narrow the records.'
+
+    $stage = 'ld09_types'
+    # Task 56: each type shows only its own measures, from the same reads.
+    $byGroup = @{}; foreach ($group in $overview.groups) { $byGroup[$group.group] = $group }
+    $streamView = (Invoke-Post "/connections/$id/loads/overview" @{ connection_id = $id; kind = 'stream_load'; include_system = $false }).body
+    $insertView = (Invoke-Post "/connections/$id/loads/overview" @{ connection_id = $id; kind = 'insert'; include_system = $false }).body
+    $routineView = (Invoke-Post "/connections/$id/loads/overview" @{ connection_id = $id; kind = 'routine_load'; include_system = $false }).body
+    $kafkaHealth = @($routineView.routine_detail.jobs | Where-Object { $_.name -eq 'ld_kafka' })[0]
+    $insertRecords = (Invoke-Post "/connections/$id/loads/records" @{ connection_id = $id; kind = 'insert'; outcome = $null; table = $null; include_system = $false; created_hour = $null }).body
+    $summary.types = [ordered]@{
+        groups = @($overview.groups | ForEach-Object { "$($_.group):$($_.loads)/$($_.failed) sink=$($_.sink_rows) p95=$($_.total_p95_seconds)" }); all_loads = $overview.all_loads
+        stream = "bytes=$($streamView.stream.received_bytes) unit=$($streamView.volume_unit) receive=$($streamView.phases.receive_data.samples) publish_p95=$($streamView.stream.publish_p95_seconds) reasons=" + (@($streamView.stream.failure_reasons | ForEach-Object { "$($_.reason):$($_.loads)" }) -join ',') + " sources=" + (@($streamView.stream.sources | ForEach-Object { "$($_.client_ip)/$($_.user):$($_.loads)" }) -join ',')
+        insert = "loads=$($insertView.summary.loads) failed=$($insertView.summary.failed) scan=$($insertView.batch.scan_rows)/$($insertView.batch.scan_bytes) samples=$($insertView.batch.duration.samples) reasons=" + (@($insertView.batch.failure_reasons | ForEach-Object { "$($_.reason):$($_.loads)" }) -join ',') + " slowest=" + (@($insertView.batch.slowest | ForEach-Object { "$($_.label):$($_.total_seconds)=$($_.execute_seconds)+$($_.publish_seconds)/$($_.timeout_seconds)" }) -join ',')
+        insert_records = @($insertRecords.records | ForEach-Object { "$($_.label):$($_.state):scan=$($_.scan_rows)/$($_.scan_bytes):sink=$($_.loaded_rows):commit=$($_.commit_time):timeout=$($_.timeout_seconds):priority=$($_.priority):error=$($_.error_message)" })
+        routine = "held_tasks=$($routineView.routine_detail.held_tasks) task_samples=$($routineView.routine_detail.tasks.samples) ld_kafka committed=$($kafkaHealth.committed_tasks) aborted=$($kafkaHealth.aborted_tasks) avg_ms=$($kafkaHealth.average_task_ms) rate=$($kafkaHealth.load_rows_rate) error_share=$($kafkaHealth.error_share_permyriad) desired=$($kafkaHealth.desired_tasks)"
+    }
+    Require ($overview.all_loads -eq $overview.summary.loads -and $byGroup.ContainsKey('stream_load') -and $byGroup.ContainsKey('insert') -and $byGroup.ContainsKey('routine_load')) 'The overview does not split the records into Stream Load, INSERT and Routine Load.'
+    Require ($null -eq $overview.stream -and $null -eq $overview.batch -and $null -eq $overview.routine_detail) 'The all-types overview carries a type detail.'
+    Require ($streamView.volume_unit -eq 'bytes' -and [long]$streamView.stream.received_bytes -gt 0 -and @($streamView.stream.failure_reasons | Where-Object { $_.reason -eq 'filtered_ratio' }).Count -eq 1 -and @($streamView.stream.sources).Count -ge 1 -and [int]$streamView.phases.receive_data.samples -ge 3) 'The Stream Load view misses bytes, the filtered-ratio failure, sources or the receive phase.'
+    Require ($null -eq $streamView.batch -and $null -eq $streamView.routine_detail -and @($streamView.hours | ForEach-Object { @($_.segments | Where-Object { $_.group -ne 'stream_load' }).Count } | Measure-Object -Sum).Sum -eq 0) 'The Stream Load view mixes in other types.'
+    Require ($insertView.summary.loads -eq '2' -and $insertView.summary.failed -eq '1' -and $insertView.volume_unit -eq 'rows' -and [int]$insertView.batch.duration.samples -ge 1 -and @($insertView.batch.slowest).Count -ge 1 -and @($insertView.batch.failure_reasons).Count -eq 1) 'The INSERT view misses the two INSERTs, their timings or the failure.'
+    Require ($null -ne $insertView.batch.slowest[0].execute_seconds -and $null -ne $insertView.batch.slowest[0].timeout_seconds -and $null -ne $insertView.batch.slowest[0].timeout_share_permyriad) 'The finished INSERT lacks its execute time or timeout share.'
+    Require ([int]$routineView.routine_detail.held_tasks -ge 1 -and [int]$routineView.routine_detail.tasks.samples -ge 1 -and [int]$kafkaHealth.committed_tasks -ge 1 -and $null -ne $kafkaHealth.average_task_ms -and $null -ne $kafkaHealth.load_rows_rate -and $null -ne $kafkaHealth.error_share_permyriad -and $kafkaHealth.desired_tasks -eq '1') 'The Routine Load view misses the job health or its tasks.'
+    Require (@($routineView.hours | ForEach-Object { @($_.segments | Where-Object { $_.group -ne 'routine_load' }).Count } | Measure-Object -Sum).Sum -eq 0) 'The Routine Load view mixes in other types.'
 
     if ($HoldForBrowserSeconds -gt 0) {
         $stage = 'browser_hold'

@@ -15,7 +15,7 @@ Every conclusion comes with evidence; when the evidence is not enough, it says s
 [![StarRocks](https://img.shields.io/badge/StarRocks-3.1～4.1-1f55e0.svg)](docs/guide/faq.md)
 [![Backend](https://img.shields.io/badge/backend-Rust%20%2F%20Axum-b7410e.svg)](docs/development/architecture.md)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
-[![Status](https://img.shields.io/badge/v1.0.2-local%20verified%20·%20production%20pending-orange.svg)](#project-status)
+[![Status](https://img.shields.io/badge/v1.0.3-local%20verified%20·%20production%20pending-orange.svg)](#project-status)
 
 [Quick start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) · [Docs](#documentation) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
@@ -96,11 +96,11 @@ No cluster? **Import a Profile** on the first page to analyze a JSON or text Pro
 | Delivery log | Result, retries and error category of every send; 10-second timeout, network failures retry after 1/5/30 minutes; SMS has an hourly limit |
 | Content | Only the cluster, template fingerprint, severity, confidence and median change; no SQL literals, Profiles or passwords; Feishu and DingTalk only on their official hosts |
 
-### Loads (v1.0.2)
+### Loads (v1.0.3)
 
 | Capability | What it does |
 |---|---|
-| Overview | Loads and failures per hour, the tables with the most filtered rows, the top 10 Routine Load partition lags and the begin-transaction / plan time distribution; click a chart for its records or job. The audit overview gets a load card too |
+| Overview | Switch between All / Stream Load / INSERT / Routine Load, each with only its own measures: data received, the three millisecond phases and sources for Stream Load; scanned data, the total-time distribution and the slowest loads for INSERT; job health, outcomes, throughput, task times and partition lag for Routine Load; the All view stacks hourly loads by type and compares the types. Click a chart for its records or job. The audit overview gets a load card too |
 | Routine Load | Job state, per-partition progress and lag, rates, error rows and why a job paused; read-only, no pause or resume |
 | Load records | Stream Load, Broker Load, INSERT and Routine Load task results, filtered rows, begin-transaction / plan / receive-data times in ms, source user and IP, per-table totals |
 | Error log | Open a load to see the rows StarRocks rejected and why (the ErrorURL text, read through read-only SQL), grouped by reason; says so when the BE has already cleaned it up |
@@ -133,8 +133,8 @@ No cluster? **Import a Profile** on the first page to analyze a JSON or text Pro
     <td><img src="docs/assets/screenshots/10-governance.png" alt="Governance queue"><br><sub><b>Governance queue</b>: pin a baseline, close after verification</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/assets/screenshots/13-load-overview.png" alt="Load overview"><br><sub><b>Load overview</b> (main branch): loads and failures per hour, tables with the most filtered rows, Routine Load lag, begin-transaction / plan times; hours before the oldest record are marked unknown</sub></td>
-    <td><img src="docs/assets/screenshots/14-load-records.png" alt="Load records"><br><sub><b>Load records</b> (main branch): opened from an hour in the overview, with phase times in ms, filtered rows and the error log</sub></td>
+    <td><img src="docs/assets/screenshots/13-load-overview.png" alt="Load overview"><br><sub><b>Load overview</b> (v1.0.3): switch between Stream Load / INSERT / Routine Load, each with only its own measures; the All view stacks hourly loads by type and compares the types; hours before the oldest record are marked unknown</sub></td>
+    <td><img src="docs/assets/screenshots/14-load-records.png" alt="Load records"><br><sub><b>Load records</b> (v1.0.2): opened from an hour in the overview, with phase times in ms, filtered rows and the error log</sub></td>
   </tr>
 </table>
 
@@ -191,10 +191,11 @@ Connecting to 2.5 or 3.0 shows "unsupported version" and reads no audit or Profi
 
 | | Status |
 |---|---|
-| Latest release | **v1.0.2** (2026-10-30), see [Releases](https://github.com/shenhui027-arch/sr-doctor/releases). Servers are deployed with Docker; there is no installer |
+| Latest release | **v1.0.3** (2026-10-31), see [Releases](https://github.com/shenhui027-arch/sr-doctor/releases). Servers are deployed with Docker; there is no installer |
 | v1.0.0 | SQL quality monitoring stages A–D developed and accepted locally; all 19 issues from the project-wide audit fixed |
 | v1.0.1 | Adds the audit overview (window performance charts and the 30-day load view) and multi-channel alert notifications; local CI and the official 3.5.14 E2E pass (email checked against a local SMTP receiver); real Feishu, DingTalk, Alibaba Cloud and Tencent Cloud delivery is **pending verification** |
 | v1.0.2 | Adds the load workspace (overview, Routine Load, load records, error logs) and a load card in the audit overview, and fixes connecting to 3.1–3.3; the official 3.5.14 + Kafka E2E and load smoke tests on official 3.2–4.1 images pass |
+| v1.0.3 | Splits the load overview into Stream Load / INSERT / Routine Load, each with only its own measures, and fixes Routine Load task phase times counted as 0; the official 3.5.14 + Kafka E2E passes and the official 3.1.17 image was checked in a browser |
 | Local verification | Local CI passes; on fixed-digest official `starrocks/*:3.5.14` Docker fixtures, the fingerprint, collection, trends, alerts and governance, multi-BE, release-audit and TLS verify-full E2E tests pass |
 | Production acceptance | **Pending**: the G1 read-only production pilot and G2 real-workload calibration have not been done, so it is not claimed to be production-safe; remote clusters are not collected by default and alert thresholds are marked as on trial |
 | Supported versions | StarRocks **3.1 and later** (audited 3.1–4.1); 2.5 and 3.0 are not supported. See [Supported StarRocks versions](#supported-starrocks-versions) |

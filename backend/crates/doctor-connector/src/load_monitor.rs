@@ -6,13 +6,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use doctor_contracts::{
-    LOAD_OVERVIEW_HOURS, LOAD_OVERVIEW_LAGS, LOAD_OVERVIEW_MAX_HOURS, LOAD_OVERVIEW_PAUSED,
-    LOAD_OVERVIEW_TABLES, LOAD_RECORDS_MAX, LoadHourBucket, LoadHourCoverage, LoadKindCount,
-    LoadKindFilter, LoadOutcomeFilter, LoadOverviewRequest, LoadOverviewResponse, LoadPhaseBin,
-    LoadPhaseDistribution, LoadPhaseQuantiles, LoadRecord, LoadRecordsRequest, LoadRecordsResponse,
-    LoadRecordsSummary, LoadStateClass, LoadTableBar, LoadTableSummary, LoadViewSupport,
-    RoutineLagBar, RoutineLoadJob, RoutineLoadJobsResponse, RoutineLoadOverview,
-    RoutineLoadPartition, RoutineLoadStateClass, RoutineLoadStatistics, RoutinePausedJob,
+    BatchLoadDetail, LOAD_NEAR_TIMEOUT_PERMYRIAD, LOAD_OVERVIEW_HOURS, LOAD_OVERVIEW_LAGS,
+    LOAD_OVERVIEW_MAX_HOURS, LOAD_OVERVIEW_PAUSED, LOAD_OVERVIEW_SLOWEST, LOAD_OVERVIEW_TABLES,
+    LOAD_RECORDS_MAX, LoadDurationBin, LoadDurationDistribution, LoadFailureReason,
+    LoadGroupSummary, LoadGroupTable, LoadHourBucket, LoadHourCoverage, LoadHourSegment,
+    LoadKindCount, LoadKindFilter, LoadKindGroup, LoadOutcomeFilter, LoadOverviewRequest,
+    LoadOverviewResponse, LoadPhaseBin, LoadPhaseDistribution, LoadPhaseQuantiles, LoadRecord,
+    LoadRecordsRequest, LoadRecordsResponse, LoadRecordsSummary, LoadSlowRecord, LoadSource,
+    LoadStateClass, LoadStateCount, LoadTableBar, LoadTableSummary, LoadViewSupport,
+    LoadVolumeUnit, RoutineJobHealth, RoutineJobIssue, RoutineLagBar, RoutineLoadDetail,
+    RoutineLoadJob, RoutineLoadJobsResponse, RoutineLoadOverview, RoutineLoadPartition,
+    RoutineLoadStateClass, RoutineLoadStatistics, RoutinePausedJob, StreamLoadDetail,
 };
 use serde_json::Value;
 
@@ -67,7 +71,7 @@ pub fn routine_load_jobs_statement(with_lag: bool) -> String {
 
 pub fn load_records_statement() -> String {
     format!(
-        "SELECT ID, LABEL, PROFILE_ID, DB_NAME, TABLE_NAME, USER, STATE, TYPE, FILTERED_ROWS, UNSELECTED_ROWS, SINK_ROWS, CAST(RUNTIME_DETAILS AS VARCHAR), CAST(CREATE_TIME AS VARCHAR), CAST(LOAD_FINISH_TIME AS VARCHAR), ERROR_MSG, TRACKING_SQL FROM information_schema.loads ORDER BY ID DESC LIMIT {LOAD_RECORDS_READ_LIMIT}"
+        "SELECT ID, LABEL, PROFILE_ID, DB_NAME, TABLE_NAME, USER, STATE, TYPE, FILTERED_ROWS, UNSELECTED_ROWS, SINK_ROWS, CAST(RUNTIME_DETAILS AS VARCHAR), CAST(CREATE_TIME AS VARCHAR), CAST(LOAD_FINISH_TIME AS VARCHAR), ERROR_MSG, TRACKING_SQL, SCAN_ROWS, SCAN_BYTES, CAST(LOAD_COMMIT_TIME AS VARCHAR), CAST(PROPERTIES AS VARCHAR), PRIORITY FROM information_schema.loads ORDER BY ID DESC LIMIT {LOAD_RECORDS_READ_LIMIT}"
     )
 }
 
@@ -223,6 +227,8 @@ pub fn decode_routine_load_jobs(
                         .get("maxErrorNum")
                         .or_else(|| properties.get("max_error_number")),
                 ),
+                desired_tasks: number_text(properties.get("desireTaskConcurrentNum")),
+                max_batch_interval_seconds: number_text(properties.get("maxBatchIntervalS")),
                 max_lag: max.map(|(lag, _)| lag.to_string()),
                 max_lag_partition: max.map(|(_, partition)| partition.partition.clone()),
                 partitions,
@@ -252,6 +258,9 @@ pub fn decode_routine_load_jobs(
     }
 }
 
+/// The RUNTIME_DETAILS keys of a Stream Load's millisecond phases.
+const PHASE_KEYS: [&str; 3] = ["begin_txn_time_ms", "plan_time_ms", "receive_data_time_ms"];
+
 fn load_state_class(state: &str) -> LoadStateClass {
     match state {
         "FINISHED" => LoadStateClass::Finished,
@@ -277,13 +286,27 @@ fn civil_seconds(value: &str) -> Option<i64> {
     Some(days * 86_400 + h * 3_600 + min * 60 + s)
 }
 
-fn kind_matches(kind: &str, filter: LoadKindFilter) -> bool {
-    match filter {
-        LoadKindFilter::StreamLoad => kind.contains("STREAM_LOAD"),
-        LoadKindFilter::RoutineLoad => kind == "ROUTINE_LOAD",
-        LoadKindFilter::Broker => kind == "BROKER",
-        LoadKindFilter::Insert => kind == "INSERT",
+fn kind_group(kind: &str) -> LoadKindGroup {
+    match kind {
+        _ if kind.contains("STREAM_LOAD") => LoadKindGroup::StreamLoad,
+        "ROUTINE_LOAD" => LoadKindGroup::RoutineLoad,
+        "BROKER" => LoadKindGroup::Broker,
+        "INSERT" => LoadKindGroup::Insert,
+        _ => LoadKindGroup::Other,
     }
+}
+
+fn filter_group(filter: LoadKindFilter) -> LoadKindGroup {
+    match filter {
+        LoadKindFilter::StreamLoad => LoadKindGroup::StreamLoad,
+        LoadKindFilter::RoutineLoad => LoadKindGroup::RoutineLoad,
+        LoadKindFilter::Broker => LoadKindGroup::Broker,
+        LoadKindFilter::Insert => LoadKindGroup::Insert,
+    }
+}
+
+fn kind_matches(kind: &str, filter: LoadKindFilter) -> bool {
+    kind_group(kind) == filter_group(filter)
 }
 
 /// Adds a known count; an unknown one is counted apart, never as zero.
@@ -337,6 +360,20 @@ fn parse_load_rows(rows: Vec<Vec<Option<String>>>, audit_database: Option<&str>)
             let db = text(&row, 3).unwrap_or_default();
             let state = text(&row, 6).unwrap_or_default();
             let details = json(text(&row, 11).as_deref()).unwrap_or_default();
+            // `StreamLoadTask.setLoadState` fills the phase timings only from a
+            // Stream Load commit attachment and writes 0 until then; a Routine
+            // Load task never has one. So a 0 is "not measured", not 0 ms,
+            // unless the load finished, or was cancelled with an attachment.
+            let raw = |key: &str| number_text(details.get(key));
+            let measured = kind != "ROUTINE_LOAD"
+                && match load_state_class(&state) {
+                    LoadStateClass::Finished => true,
+                    LoadStateClass::Cancelled => PHASE_KEYS
+                        .iter()
+                        .any(|key| raw(key).is_some_and(|value| value != "0")),
+                    _ => false,
+                };
+            let phase = |key: &str| measured.then(|| raw(key)).flatten();
             let create_time = text(&row, 12);
             let finish_time = text(&row, 13);
             if let Some(created) = &create_time
@@ -344,11 +381,34 @@ fn parse_load_rows(rows: Vec<Vec<Option<String>>>, audit_database: Option<&str>)
             {
                 earliest = Some(created.clone());
             }
-            let total_seconds = match (
-                create_time.as_deref().and_then(civil_seconds),
-                finish_time.as_deref().and_then(civil_seconds),
+            let commit_time = text(&row, 18);
+            let span = |from: Option<&String>, to: Option<&String>| match (
+                from.and_then(|value| civil_seconds(value)),
+                to.and_then(|value| civil_seconds(value)),
             ) {
                 (Some(start), Some(end)) if end >= start => Some((end - start).to_string()),
+                _ => None,
+            };
+            let total_seconds = span(create_time.as_ref(), finish_time.as_ref());
+            let execute_seconds = span(create_time.as_ref(), commit_time.as_ref());
+            let publish_seconds = span(commit_time.as_ref(), finish_time.as_ref());
+            let timeout_seconds = number_text(
+                json(text(&row, 19).as_deref())
+                    .unwrap_or_default()
+                    .get("timeout"),
+            )
+            .filter(|value| value.parse::<u64>().is_ok_and(|seconds| seconds > 0));
+            let timeout_share_permyriad = match (
+                total_seconds
+                    .as_deref()
+                    .and_then(|v| v.parse::<u128>().ok()),
+                timeout_seconds
+                    .as_deref()
+                    .and_then(|v| v.parse::<u128>().ok()),
+            ) {
+                (Some(total), Some(timeout)) if timeout > 0 => {
+                    Some(u32::try_from(total.saturating_mul(10_000) / timeout).unwrap_or(u32::MAX))
+                }
                 _ => None,
             };
             let system = SYSTEM_DATABASES.contains(&db.as_str())
@@ -376,12 +436,20 @@ fn parse_load_rows(rows: Vec<Vec<Option<String>>>, audit_database: Option<&str>)
                     .get("client_ip")
                     .and_then(Value::as_str)
                     .map(str::to_owned),
-                begin_txn_ms: number_text(details.get("begin_txn_time_ms")),
-                plan_ms: number_text(details.get("plan_time_ms")),
-                receive_data_ms: number_text(details.get("receive_data_time_ms")),
+                begin_txn_ms: phase("begin_txn_time_ms"),
+                plan_ms: phase("plan_time_ms"),
+                receive_data_ms: phase("receive_data_time_ms"),
                 create_time,
                 finish_time,
                 total_seconds,
+                scan_rows: count(&row, 16),
+                scan_bytes: count(&row, 17),
+                commit_time,
+                execute_seconds,
+                publish_seconds,
+                timeout_seconds,
+                timeout_share_permyriad,
+                priority: text(&row, 20),
                 error_message: text(&row, 14),
                 has_error_log: text(&row, 15).is_some(),
                 system,
@@ -651,22 +719,36 @@ fn phase_distribution(records: &[&LoadRecord]) -> LoadPhaseDistribution {
         .iter()
         .filter_map(|record| parse_ms(record.plan_ms.as_deref()))
         .collect();
+    let mut receive: Vec<u64> = records
+        .iter()
+        .filter_map(|record| parse_ms(record.receive_data_ms.as_deref()))
+        .collect();
     begin.sort_unstable();
     plan.sort_unstable();
+    receive.sort_unstable();
     let bin_of = |value: u64| {
         PHASE_EDGES_MS
             .iter()
             .rposition(|edge| value >= *edge)
             .unwrap_or(0)
     };
-    let mut counts = [(0u128, 0u128); PHASE_EDGES_MS.len()];
+    let mut counts = [(0u128, 0u128, 0u128); PHASE_EDGES_MS.len()];
     for value in &begin {
         counts[bin_of(*value)].0 += 1;
     }
     for value in &plan {
         counts[bin_of(*value)].1 += 1;
     }
-    let top = axis_top(counts.iter().map(|(b, p)| (*b).max(*p)).max().unwrap_or(0));
+    for value in &receive {
+        counts[bin_of(*value)].2 += 1;
+    }
+    let top = axis_top(
+        counts
+            .iter()
+            .map(|(b, p, r)| (*b).max(*p).max(*r))
+            .max()
+            .unwrap_or(0),
+    );
     let quantiles = |sorted: &[u64]| LoadPhaseQuantiles {
         samples: sorted.len().to_string(),
         p50_ms: nearest_rank(sorted, 50),
@@ -676,18 +758,21 @@ fn phase_distribution(records: &[&LoadRecord]) -> LoadPhaseDistribution {
         bins: counts
             .iter()
             .enumerate()
-            .map(|(index, (b, p))| LoadPhaseBin {
+            .map(|(index, (b, p, r))| LoadPhaseBin {
                 lower_ms: PHASE_EDGES_MS[index].to_string(),
                 upper_ms: PHASE_EDGES_MS.get(index + 1).map(u64::to_string),
                 begin_txn: b.to_string(),
                 plan: p.to_string(),
+                receive_data: r.to_string(),
                 begin_txn_permyriad: permyriad(*b, top),
                 plan_permyriad: permyriad(*p, top),
+                receive_data_permyriad: permyriad(*r, top),
             })
             .collect(),
         axis_ticks: axis_ticks(top),
         begin_txn: quantiles(&begin),
         plan: quantiles(&plan),
+        receive_data: quantiles(&receive),
     }
 }
 
@@ -698,6 +783,16 @@ struct HourTally {
     filtered: u128,
     filtered_unknown: u128,
     failed_tables: BTreeMap<String, u128>,
+    groups: BTreeMap<LoadKindGroup, u128>,
+    volume: u128,
+    volume_unknown: u128,
+}
+
+struct HourChart {
+    buckets: Vec<LoadHourBucket>,
+    ticks: Vec<String>,
+    volume_ticks: Vec<String>,
+    outside: usize,
 }
 
 fn record_hour(record: &LoadRecord) -> Option<i64> {
@@ -716,7 +811,8 @@ fn hour_buckets(
     records: &[&LoadRecord],
     known_from: Option<i64>,
     complete_from: Option<i64>,
-) -> (Vec<LoadHourBucket>, Vec<String>, usize) {
+    volume: fn(&LoadRecord) -> Option<&str>,
+) -> HourChart {
     let mut tallies: BTreeMap<i64, HourTally> = BTreeMap::new();
     let mut unplaced = 0usize;
     for record in records {
@@ -726,6 +822,8 @@ fn hour_buckets(
         };
         let tally = tallies.entry(index).or_default();
         tally.loads += 1;
+        *tally.groups.entry(kind_group(&record.kind)).or_default() += 1;
+        add(&mut tally.volume, &mut tally.volume_unknown, volume(record));
         match record
             .filtered_rows
             .as_deref()
@@ -743,7 +841,12 @@ fn hour_buckets(
         }
     }
     let (Some(&oldest), Some(&last)) = (tallies.keys().next(), tallies.keys().next_back()) else {
-        return (Vec::new(), axis_ticks(axis_top(0)), unplaced);
+        return HourChart {
+            buckets: Vec::new(),
+            ticks: axis_ticks(axis_top(0)),
+            volume_ticks: axis_ticks(axis_top(0)),
+            outside: unplaced,
+        };
     };
     let first = (last - LOAD_OVERVIEW_HOURS as i64 + 1)
         .min(oldest.max(last - LOAD_OVERVIEW_MAX_HOURS as i64 + 1));
@@ -755,6 +858,13 @@ fn hour_buckets(
             .max()
             .unwrap_or(0),
     );
+    let volume_top = axis_top(
+        tallies
+            .range(first..=last)
+            .map(|(_, tally)| tally.volume)
+            .max()
+            .unwrap_or(0),
+    );
     let empty = HourTally::default();
     let buckets = (first..=last)
         .map(|index| {
@@ -763,6 +873,7 @@ fn hour_buckets(
                 .failed_tables
                 .iter()
                 .max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0)));
+            let volume_known = tally.loads == 0 || tally.volume_unknown < tally.loads;
             LoadHourBucket {
                 hour: hour_key(index),
                 coverage: if known_from.is_some_and(|from| index < from) {
@@ -780,14 +891,27 @@ fn hour_buckets(
                 failed_permyriad: permyriad(tally.failed, top),
                 top_failed_table: worst.map(|(table, _)| table.clone()),
                 top_failed_count: worst.map(|(_, count)| count.to_string()),
+                segments: tally
+                    .groups
+                    .iter()
+                    .map(|(group, loads)| LoadHourSegment {
+                        group: *group,
+                        loads: loads.to_string(),
+                        permyriad: permyriad(*loads, top),
+                    })
+                    .collect(),
+                volume: volume_known.then(|| tally.volume.to_string()),
+                volume_unknown: tally.volume_unknown.to_string(),
+                volume_permyriad: volume_known.then(|| permyriad(tally.volume, volume_top)),
             }
         })
         .collect();
-    (
+    HourChart {
         buckets,
-        axis_ticks(top),
-        unplaced + usize::try_from(outside).unwrap_or(usize::MAX),
-    )
+        ticks: axis_ticks(top),
+        volume_ticks: axis_ticks(volume_top),
+        outside: unplaced + usize::try_from(outside).unwrap_or(usize::MAX),
+    }
 }
 
 fn lag_bar(job: &RoutineLoadJob, partition: &RoutineLoadPartition, lag: u128) -> RoutineLagBar {
@@ -873,6 +997,7 @@ pub fn routine_overview(
     paused.sort_by(|a, b| b.pause_time.cmp(&a.pause_time).then(a.name.cmp(&b.name)));
     RoutineLoadOverview {
         support,
+        jobs: jobs.len().to_string(),
         running: tally(RoutineLoadStateClass::Running),
         scheduling: tally(RoutineLoadStateClass::Scheduling),
         paused: tally(RoutineLoadStateClass::Paused),
@@ -936,6 +1061,564 @@ fn complete_from(all: &[LoadRecord], scope: &[&LoadRecord]) -> Option<(i64, Stri
         .max()
 }
 
+fn number(value: Option<&str>) -> Option<u128> {
+    value.and_then(|value| value.parse::<u128>().ok())
+}
+
+fn record_bytes(record: &LoadRecord) -> Option<&str> {
+    record.scan_bytes.as_deref()
+}
+
+fn record_rows(record: &LoadRecord) -> Option<&str> {
+    record.loaded_rows.as_deref()
+}
+
+fn record_total(record: &LoadRecord) -> Option<&str> {
+    record.total_seconds.as_deref()
+}
+
+fn record_publish(record: &LoadRecord) -> Option<&str> {
+    record.publish_seconds.as_deref()
+}
+
+/// Second-precision timings of finished records only: a running or
+/// cancelled load has no comparable end.
+fn finished_seconds(records: &[&LoadRecord], pick: fn(&LoadRecord) -> Option<&str>) -> Vec<u64> {
+    let mut values: Vec<u64> = records
+        .iter()
+        .filter(|record| record.state_class == LoadStateClass::Finished)
+        .filter_map(|record| parse_ms(pick(record)))
+        .collect();
+    values.sort_unstable();
+    values
+}
+
+/// Total-time bins for Stream Load, INSERT and Broker Load (seconds).
+const TOTAL_EDGES_S: [u64; 6] = [0, 1, 10, 60, 300, 1_800];
+/// Routine Load tasks run for about `max_batch_interval` (default 10 s).
+const TASK_EDGES_S: [u64; 6] = [0, 5, 10, 15, 30, 60];
+
+fn duration_distribution(sorted: &[u64], edges: &[u64]) -> LoadDurationDistribution {
+    let mut counts = vec![0u128; edges.len()];
+    for value in sorted {
+        counts[edges.iter().rposition(|edge| value >= edge).unwrap_or(0)] += 1;
+    }
+    let top = counts.iter().copied().max().unwrap_or(0);
+    LoadDurationDistribution {
+        bins: counts
+            .iter()
+            .enumerate()
+            .map(|(index, loads)| LoadDurationBin {
+                lower_seconds: edges[index].to_string(),
+                upper_seconds: edges.get(index + 1).map(u64::to_string),
+                loads: loads.to_string(),
+                permyriad: permyriad(*loads, top),
+            })
+            .collect(),
+        samples: sorted.len().to_string(),
+        p50_seconds: nearest_rank(sorted, 50),
+        p95_seconds: nearest_rank(sorted, 95),
+        max_seconds: sorted.last().map(u64::to_string),
+    }
+}
+
+#[derive(Default)]
+struct GroupTally {
+    loads: u128,
+    failed: u128,
+    sink: u128,
+    sink_unknown: u128,
+    filtered: u128,
+    filtered_unknown: u128,
+}
+
+/// Every group among `records`, in `LoadKindGroup` order.
+fn group_summaries(records: &[&LoadRecord]) -> Vec<LoadGroupSummary> {
+    let mut tallies: BTreeMap<LoadKindGroup, (GroupTally, Vec<&LoadRecord>)> = BTreeMap::new();
+    for record in records {
+        let (tally, members) = tallies.entry(kind_group(&record.kind)).or_default();
+        tally.loads += 1;
+        tally.failed += u128::from(record.state_class == LoadStateClass::Cancelled);
+        add(
+            &mut tally.sink,
+            &mut tally.sink_unknown,
+            record.loaded_rows.as_deref(),
+        );
+        add(
+            &mut tally.filtered,
+            &mut tally.filtered_unknown,
+            record.filtered_rows.as_deref(),
+        );
+        members.push(record);
+    }
+    tallies
+        .into_iter()
+        .map(|(group, (tally, members))| LoadGroupSummary {
+            group,
+            loads: tally.loads.to_string(),
+            failed: tally.failed.to_string(),
+            sink_rows: tally.sink.to_string(),
+            sink_rows_unknown: tally.sink_unknown.to_string(),
+            filtered_rows: tally.filtered.to_string(),
+            filtered_unknown: tally.filtered_unknown.to_string(),
+            total_p95_seconds: nearest_rank(&finished_seconds(&members, record_total), 95),
+        })
+        .collect()
+}
+
+/// Stream Load errors are free text from a few fixed sources; INSERT and
+/// Broker Load write `type:<CancelType>; msg:<text>`.
+fn failure_reason(record: &LoadRecord) -> String {
+    let message = record.error_message.as_deref().unwrap_or_default();
+    match kind_group(&record.kind) {
+        LoadKindGroup::StreamLoad | LoadKindGroup::RoutineLoad => {
+            // StarRocks quotes the label as `[label]`; it is user text and may
+            // hold any of these words.
+            let lower = message
+                .replace(&format!("[{}]", record.label), "")
+                .to_ascii_lowercase();
+            // `LabelAlreadyUsedException`: "Label [..] has already been used."
+            if lower.contains("has already been used") || lower.contains("already exist") {
+                "label_exists"
+            } else if lower.contains("too many filtered rows") {
+                "filtered_ratio"
+            } else if lower.contains("timeout") || lower.contains("timed out") {
+                "timeout"
+            } else {
+                "other"
+            }
+            .to_owned()
+        }
+        _ => message
+            .strip_prefix("type:")
+            .and_then(|rest| rest.split(';').next())
+            .map(str::trim)
+            .filter(|kind| {
+                (1..=40).contains(&kind.len())
+                    && kind
+                        .bytes()
+                        .all(|byte| byte.is_ascii_uppercase() || byte == b'_')
+            })
+            .map_or_else(|| "other".to_owned(), str::to_owned),
+    }
+}
+
+/// Failures of one reason, and the finish time and table of its newest.
+type ReasonTally = (u128, Option<String>, String);
+/// `(client ip, user)` and their `(loads, failed)`.
+type SourceTally = ((Option<String>, Option<String>), (u128, u128));
+
+/// The newest of a reason is the one that finished last; both times are
+/// `YYYY-MM-DD HH:MM:SS`, so they compare as text.
+fn failure_reasons(records: &[&LoadRecord]) -> Vec<LoadFailureReason> {
+    let mut reasons: BTreeMap<String, ReasonTally> = BTreeMap::new();
+    for record in records
+        .iter()
+        .filter(|record| record.state_class == LoadStateClass::Cancelled)
+    {
+        let time = record
+            .finish_time
+            .clone()
+            .or_else(|| record.create_time.clone());
+        let entry = reasons
+            .entry(failure_reason(record))
+            .or_insert_with(|| (0, None, String::new()));
+        entry.0 += 1;
+        if entry.0 == 1 || time > entry.1 {
+            entry.1 = time;
+            entry.2 = format!("{}.{}", record.db, record.table);
+        }
+    }
+    let mut rows: Vec<(String, ReasonTally)> = reasons.into_iter().collect();
+    rows.sort_by(|a, b| b.1.0.cmp(&a.1.0).then(a.0.cmp(&b.0)));
+    let top = rows.first().map_or(0, |(_, (loads, _, _))| *loads);
+    rows.into_iter()
+        .map(|(reason, (loads, time, table))| LoadFailureReason {
+            reason,
+            loads: loads.to_string(),
+            latest_time: time,
+            latest_table: Some(table),
+            width_permyriad: permyriad(loads, top),
+        })
+        .collect()
+}
+
+fn slow_record(record: &LoadRecord, longest: u128) -> LoadSlowRecord {
+    LoadSlowRecord {
+        job_id: record.job_id.clone(),
+        label: record.label.clone(),
+        table: format!("{}.{}", record.db, record.table),
+        total_seconds: record.total_seconds.clone().unwrap_or_default(),
+        execute_seconds: record.execute_seconds.clone(),
+        publish_seconds: record.publish_seconds.clone(),
+        timeout_seconds: record.timeout_seconds.clone(),
+        timeout_share_permyriad: record.timeout_share_permyriad,
+        execute_permyriad: permyriad(count_of(record.execute_seconds.as_deref()), longest),
+        publish_permyriad: permyriad(count_of(record.publish_seconds.as_deref()), longest),
+    }
+}
+
+/// The slowest finished records, longest first.
+fn slowest(records: &[&LoadRecord]) -> Vec<LoadSlowRecord> {
+    let mut finished: Vec<(u128, &LoadRecord)> = records
+        .iter()
+        .filter(|record| record.state_class == LoadStateClass::Finished)
+        .filter_map(|record| Some((number(record.total_seconds.as_deref())?, *record)))
+        .collect();
+    finished.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.job_id.cmp(&b.1.job_id)));
+    let longest = finished.first().map_or(0, |(total, _)| *total);
+    finished
+        .into_iter()
+        .take(LOAD_OVERVIEW_SLOWEST)
+        .map(|(_, record)| slow_record(record, longest))
+        .collect()
+}
+
+/// Records that used at least `LOAD_NEAR_TIMEOUT_PERMYRIAD` of their
+/// timeout, highest share first, and how many there are.
+fn near_timeout(records: &[&LoadRecord]) -> (usize, Vec<LoadSlowRecord>) {
+    let mut near: Vec<&LoadRecord> = records
+        .iter()
+        .copied()
+        .filter(|record| {
+            record
+                .timeout_share_permyriad
+                .is_some_and(|share| share >= LOAD_NEAR_TIMEOUT_PERMYRIAD)
+        })
+        .collect();
+    near.sort_by(|a, b| {
+        b.timeout_share_permyriad
+            .cmp(&a.timeout_share_permyriad)
+            .then(a.job_id.cmp(&b.job_id))
+    });
+    let longest = near
+        .iter()
+        .filter_map(|record| number(record.total_seconds.as_deref()))
+        .max()
+        .unwrap_or(0);
+    (
+        near.len(),
+        near.into_iter()
+            .take(LOAD_OVERVIEW_SLOWEST)
+            .map(|record| slow_record(record, longest))
+            .collect(),
+    )
+}
+
+#[derive(Default)]
+struct GroupTableTally<'a> {
+    loads: u128,
+    failed: u128,
+    scan_rows: u128,
+    scan_bytes: u128,
+    sink_rows: u128,
+    filtered: u128,
+    unknown: u128,
+    members: Vec<&'a LoadRecord>,
+    priorities: BTreeMap<String, u128>,
+}
+
+/// Per-table counts of one group. `stream` decides which counts the group
+/// reports (Stream Load has no scanned rows) and the order: most loads for
+/// Stream Load, most rows written for INSERT and Broker Load.
+fn group_tables(records: &[&LoadRecord], stream: bool) -> Vec<LoadGroupTable> {
+    let mut tables: BTreeMap<String, GroupTableTally> = BTreeMap::new();
+    for record in records {
+        let tally = tables
+            .entry(format!("{}.{}", record.db, record.table))
+            .or_default();
+        tally.loads += 1;
+        tally.failed += u128::from(record.state_class == LoadStateClass::Cancelled);
+        let mut missing = false;
+        let mut sum = |total: &mut u128, value: Option<&str>| match number(value) {
+            Some(value) => *total += value,
+            None => missing = true,
+        };
+        if !stream {
+            sum(&mut tally.scan_rows, record.scan_rows.as_deref());
+        }
+        sum(&mut tally.scan_bytes, record.scan_bytes.as_deref());
+        sum(&mut tally.sink_rows, record.loaded_rows.as_deref());
+        sum(&mut tally.filtered, record.filtered_rows.as_deref());
+        tally.unknown += u128::from(missing);
+        if let Some(priority) = &record.priority {
+            *tally.priorities.entry(priority.clone()).or_default() += 1;
+        }
+        tally.members.push(record);
+    }
+    let mut rows: Vec<(String, GroupTableTally)> = tables.into_iter().collect();
+    rows.sort_by(|a, b| {
+        let key = |tally: &GroupTableTally| if stream { tally.loads } else { tally.sink_rows };
+        key(&b.1).cmp(&key(&a.1)).then(a.0.cmp(&b.0))
+    });
+    rows.into_iter()
+        .take(LOAD_OVERVIEW_TABLES)
+        .map(|(table, tally)| {
+            let mut plans: Vec<u64> = tally
+                .members
+                .iter()
+                .filter_map(|record| parse_ms(record.plan_ms.as_deref()))
+                .collect();
+            plans.sort_unstable();
+            LoadGroupTable {
+                table,
+                loads: tally.loads.to_string(),
+                failed: tally.failed.to_string(),
+                scan_rows: tally.scan_rows.to_string(),
+                scan_bytes: tally.scan_bytes.to_string(),
+                sink_rows: tally.sink_rows.to_string(),
+                filtered_rows: tally.filtered.to_string(),
+                counts_unknown: tally.unknown.to_string(),
+                total_p95_seconds: nearest_rank(
+                    &finished_seconds(&tally.members, record_total),
+                    95,
+                ),
+                plan_p95_ms: stream.then(|| nearest_rank(&plans, 95)).flatten(),
+                priority: (!stream)
+                    .then(|| {
+                        tally
+                            .priorities
+                            .iter()
+                            .max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0)))
+                            .map(|(priority, _)| priority.clone())
+                    })
+                    .flatten(),
+            }
+        })
+        .collect()
+}
+
+fn stream_detail(records: &[&LoadRecord]) -> StreamLoadDetail {
+    let (mut bytes, mut bytes_unknown, mut unselected, mut unselected_unknown) =
+        (0u128, 0u128, 0u128, 0u128);
+    let mut sources: BTreeMap<(Option<String>, Option<String>), (u128, u128)> = BTreeMap::new();
+    for record in records {
+        add(&mut bytes, &mut bytes_unknown, record.scan_bytes.as_deref());
+        add(
+            &mut unselected,
+            &mut unselected_unknown,
+            record.unselected_rows.as_deref(),
+        );
+        let source = sources
+            .entry((record.client_ip.clone(), record.user.clone()))
+            .or_default();
+        source.0 += 1;
+        source.1 += u128::from(record.state_class == LoadStateClass::Cancelled);
+    }
+    let mut sources: Vec<SourceTally> = sources.into_iter().collect();
+    sources.sort_by(|a, b| b.1.0.cmp(&a.1.0).then(a.0.cmp(&b.0)));
+    let (near_count, near) = near_timeout(records);
+    StreamLoadDetail {
+        received_bytes: bytes.to_string(),
+        received_bytes_unknown: bytes_unknown.to_string(),
+        unselected_rows: unselected.to_string(),
+        unselected_unknown: unselected_unknown.to_string(),
+        total: duration_distribution(&finished_seconds(records, record_total), &TOTAL_EDGES_S),
+        publish_p95_seconds: nearest_rank(&finished_seconds(records, record_publish), 95),
+        near_timeout_count: near_count.to_string(),
+        near_timeout: near,
+        failure_reasons: failure_reasons(records),
+        tables: group_tables(records, true),
+        sources: sources
+            .into_iter()
+            .take(LOAD_OVERVIEW_TABLES)
+            .map(|((client_ip, user), (loads, failed))| LoadSource {
+                client_ip,
+                user,
+                loads: loads.to_string(),
+                failed: failed.to_string(),
+            })
+            .collect(),
+    }
+}
+
+fn batch_detail(records: &[&LoadRecord]) -> BatchLoadDetail {
+    let (mut scan_rows, mut scan_bytes, mut unknown) = (0u128, 0u128, 0u128);
+    let mut running: BTreeMap<String, u128> = BTreeMap::new();
+    for record in records {
+        let rows = number(record.scan_rows.as_deref());
+        let bytes = number(record.scan_bytes.as_deref());
+        scan_rows += rows.unwrap_or(0);
+        scan_bytes += bytes.unwrap_or(0);
+        unknown += u128::from(rows.is_none() || bytes.is_none());
+        if record.state_class == LoadStateClass::Running {
+            *running.entry(record.state.clone()).or_default() += 1;
+        }
+    }
+    let (near_count, _) = near_timeout(records);
+    BatchLoadDetail {
+        scan_rows: scan_rows.to_string(),
+        scan_bytes: scan_bytes.to_string(),
+        counts_unknown: unknown.to_string(),
+        duration: duration_distribution(&finished_seconds(records, record_total), &TOTAL_EDGES_S),
+        slowest: slowest(records),
+        near_timeout_count: near_count.to_string(),
+        failure_reasons: failure_reasons(records),
+        running_states: running
+            .into_iter()
+            .map(|(state, loads)| LoadStateCount {
+                state,
+                loads: loads.to_string(),
+            })
+            .collect(),
+        tables: group_tables(records, false),
+    }
+}
+
+fn job_health(job: &RoutineLoadJob) -> RoutineJobHealth {
+    let statistics = &job.statistics;
+    let committed = number(statistics.committed_tasks.as_deref());
+    let aborted = number(statistics.aborted_tasks.as_deref());
+    // StarRocks starts the execution time at 1 ms and divides by it, so its
+    // rates mean nothing before the first committed task.
+    let measured = committed.is_some_and(|tasks| tasks > 0);
+    RoutineJobHealth {
+        job_id: job.job_id.clone(),
+        name: job.name.clone(),
+        db: job.db.clone(),
+        table: job.table.clone(),
+        state: job.state.clone(),
+        state_class: job.state_class,
+        current_tasks: job.current_tasks.clone(),
+        desired_tasks: job.desired_tasks.clone(),
+        load_rows_rate: statistics.load_rows_rate.clone().filter(|_| measured),
+        received_bytes_rate: statistics.received_bytes_rate.clone().filter(|_| measured),
+        loaded_rows: statistics.loaded_rows.clone(),
+        total_rows: statistics.total_rows.clone(),
+        error_rows: statistics.error_rows.clone(),
+        error_share_permyriad: match (
+            number(statistics.error_rows.as_deref()),
+            number(statistics.total_rows.as_deref()),
+        ) {
+            (Some(errors), Some(total)) => share(errors, total),
+            _ => None,
+        },
+        committed_tasks: statistics.committed_tasks.clone(),
+        aborted_tasks: statistics.aborted_tasks.clone(),
+        abort_share_permyriad: match (committed, aborted) {
+            (Some(committed), Some(aborted)) => share(aborted, committed + aborted),
+            _ => None,
+        },
+        average_task_ms: match (
+            committed.filter(|tasks| *tasks > 0),
+            number(statistics.task_execute_time_ms.as_deref()),
+        ) {
+            (Some(tasks), Some(total)) => Some((total / tasks).to_string()),
+            _ => None,
+        },
+        max_batch_interval_seconds: job.max_batch_interval_seconds.clone(),
+        max_lag: job.max_lag.clone(),
+        max_lag_partition: job.max_lag_partition.clone(),
+        newest_consumed_ms: job
+            .partitions
+            .iter()
+            .filter_map(|partition| {
+                partition
+                    .consumed_message_ms
+                    .as_deref()?
+                    .parse::<i64>()
+                    .ok()
+            })
+            .max()
+            .map(|ms| ms.to_string()),
+    }
+}
+
+fn routine_detail(jobs: &[RoutineLoadJob], tasks: &[&LoadRecord]) -> RoutineLoadDetail {
+    let (mut errors, mut total, mut committed, mut aborted) = (0u128, 0u128, 0u128, 0u128);
+    let (mut executed, mut executed_tasks) = (0u128, 0u128);
+    let (mut rows_unknown, mut tasks_unknown) = (0usize, 0usize);
+    // The average covers every job or none: a job whose tasks or task time
+    // are unknown would leave it silently partial.
+    let mut executed_complete = true;
+    for job in jobs {
+        let statistics = &job.statistics;
+        if let (Some(e), Some(t)) = (
+            number(statistics.error_rows.as_deref()),
+            number(statistics.total_rows.as_deref()),
+        ) {
+            errors += e;
+            total += t;
+        } else {
+            rows_unknown += 1;
+        }
+        if let (Some(c), Some(a)) = (
+            number(statistics.committed_tasks.as_deref()),
+            number(statistics.aborted_tasks.as_deref()),
+        ) {
+            committed += c;
+            aborted += a;
+            if c > 0 {
+                match number(statistics.task_execute_time_ms.as_deref()) {
+                    Some(ms) => {
+                        executed += ms;
+                        executed_tasks += c;
+                    }
+                    None => executed_complete = false,
+                }
+            }
+        } else {
+            tasks_unknown += 1;
+            executed_complete = false;
+        }
+    }
+    let rows_known = rows_unknown < jobs.len();
+    let tasks_known = tasks_unknown < jobs.len();
+    let mut paused: Vec<&RoutineLoadJob> = jobs
+        .iter()
+        .filter(|job| job.state_class == RoutineLoadStateClass::Paused)
+        .collect();
+    paused.sort_by(|a, b| b.pause_time.cmp(&a.pause_time).then(a.name.cmp(&b.name)));
+    let mut ended: Vec<&RoutineLoadJob> = jobs
+        .iter()
+        .filter(|job| {
+            matches!(
+                job.state_class,
+                RoutineLoadStateClass::Stopped | RoutineLoadStateClass::Cancelled
+            )
+        })
+        .collect();
+    ended.sort_by(|a, b| b.end_time.cmp(&a.end_time).then(a.name.cmp(&b.name)));
+    let issue = |job: &RoutineLoadJob, time: Option<String>| {
+        let health = job_health(job);
+        RoutineJobIssue {
+            job_id: job.job_id.clone(),
+            name: job.name.clone(),
+            state: job.state.clone(),
+            state_class: job.state_class,
+            time,
+            reason: job.reason.clone(),
+            error_share_permyriad: health.error_share_permyriad,
+            aborted_tasks: health.aborted_tasks,
+        }
+    };
+    RoutineLoadDetail {
+        jobs: jobs.iter().map(job_health).collect(),
+        error_rows: rows_known.then(|| errors.to_string()),
+        total_rows: rows_known.then(|| total.to_string()),
+        rows_unknown: rows_unknown.to_string(),
+        error_share_permyriad: share(errors, total),
+        committed_tasks: tasks_known.then(|| committed.to_string()),
+        aborted_tasks: tasks_known.then(|| aborted.to_string()),
+        tasks_unknown: tasks_unknown.to_string(),
+        abort_share_permyriad: share(aborted, committed + aborted),
+        average_task_ms: (executed_complete && executed_tasks > 0)
+            .then(|| (executed / executed_tasks).to_string()),
+        held_tasks: tasks.len().to_string(),
+        tasks: duration_distribution(&finished_seconds(tasks, record_total), &TASK_EDGES_S),
+        issues: paused
+            .into_iter()
+            .map(|job| issue(job, job.pause_time.clone()))
+            .chain(
+                ended
+                    .into_iter()
+                    .map(|job| issue(job, job.end_time.clone())),
+            )
+            .take(LOAD_OVERVIEW_SLOWEST)
+            .collect(),
+    }
+}
+
 /// Task 52: the overview of everything one `loads` read and one
 /// `routine_load_jobs` read hold. Every count, bucket and bar length is
 /// decided here; the page only lays them out.
@@ -952,13 +1635,13 @@ pub fn build_load_overview(
         at_retention_limit,
         ..
     } = parse_load_rows(rows, audit_database);
-    let visible = all
+    let visible: Vec<&LoadRecord> = all
         .iter()
         .filter(|record| request.include_system || !record.system)
-        .count();
-    let scope: Vec<&LoadRecord> = all
+        .collect();
+    let scope: Vec<&LoadRecord> = visible
         .iter()
-        .filter(|record| request.include_system || !record.system)
+        .copied()
         .filter(|record| {
             request
                 .kind
@@ -1004,8 +1687,19 @@ pub fn build_load_overview(
             hour + 1
         }
     });
-    let (hours, hour_axis_ticks, outside) =
-        hour_buckets(&scope, known.as_ref().map(|(hour, _)| *hour), complete_hour);
+    let group = request.kind.map(filter_group);
+    let (volume_unit, volume): (LoadVolumeUnit, fn(&LoadRecord) -> Option<&str>) =
+        if group == Some(LoadKindGroup::StreamLoad) {
+            (LoadVolumeUnit::Bytes, record_bytes)
+        } else {
+            (LoadVolumeUnit::Rows, record_rows)
+        };
+    let chart = hour_buckets(
+        &scope,
+        known.as_ref().map(|(hour, _)| *hour),
+        complete_hour,
+        volume,
+    );
     let mut limitations: Vec<String> = RECORD_LIMITATIONS.into_iter().map(str::to_owned).collect();
     limitations.extend(
         ["hours_by_create_time", "routine_lag_is_current"]
@@ -1028,9 +1722,18 @@ pub fn build_load_overview(
                 failed: failed.to_string(),
             })
             .collect(),
-        hours,
-        records_outside_hours: outside.to_string(),
-        hour_axis_ticks,
+        hours: chart.buckets,
+        records_outside_hours: chart.outside.to_string(),
+        hour_axis_ticks: chart.ticks,
+        groups: group_summaries(&visible),
+        all_loads: visible.len().to_string(),
+        volume_unit,
+        volume_axis_ticks: chart.volume_ticks,
+        stream: (group == Some(LoadKindGroup::StreamLoad)).then(|| stream_detail(&scope)),
+        batch: matches!(group, Some(LoadKindGroup::Insert | LoadKindGroup::Broker))
+            .then(|| batch_detail(&scope)),
+        routine_detail: (group == Some(LoadKindGroup::RoutineLoad))
+            .then(|| routine_detail(&routine.jobs, &scope)),
         tables: filtered_tables
             .into_iter()
             .take(LOAD_OVERVIEW_TABLES)
@@ -1048,7 +1751,7 @@ pub fn build_load_overview(
         earliest_create_time: known.map(|(_, created)| created),
         complete_from: complete.map(|(_, created)| created),
         at_retention_limit,
-        hidden_system: (all.len() - visible).to_string(),
+        hidden_system: (all.len() - visible.len()).to_string(),
         limitations,
     }
 }
@@ -1597,6 +2300,535 @@ mod tests {
         assert_eq!(inserts.failed_share_permyriad, Some(0));
         assert_eq!(inserts.summary.filtered_share_permyriad, Some(0));
         assert!(inserts.tables.is_empty());
+    }
+
+    /// A `load_row` with the task 56 columns: scan rows and bytes, commit
+    /// time, properties and priority.
+    fn wide_row(
+        mut row: Vec<Option<String>>,
+        scan: (&str, &str),
+        commit: Option<&str>,
+        timeout: &str,
+        priority: &str,
+    ) -> Vec<Option<String>> {
+        row.extend([
+            s(scan.0),
+            s(scan.1),
+            commit.map(str::to_owned),
+            Some(format!(
+                r#"{{"timeout": {timeout}, "max_filter_ratio": 0.0}}"#
+            )),
+            s(priority),
+        ]);
+        row
+    }
+
+    #[test]
+    fn ld09_overview_splits_groups_and_details_each_type() {
+        let stream = |id, details: &str, state, finished, commit| {
+            wide_row(
+                load_row(
+                    id,
+                    "s",
+                    "ods",
+                    "STREAM_LOAD",
+                    state,
+                    "0",
+                    details,
+                    "2026-10-30 08:00:00",
+                    finished,
+                    false,
+                ),
+                ("0", "1000"),
+                commit,
+                "10",
+                "NORMAL",
+            )
+        };
+        let mut insert_failed = wide_row(
+            load_row(
+                "4",
+                "i_bad",
+                "dwd",
+                "INSERT",
+                "CANCELLED",
+                "0",
+                "{}",
+                "2026-10-30 08:20:00",
+                Some("2026-10-30 08:30:00"),
+                false,
+            ),
+            ("50", "500"),
+            None,
+            "3600",
+            "HIGH",
+        );
+        insert_failed[14] = s("type:TIMEOUT; msg:timeout by txn manager");
+        let rows = vec![
+            stream(
+                "1",
+                r#"{"client_ip": "10.0.0.7", "begin_txn_time_ms": 2, "plan_time_ms": 3, "receive_data_time_ms": 40}"#,
+                "FINISHED",
+                Some("2026-10-30 08:00:09"),
+                Some("2026-10-30 08:00:08"),
+            ),
+            stream(
+                "2",
+                r#"{"client_ip": "10.0.0.7"}"#,
+                "CANCELLED",
+                Some("2026-10-30 08:00:01"),
+                None,
+            ),
+            wide_row(
+                load_row(
+                    "3",
+                    "i_ok",
+                    "dwd",
+                    "INSERT",
+                    "FINISHED",
+                    "0",
+                    "{}",
+                    "2026-10-30 08:10:00",
+                    Some("2026-10-30 08:12:00"),
+                    false,
+                ),
+                ("900", "-1"),
+                Some("2026-10-30 08:11:50"),
+                "3600",
+                "HIGH",
+            ),
+            insert_failed,
+            wide_row(
+                load_row(
+                    "5",
+                    "i_run",
+                    "dwd",
+                    "INSERT",
+                    "LOADING",
+                    "-1",
+                    "{}",
+                    "2026-10-30 08:40:00",
+                    None,
+                    false,
+                ),
+                ("-1", "-1"),
+                None,
+                "3600",
+                "NORMAL",
+            ),
+            wide_row(
+                load_row(
+                    "6",
+                    "ld_kafka-1",
+                    "lr",
+                    "ROUTINE_LOAD",
+                    "FINISHED",
+                    "1",
+                    "{}",
+                    "2026-10-30 08:50:00",
+                    Some("2026-10-30 08:50:07"),
+                    false,
+                ),
+                ("0", "2393"),
+                Some("2026-10-30 08:50:07"),
+                "60",
+                "NORMAL",
+            ),
+        ];
+        let routine = decode_routine_load_jobs(vec![routine_row()], LoadViewSupport::Full, None);
+        let request = |kind| LoadOverviewRequest {
+            connection_id: "c".into(),
+            kind,
+            include_system: false,
+        };
+        let all = build_load_overview(
+            rows.clone(),
+            &request(None),
+            LoadViewSupport::Full,
+            None,
+            None,
+            &routine,
+        );
+        let groups: Vec<(LoadKindGroup, &str, &str)> = all
+            .groups
+            .iter()
+            .map(|g| (g.group, g.loads.as_str(), g.failed.as_str()))
+            .collect();
+        assert_eq!(
+            groups,
+            [
+                (LoadKindGroup::StreamLoad, "2", "1"),
+                (LoadKindGroup::Insert, "3", "1"),
+                (LoadKindGroup::RoutineLoad, "1", "0"),
+            ]
+        );
+        let last = all.hours.last().unwrap();
+        assert_eq!(last.segments.len(), 3);
+        assert_eq!(all.volume_unit, LoadVolumeUnit::Rows);
+        assert!(all.stream.is_none() && all.batch.is_none() && all.routine_detail.is_none());
+
+        // Stream Load: bytes, the receive phase, timeout share and sources.
+        let overview = build_load_overview(
+            rows.clone(),
+            &request(Some(LoadKindFilter::StreamLoad)),
+            LoadViewSupport::Full,
+            None,
+            None,
+            &routine,
+        );
+        assert_eq!(overview.volume_unit, LoadVolumeUnit::Bytes);
+        assert_eq!(
+            overview.hours.last().unwrap().volume.as_deref(),
+            Some("2000")
+        );
+        assert_eq!(overview.phases.receive_data.samples, "1");
+        let detail = overview.stream.unwrap();
+        assert_eq!(detail.received_bytes, "2000");
+        assert_eq!(detail.near_timeout_count, "1");
+        assert_eq!(detail.near_timeout[0].timeout_share_permyriad, Some(9_000));
+        assert_eq!(detail.near_timeout[0].publish_seconds.as_deref(), Some("1"));
+        assert_eq!(detail.failure_reasons[0].reason, "filtered_ratio");
+        assert_eq!(detail.sources[0].client_ip.as_deref(), Some("10.0.0.7"));
+        assert_eq!(
+            (
+                detail.sources[0].loads.as_str(),
+                detail.sources[0].failed.as_str()
+            ),
+            ("2", "1")
+        );
+        assert_eq!(detail.tables[0].scan_rows, "0");
+
+        // INSERT: seconds, the slowest with its two segments, failure types,
+        // running states; an unknown byte count is counted apart.
+        let overview = build_load_overview(
+            rows.clone(),
+            &request(Some(LoadKindFilter::Insert)),
+            LoadViewSupport::Full,
+            None,
+            None,
+            &routine,
+        );
+        let detail = overview.batch.unwrap();
+        assert_eq!(detail.duration.samples, "1");
+        assert_eq!(detail.duration.max_seconds.as_deref(), Some("120"));
+        let slow = &detail.slowest[0];
+        assert_eq!(
+            (
+                slow.execute_seconds.as_deref(),
+                slow.publish_seconds.as_deref()
+            ),
+            (Some("110"), Some("10"))
+        );
+        assert_eq!(
+            (slow.execute_permyriad, slow.publish_permyriad),
+            (9_166, 833)
+        );
+        assert_eq!(detail.failure_reasons[0].reason, "TIMEOUT");
+        assert_eq!(detail.running_states[0].state, "LOADING");
+        assert_eq!(
+            (detail.scan_rows.as_str(), detail.counts_unknown.as_str()),
+            ("950", "2")
+        );
+        assert_eq!(detail.tables[0].priority.as_deref(), Some("HIGH"));
+
+        // Routine Load: lifetime counters per job and the held tasks.
+        let overview = build_load_overview(
+            rows,
+            &request(Some(LoadKindFilter::RoutineLoad)),
+            LoadViewSupport::Full,
+            None,
+            None,
+            &routine,
+        );
+        let detail = overview.routine_detail.unwrap();
+        let job = &detail.jobs[0];
+        assert_eq!(job.average_task_ms.as_deref(), Some("543"));
+        assert_eq!(job.error_share_permyriad, Some(49));
+        assert_eq!(job.abort_share_permyriad, Some(0));
+        assert_eq!(job.desired_tasks.as_deref(), Some("1"));
+        assert_eq!(job.newest_consumed_ms.as_deref(), Some("1793348096695"));
+        assert_eq!(detail.held_tasks, "1");
+        assert_eq!(detail.tasks.samples, "1");
+        assert_eq!(detail.tasks.bins[1].loads, "1");
+        assert!(detail.issues.is_empty());
+    }
+
+    #[test]
+    fn routine_rates_wait_for_a_committed_task() {
+        let mut row = routine_row();
+        row[12] = s(
+            r#"{"loadedRows":0,"loadRowsRate":0,"receivedBytesRate":0,"committedTaskNum":0,"abortedTaskNum":2,"taskExecuteTimeMs":1,"errorRows":0,"totalRows":0}"#,
+        );
+        row[7] = s("PAUSED");
+        row[3] = s("2026-10-30 09:00:00");
+        row[14] =
+            s("ErrorReason{code=errCode = 4, msg='Job failed to fetch all current partition'}");
+        let routine = decode_routine_load_jobs(vec![row], LoadViewSupport::Full, None);
+        let detail = routine_detail(&routine.jobs, &[]);
+        let job = &detail.jobs[0];
+        assert_eq!(
+            (
+                job.load_rows_rate.as_deref(),
+                job.average_task_ms.as_deref()
+            ),
+            (None, None)
+        );
+        assert_eq!(job.error_share_permyriad, None);
+        assert_eq!(job.abort_share_permyriad, Some(10_000));
+        assert_eq!(detail.average_task_ms, None);
+        assert_eq!(
+            detail.issues[0].time.as_deref(),
+            Some("2026-10-30 09:00:00")
+        );
+        assert_eq!(detail.tasks.samples, "0");
+    }
+
+    #[test]
+    fn unmeasured_and_partial_values_stay_unknown() {
+        // A running Stream Load has no commit attachment yet, so its 0s are
+        // not measurements; nor are a cancelled one's all-zero phases.
+        let zeros = r#"{"begin_txn_time_ms": 0, "plan_time_ms": 0, "receive_data_time_ms": 0}"#;
+        let plan = |state, finished| {
+            let row = load_row(
+                "1",
+                "s",
+                "ods",
+                "STREAM_LOAD",
+                state,
+                "0",
+                zeros,
+                "2026-10-30 08:00:00",
+                finished,
+                false,
+            );
+            parse_load_rows(vec![row], None).all[0].plan_ms.clone()
+        };
+        assert_eq!(plan("LOADING", None), None);
+        assert_eq!(plan("CANCELLED", Some("2026-10-30 08:00:01")), None);
+        assert_eq!(
+            plan("FINISHED", Some("2026-10-30 08:00:01")).as_deref(),
+            Some("0")
+        );
+
+        // The official duplicate-label message, with "timeout" in the label;
+        // and an unknown unselected count.
+        let mut duplicate = load_row(
+            "2",
+            "orders_timeout",
+            "ods",
+            "STREAM_LOAD",
+            "CANCELLED",
+            "0",
+            "{}",
+            "2026-10-30 08:00:00",
+            Some("2026-10-30 08:00:01"),
+            false,
+        );
+        duplicate[9] = s("-1");
+        duplicate[14] = s("Label [orders_timeout] has already been used.");
+        // Past its timeout (150%), then near it (90%).
+        let timed = |id, finished| {
+            wide_row(
+                load_row(
+                    id,
+                    id,
+                    "ods",
+                    "STREAM_LOAD",
+                    "FINISHED",
+                    "0",
+                    "{}",
+                    "2026-10-30 07:00:00",
+                    Some(finished),
+                    false,
+                ),
+                ("0", "10"),
+                Some(finished),
+                "60",
+                "NORMAL",
+            )
+        };
+        let parsed = parse_load_rows(
+            vec![
+                duplicate,
+                timed("3", "2026-10-30 07:00:54"),
+                timed("4", "2026-10-30 07:01:30"),
+            ],
+            None,
+        );
+        let records: Vec<&LoadRecord> = parsed.all.iter().collect();
+        let detail = stream_detail(&records);
+        assert_eq!(detail.failure_reasons[0].reason, "label_exists");
+        assert_eq!(detail.unselected_unknown, "1");
+        let near: Vec<(&str, Option<u32>)> = detail
+            .near_timeout
+            .iter()
+            .map(|record| (record.job_id.as_str(), record.timeout_share_permyriad))
+            .collect();
+        assert_eq!(near, [("4", Some(15_000)), ("3", Some(9_000))]);
+
+        // The latest failure is the one that finished last, not the newest id.
+        let failed = |id, db, created, finished| {
+            load_row(
+                id,
+                id,
+                db,
+                "INSERT",
+                "CANCELLED",
+                "0",
+                "{}",
+                created,
+                Some(finished),
+                false,
+            )
+        };
+        let parsed = parse_load_rows(
+            vec![
+                failed("101", "b", "2026-10-30 11:00:00", "2026-10-30 11:01:00"),
+                failed("100", "a", "2026-10-30 10:00:00", "2026-10-30 12:00:00"),
+            ],
+            None,
+        );
+        let records: Vec<&LoadRecord> = parsed.all.iter().collect();
+        let reasons = failure_reasons(&records);
+        assert_eq!(
+            (
+                reasons[0].latest_time.as_deref(),
+                reasons[0].latest_table.as_deref()
+            ),
+            (Some("2026-10-30 12:00:00"), Some("a.t"))
+        );
+
+        // A job without its counters is left out and counted, never as 0.
+        let job = |id: &str, statistics: &str| {
+            let mut row = routine_row();
+            row[0] = s(id);
+            row[12] = s(statistics);
+            row
+        };
+        let known = job(
+            "1",
+            r#"{"errorRows":0,"totalRows":100,"committedTaskNum":1,"abortedTaskNum":0,"taskExecuteTimeMs":40}"#,
+        );
+        let unknown = job("2", r#"{"errorRows":10}"#);
+        let routine =
+            decode_routine_load_jobs(vec![known, unknown.clone()], LoadViewSupport::Full, None);
+        let detail = routine_detail(&routine.jobs, &[]);
+        assert_eq!(
+            (
+                detail.error_rows.as_deref(),
+                detail.rows_unknown.as_str(),
+                detail.tasks_unknown.as_str()
+            ),
+            (Some("0"), "1", "1")
+        );
+        // Partial task counts or a missing task time give no average at all.
+        assert_eq!(detail.average_task_ms, None);
+        let untimed = job(
+            "3",
+            r#"{"errorRows":0,"totalRows":10,"committedTaskNum":9,"abortedTaskNum":0}"#,
+        );
+        let routine = decode_routine_load_jobs(
+            vec![
+                job(
+                    "1",
+                    r#"{"errorRows":0,"totalRows":100,"committedTaskNum":1,"abortedTaskNum":0,"taskExecuteTimeMs":100}"#,
+                ),
+                untimed,
+            ],
+            LoadViewSupport::Full,
+            None,
+        );
+        let detail = routine_detail(&routine.jobs, &[]);
+        assert_eq!(
+            (detail.tasks_unknown.as_str(), detail.average_task_ms),
+            ("0", None)
+        );
+        let routine = decode_routine_load_jobs(vec![unknown], LoadViewSupport::Full, None);
+        let detail = routine_detail(&routine.jobs, &[]);
+        assert_eq!(
+            (
+                detail.error_rows.as_deref(),
+                detail.committed_tasks.as_deref(),
+                detail.error_share_permyriad
+            ),
+            (None, None, None)
+        );
+    }
+
+    #[test]
+    fn routine_load_tasks_have_no_phase_timings() {
+        // StarRocks writes 0 for a Routine Load task's phases it never measured;
+        // a Stream Load's 0 ms is a real measurement and stays.
+        let zeros = r#"{"begin_txn_time_ms": 0, "plan_time_ms": 0, "receive_data_time_ms": 0}"#;
+        let rows = vec![
+            load_row(
+                "2",
+                "ld_kafka-1",
+                "lr",
+                "ROUTINE_LOAD",
+                "FINISHED",
+                "1",
+                zeros,
+                "2026-10-30 08:10:00",
+                Some("2026-10-30 08:10:05"),
+                false,
+            ),
+            load_row(
+                "1",
+                "ld_ok",
+                "lr",
+                "STREAM_LOAD",
+                "FINISHED",
+                "0",
+                zeros,
+                "2026-10-30 08:09:00",
+                Some("2026-10-30 08:09:01"),
+                false,
+            ),
+        ];
+        let request = LoadOverviewRequest {
+            connection_id: "c".into(),
+            kind: None,
+            include_system: false,
+        };
+        let routine = decode_routine_load_jobs(Vec::new(), LoadViewSupport::Full, None);
+        let overview = build_load_overview(
+            rows.clone(),
+            &request,
+            LoadViewSupport::Full,
+            None,
+            None,
+            &routine,
+        );
+        assert_eq!(overview.summary.loads, "2");
+        assert_eq!(overview.phases.begin_txn.samples, "1");
+        assert_eq!(overview.phases.plan.samples, "1");
+        let records = decode_load_records(
+            rows,
+            &LoadRecordsRequest {
+                connection_id: "c".into(),
+                kind: None,
+                outcome: None,
+                table: None,
+                include_system: false,
+                created_hour: None,
+            },
+            LoadViewSupport::Full,
+            None,
+            None,
+        );
+        let kafka = &records.records[0];
+        assert_eq!(kafka.kind, "ROUTINE_LOAD");
+        assert_eq!(
+            (
+                kafka.begin_txn_ms.as_deref(),
+                kafka.plan_ms.as_deref(),
+                kafka.receive_data_ms.as_deref()
+            ),
+            (None, None, None)
+        );
+        assert_eq!(kafka.total_seconds.as_deref(), Some("5"));
+        assert_eq!(records.records[1].begin_txn_ms.as_deref(), Some("0"));
     }
 
     #[test]

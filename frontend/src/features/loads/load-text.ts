@@ -1,6 +1,6 @@
 // Words and number formats for the load workspace. The server decides every
 // state, category and count; these only name and format them.
-import type { LoadErrorCategory, LoadStateClass, RoutineLoadStateClass } from "../../../../contracts/generated/doctor-contracts";
+import type { LoadErrorCategory, LoadKindGroup, LoadStateClass, RoutineLoadStateClass } from "../../../../contracts/generated/doctor-contracts";
 import type { LocalizedText } from "../../i18n/locale";
 import { bytesText, compactCountText, countText, durationNanosecondsText } from "../../lib/duration-display";
 
@@ -82,6 +82,51 @@ export function hourRangeText(hour: string): string {
 /** A histogram edge: whole seconds stay short (`1 s`, not `1.000 s`). */
 function edgeText(value: string): string {
   return /^\d+000$/.test(value) ? `${value.slice(0, -3)} s` : ms(value);
+}
+
+/** Whole seconds from the server, with thousands grouped. */
+export function seconds(value: string | null | undefined): string {
+  return value && /^\d+$/.test(value) ? `${count(value)} s` : "—";
+}
+
+function secondEdge(value: string): string {
+  const number = Number(value);
+  return number >= 60 && number % 60 === 0 ? `${number / 60} min` : `${number} s`;
+}
+
+/** A seconds histogram bin: `< 1 s`, `1–10 s`, `1–5 min`, `≥ 30 min`. */
+export function durationBinText(lower: string, upper: string | null): string {
+  if (upper === null) return `≥ ${secondEdge(lower)}`;
+  if (lower === "0") return `< ${secondEdge(upper)}`;
+  const [from, to] = [secondEdge(lower), secondEdge(upper)];
+  return from.split(" ")[1] === to.split(" ")[1] ? `${from.split(" ")[0]}–${to}` : `${from}–${to}`;
+}
+
+export function groupText(group: LoadKindGroup, text: LocalizedText): string {
+  return { stream_load: "Stream Load", insert: "INSERT", routine_load: text("Routine Load tasks", "Routine Load 任务"), broker: "Broker Load", other: text("Other", "其他") }[group];
+}
+
+/** Server reason keys: fixed Stream Load causes, or StarRocks' cancel type. */
+export function failureReasonText(reason: string, text: LocalizedText): string {
+  return {
+    filtered_ratio: text("Filtered rows over max_filter_ratio", "过滤行超过 max_filter_ratio"),
+    timeout: text("Timed out", "超时"),
+    label_exists: text("Label already exists", "Label 已存在"),
+    other: text("Other", "其他"),
+    TIMEOUT: text("Timed out (TIMEOUT)", "超时（TIMEOUT）"),
+    LOAD_RUN_FAIL: text("Run failed (LOAD_RUN_FAIL)", "执行失败（LOAD_RUN_FAIL）"),
+    USER_CANCEL: text("Cancelled by a user (USER_CANCEL)", "用户取消（USER_CANCEL）"),
+    ETL_RUN_FAIL: text("ETL failed (ETL_RUN_FAIL)", "ETL 失败（ETL_RUN_FAIL）"),
+    ETL_SUBMIT_FAIL: text("ETL submit failed (ETL_SUBMIT_FAIL)", "ETL 提交失败（ETL_SUBMIT_FAIL）"),
+    ETL_QUALITY_UNSATISFIED: text("Data quality not met (ETL_QUALITY_UNSATISFIED)", "数据质量不达标（ETL_QUALITY_UNSATISFIED）"),
+    TXN_UNKNOWN: text("Transaction state unknown (TXN_UNKNOWN)", "事务状态未知（TXN_UNKNOWN）"),
+    UNKNOWN: text("Unknown (UNKNOWN)", "未知（UNKNOWN）"),
+  }[reason] ?? reason;
+}
+
+/** StarRocks' states of a load not yet finished. */
+export function runningStateText(state: string, text: LocalizedText): string {
+  return { LOADING: text("Loading", "执行中"), QUEUEING: text("Queueing", "排队中"), PREPARED: text("Committed, publishing", "已提交，发布中"), PENDING: text("Pending", "等待中"), ETL: "ETL", COMMITTED: text("Committed", "已提交") }[state] ?? state;
 }
 
 /** A phase histogram bin by its server edges, short enough for one line

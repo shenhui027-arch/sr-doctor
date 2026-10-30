@@ -104,6 +104,9 @@ pub struct RoutineLoadJob {
     pub current_tasks: Option<String>,
     pub statistics: RoutineLoadStatistics,
     pub max_error_number: Option<String>,
+    /// `JOB_PROPERTIES.desireTaskConcurrentNum` and `maxBatchIntervalS`.
+    pub desired_tasks: Option<String>,
+    pub max_batch_interval_seconds: Option<String>,
     pub partitions: Vec<RoutineLoadPartition>,
     /// The partition with the largest lag and that lag.
     pub max_lag: Option<String>,
@@ -220,6 +223,21 @@ pub struct LoadRecord {
     pub receive_data_ms: Option<String>,
     /// Finish minus create, in whole seconds (both strings are second precision).
     pub total_seconds: Option<String>,
+    /// Task 56: `SCAN_ROWS` / `SCAN_BYTES`. For Stream Load and Routine Load
+    /// tasks the bytes are what the client or Kafka sent; for INSERT and
+    /// Broker Load what was read at the source.
+    pub scan_rows: Option<String>,
+    pub scan_bytes: Option<String>,
+    pub commit_time: Option<String>,
+    /// Commit minus create, and finish minus commit, in whole seconds.
+    pub execute_seconds: Option<String>,
+    pub publish_seconds: Option<String>,
+    /// `PROPERTIES.timeout`.
+    pub timeout_seconds: Option<String>,
+    /// Total over timeout in permyriad; above 10000 when the load ran past
+    /// its timeout. `None` when either is unknown.
+    pub timeout_share_permyriad: Option<u32>,
+    pub priority: Option<String>,
     pub error_message: Option<String>,
     pub has_error_log: bool,
     pub profile_id: Option<String>,
@@ -413,6 +431,269 @@ pub struct LoadHourBucket {
     /// The table with the most failures in this hour, if any failed.
     pub top_failed_table: Option<String>,
     pub top_failed_count: Option<String>,
+    /// Task 56: loads of each group, stacked in `LoadKindGroup` order.
+    pub segments: Vec<LoadHourSegment>,
+    /// Bytes for Stream Load, rows written otherwise (`volume_unit`), over
+    /// records that report it; `volume_unknown` counts the others. `None`
+    /// when the hour has loads and none of them reports it.
+    pub volume: Option<String>,
+    pub volume_unknown: String,
+    pub volume_permyriad: Option<u16>,
+}
+
+/// Task 56: the overview shows each group with only the measures StarRocks
+/// reports for it.
+#[derive(
+    Clone, Copy, Debug, Deserialize, Eq, JsonSchema, Ord, PartialEq, PartialOrd, Serialize, TS,
+)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum LoadKindGroup {
+    StreamLoad,
+    Insert,
+    RoutineLoad,
+    Broker,
+    Other,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct LoadHourSegment {
+    pub group: LoadKindGroup,
+    pub loads: String,
+    /// Against the hour axis top, 0..=10000.
+    pub permyriad: u16,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum LoadVolumeUnit {
+    Bytes,
+    Rows,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct LoadGroupSummary {
+    pub group: LoadKindGroup,
+    pub loads: String,
+    pub failed: String,
+    /// `SINK_ROWS` summed over records that report it.
+    pub sink_rows: String,
+    pub sink_rows_unknown: String,
+    pub filtered_rows: String,
+    pub filtered_unknown: String,
+    /// Nearest rank of finish minus create (whole seconds) over finished
+    /// records; `None` below 20 of them.
+    pub total_p95_seconds: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct LoadDurationBin {
+    pub lower_seconds: String,
+    /// `None` for the open last bin.
+    pub upper_seconds: Option<String>,
+    pub loads: String,
+    /// Against the fullest bin, 0..=10000.
+    pub permyriad: u16,
+}
+
+/// Finish minus create in whole seconds, over finished records.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct LoadDurationDistribution {
+    pub bins: Vec<LoadDurationBin>,
+    pub samples: String,
+    /// Nearest rank; `None` below 20 samples.
+    pub p50_seconds: Option<String>,
+    pub p95_seconds: Option<String>,
+    pub max_seconds: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct LoadFailureReason {
+    /// `filtered_ratio`, `timeout`, `label_exists` or `other` for Stream
+    /// Load; the `type:` StarRocks writes (`TIMEOUT`, `LOAD_RUN_FAIL`, ...)
+    /// for INSERT and Broker Load.
+    pub reason: String,
+    pub loads: String,
+    /// When the newest failure of this reason finished (its creation time
+    /// when the finish time is unknown); `latest_table` is the same record's.
+    pub latest_time: Option<String>,
+    pub latest_table: Option<String>,
+    /// Against the most frequent reason, 0..=10000.
+    pub width_permyriad: u16,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct LoadSlowRecord {
+    pub job_id: String,
+    pub label: String,
+    pub table: String,
+    pub total_seconds: String,
+    pub execute_seconds: Option<String>,
+    pub publish_seconds: Option<String>,
+    pub timeout_seconds: Option<String>,
+    /// As `LoadRecord::timeout_share_permyriad`; may exceed 10000.
+    pub timeout_share_permyriad: Option<u32>,
+    /// Segment lengths against the slowest listed, 0..=10000.
+    pub execute_permyriad: u16,
+    pub publish_permyriad: u16,
+}
+
+/// One table of one group. Sums cover records that report the value;
+/// `counts_unknown` records lack at least one of them.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct LoadGroupTable {
+    pub table: String,
+    pub loads: String,
+    pub failed: String,
+    pub scan_rows: String,
+    pub scan_bytes: String,
+    pub sink_rows: String,
+    pub filtered_rows: String,
+    pub counts_unknown: String,
+    pub total_p95_seconds: Option<String>,
+    /// Stream Load only; `None` below 20 samples.
+    pub plan_p95_ms: Option<String>,
+    /// The most common priority (INSERT and Broker Load).
+    pub priority: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct LoadSource {
+    /// `RUNTIME_DETAILS.client_ip`.
+    pub client_ip: Option<String>,
+    pub user: Option<String>,
+    pub loads: String,
+    pub failed: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct LoadStateCount {
+    pub state: String,
+    pub loads: String,
+}
+
+pub const LOAD_OVERVIEW_SLOWEST: usize = 8;
+/// A load that used this share of its timeout counts as near the timeout.
+pub const LOAD_NEAR_TIMEOUT_PERMYRIAD: u32 = 8_000;
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct StreamLoadDetail {
+    /// `SCAN_BYTES`: what clients sent.
+    pub received_bytes: String,
+    pub received_bytes_unknown: String,
+    pub unselected_rows: String,
+    pub unselected_unknown: String,
+    pub total: LoadDurationDistribution,
+    /// Finish minus commit; `None` below 20 samples.
+    pub publish_p95_seconds: Option<String>,
+    pub near_timeout_count: String,
+    /// Highest timeout share first, at most `LOAD_OVERVIEW_SLOWEST`.
+    pub near_timeout: Vec<LoadSlowRecord>,
+    pub failure_reasons: Vec<LoadFailureReason>,
+    /// Most loads first, at most `LOAD_OVERVIEW_TABLES`.
+    pub tables: Vec<LoadGroupTable>,
+    pub sources: Vec<LoadSource>,
+}
+
+/// INSERT or Broker Load: second-precision timings, source and sink counts.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct BatchLoadDetail {
+    pub scan_rows: String,
+    pub scan_bytes: String,
+    pub counts_unknown: String,
+    pub duration: LoadDurationDistribution,
+    /// Slowest finished first, at most `LOAD_OVERVIEW_SLOWEST`.
+    pub slowest: Vec<LoadSlowRecord>,
+    pub near_timeout_count: String,
+    pub failure_reasons: Vec<LoadFailureReason>,
+    /// Loads not yet finished, by StarRocks' state.
+    pub running_states: Vec<LoadStateCount>,
+    /// Most rows written first, at most `LOAD_OVERVIEW_TABLES`.
+    pub tables: Vec<LoadGroupTable>,
+}
+
+/// One Routine Load job's lifetime counters and what follows from them.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct RoutineJobHealth {
+    pub job_id: String,
+    pub name: String,
+    pub db: String,
+    pub table: String,
+    pub state: String,
+    pub state_class: RoutineLoadStateClass,
+    pub current_tasks: Option<String>,
+    pub desired_tasks: Option<String>,
+    /// StarRocks' lifetime averages (rows or bytes over task execution
+    /// time); `None` before the first committed task.
+    pub load_rows_rate: Option<String>,
+    pub received_bytes_rate: Option<String>,
+    pub loaded_rows: Option<String>,
+    pub total_rows: Option<String>,
+    pub error_rows: Option<String>,
+    /// Error over total rows, 0..=10000.
+    pub error_share_permyriad: Option<u16>,
+    pub committed_tasks: Option<String>,
+    pub aborted_tasks: Option<String>,
+    /// Aborted over committed plus aborted, 0..=10000.
+    pub abort_share_permyriad: Option<u16>,
+    /// Task execution time over committed tasks.
+    pub average_task_ms: Option<String>,
+    pub max_batch_interval_seconds: Option<String>,
+    pub max_lag: Option<String>,
+    pub max_lag_partition: Option<String>,
+    /// The newest consumed message over partitions, epoch milliseconds.
+    pub newest_consumed_ms: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct RoutineJobIssue {
+    pub job_id: String,
+    pub name: String,
+    pub state: String,
+    pub state_class: RoutineLoadStateClass,
+    /// Pause time for a paused job, end time for an ended one.
+    pub time: Option<String>,
+    pub reason: Option<String>,
+    pub error_share_permyriad: Option<u16>,
+    pub aborted_tasks: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct RoutineLoadDetail {
+    /// Newest job first, as read.
+    pub jobs: Vec<RoutineJobHealth>,
+    /// Over jobs that report both counts; `None` when none does.
+    pub error_rows: Option<String>,
+    pub total_rows: Option<String>,
+    /// Jobs left out of the row counts because one of them is unknown.
+    pub rows_unknown: String,
+    pub error_share_permyriad: Option<u16>,
+    pub committed_tasks: Option<String>,
+    pub aborted_tasks: Option<String>,
+    /// Jobs left out of the task counts because one of them is unknown.
+    pub tasks_unknown: String,
+    pub abort_share_permyriad: Option<u16>,
+    pub average_task_ms: Option<String>,
+    /// Routine Load tasks among the held load records (3.3+).
+    pub held_tasks: String,
+    pub tasks: LoadDurationDistribution,
+    /// Paused, then ended jobs, newest first.
+    pub issues: Vec<RoutineJobIssue>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
@@ -444,8 +725,10 @@ pub struct LoadPhaseBin {
     pub upper_ms: Option<String>,
     pub begin_txn: String,
     pub plan: String,
+    pub receive_data: String,
     pub begin_txn_permyriad: u16,
     pub plan_permyriad: u16,
+    pub receive_data_permyriad: u16,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
@@ -466,6 +749,7 @@ pub struct LoadPhaseDistribution {
     pub axis_ticks: Vec<String>,
     pub begin_txn: LoadPhaseQuantiles,
     pub plan: LoadPhaseQuantiles,
+    pub receive_data: LoadPhaseQuantiles,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
@@ -499,6 +783,8 @@ pub struct RoutinePausedJob {
 #[serde(deny_unknown_fields)]
 pub struct RoutineLoadOverview {
     pub support: LoadViewSupport,
+    /// Every job read.
+    pub jobs: String,
     pub running: String,
     pub scheduling: String,
     pub paused: String,
@@ -534,6 +820,17 @@ pub struct LoadOverviewResponse {
     pub records_outside_hours: String,
     /// Top first: the axis top, its half and zero.
     pub hour_axis_ticks: Vec<String>,
+    /// Task 56: every group among the visible records, whatever `kind`
+    /// selects, in `LoadKindGroup` order; groups without records are left out.
+    pub groups: Vec<LoadGroupSummary>,
+    /// Visible records of every group.
+    pub all_loads: String,
+    pub volume_unit: LoadVolumeUnit,
+    pub volume_axis_ticks: Vec<String>,
+    /// Only for the matching `kind`.
+    pub stream: Option<StreamLoadDetail>,
+    pub batch: Option<BatchLoadDetail>,
+    pub routine_detail: Option<RoutineLoadDetail>,
     /// Tables with filtered rows, most first.
     pub tables: Vec<LoadTableBar>,
     pub phases: LoadPhaseDistribution,

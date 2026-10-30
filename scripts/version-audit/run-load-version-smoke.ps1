@@ -92,7 +92,9 @@ try {
     }
     Remove-Item -LiteralPath $work -Recurse -Force
     & docker start $srId | Out-Null
-    $kafkaPulled = -not [bool](& docker images -q $kafkaImage)
+    # `docker images -q` ignores repo@digest references; `image inspect` takes them.
+    & docker image inspect $kafkaImage --format '{{.Id}}' *> $null
+    $kafkaPulled = $LASTEXITCODE -ne 0
     $kafkaId = (& docker run -d --name $kafkaName --network "container:$srName" --memory 1g `
         -e KAFKA_NODE_ID=1 -e KAFKA_PROCESS_ROLES=broker,controller -e KAFKA_LISTENERS=PLAINTEXT://127.0.0.1:9092,CONTROLLER://127.0.0.1:9093 `
         -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://127.0.0.1:9092 -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER `
@@ -197,6 +199,8 @@ FROM KAFKA ('kafka_broker_list' = '127.0.0.1:9092', 'kafka_topic' = 'ld', 'prope
         Require ($records.support -eq 'full' -and $byLabel.ContainsKey('ld_ok') -and $null -ne $byLabel['ld_ok'].plan_ms) 'The clean Stream Load is missing or lacks phase times.'
         Require ($byLabel['ld_partial'].filtered_rows -eq '3' -and $byLabel['ld_failed'].state_class -eq 'cancelled') 'Filtered or failed Stream Loads are wrong.'
         Require (@($records.records | Where-Object { $_.kind -eq 'ROUTINE_LOAD' }).Count -ge 1) 'No Routine Load task appears among the records.'
+        # StarRocks writes 0 for phases it never measures on Routine Load tasks.
+        Require (@($records.records | Where-Object { $_.kind -eq 'ROUTINE_LOAD' -and ($null -ne $_.begin_txn_ms -or $null -ne $_.plan_ms -or $null -ne $_.receive_data_ms) }).Count -eq 0) 'A Routine Load task carries phase timings.'
     } else {
         Require ($records.support -eq 'unsupported_version' -and @($records.records).Count -eq 0) 'Expected load records to be unsupported on 3.2.'
     }
@@ -213,6 +217,8 @@ FROM KAFKA ('kafka_broker_list' = '127.0.0.1:9092', 'kafka_topic' = 'ld', 'prope
         phases = "begin=$($overview.phases.begin_txn.samples) p95=$($overview.phases.begin_txn.p95_ms)"; lags = @($overview.routine.lags | ForEach-Object { "$($_.job_name):p$($_.partition)=$($_.lag)" }); api_ms = $timings }
     if ($full) {
         Require ($overview.summary.loads -eq $records.matched -and @($overview.hours).Count -ge 72 -and @($overview.routine.lags).Count -ge 1) 'The overview does not match the records or lacks lag.'
+        $measured = @($records.records | Where-Object { $null -ne $_.begin_txn_ms }).Count
+        Require ([int]$overview.phases.begin_txn.samples -eq $measured) "Phase samples ($($overview.phases.begin_txn.samples)) differ from the records that carry timings ($measured)."
     } else {
         Require ($overview.support -eq 'unsupported_version' -and @($overview.hours).Count -eq 0 -and $overview.routine.support -eq 'without_lag' -and $overview.routine.running -in @('0', '1')) 'The 3.2 overview should carry Routine Load only.'
     }
@@ -269,7 +275,10 @@ finally {
     if ($summary.api_log_scan -eq 'FAIL') { $summary.status = 'FAIL' }
     foreach ($ownedId in @($kafkaId, $srId) | Where-Object { $_ }) { & docker rm -f -v $ownedId 2>$null | Out-Null }
     if (-not $KeepImage) { & docker image rm -f $starrocksImage 2>$null | Out-Null }
-    if ($kafkaPulled -and -not $KeepKafkaImage) { foreach ($imageId in @(& docker images -q $kafkaImage)) { & docker rmi -f $imageId 2>$null | Out-Null } }
+    if ($kafkaPulled -and -not $KeepKafkaImage) {
+        $kafkaImageId = (& docker image inspect $kafkaImage --format '{{.Id}}' 2>$null)
+        if ($kafkaImageId) { & docker rmi -f $kafkaImageId 2>$null | Out-Null }
+    }
     $summary.postconditions = [ordered]@{ containers_absent = (@(@($kafkaId, $srId) | Where-Object { $_ -and (& docker ps -aq --no-trunc --filter "id=$_") }).Count -eq 0); image_removed = ($KeepImage -or -not [bool](& docker images -q $starrocksImage)); ports_free = (-not (Test-PortListening $ApiPort) -and -not (Test-PortListening $MySqlPort)) }
     $summary.completed_utc = [DateTime]::UtcNow.ToString('o')
     [IO.File]::WriteAllText($receiptPath, ($summary | ConvertTo-Json -Depth 10), [Text.UTF8Encoding]::new($false))

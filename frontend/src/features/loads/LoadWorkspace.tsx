@@ -3,8 +3,8 @@
 // 30 seconds while open. Nothing here changes StarRocks or stores what it reads.
 import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
-import type { LoadKindFilter, LoadRecord, LoadRecordsResponse, RoutineLoadJob } from "../../../../contracts/generated/doctor-contracts";
-import { useLocale } from "../../i18n/locale";
+import type { LoadGroupSummary, LoadKindFilter, LoadRecord, LoadRecordsResponse, RoutineLoadJob } from "../../../../contracts/generated/doctor-contracts";
+import { useLocale, type LocalizedText } from "../../i18n/locale";
 import { doctorApi } from "../../lib/api";
 import { useMonitorRead } from "../history/monitor-read";
 import { MonitorReadError, RefreshBar } from "../history/MonitorStates";
@@ -12,7 +12,7 @@ import { LoadErrorLogDialog, type ErrorLogTarget } from "./LoadErrorLogDialog";
 import { LoadOverviewPanel, type OverviewFilters } from "./LoadOverviewPanel";
 import { LoadRecordsPanel, type RecordFilters } from "./LoadRecordsPanel";
 import { RoutineLoadPanel } from "./RoutineLoadPanel";
-import { feTime, loadFailureText } from "./load-text";
+import { count, feTime, loadFailureText } from "./load-text";
 import "../history/history.css";
 import "../history/notify.css";
 import "./loads.css";
@@ -24,6 +24,37 @@ const VIEWS: LoadView[] = ["overview", "routine", "records"];
 export type LoadFocus = { view: "overview" } | { view: "routine"; jobId: string };
 
 const NO_RECORD_FILTERS: RecordFilters = { kind: null, outcome: null, table: "", include_system: false, hour: null };
+
+type TypeCounts = { connectionId: string; groups: LoadGroupSummary[]; all: string; records: boolean; routine: boolean; jobs: string };
+
+/** Design board I5: one type at a time, as a radio group with arrow keys. */
+function LoadTypeSwitch({ counts, kind, onKind, text }: { counts: TypeCounts; kind: LoadKindFilter | null; onKind(kind: LoadKindFilter | null): void; text: LocalizedText }): JSX.Element {
+  const loads = (group: string) => counts.groups.find((item) => item.group === group)?.loads ?? "0";
+  const options: Array<{ kind: LoadKindFilter | null; label: string; count: string }> = [
+    { kind: null, label: text("All", "全部"), count: count(counts.all) },
+    ...(counts.records ? [
+      { kind: "stream_load" as const, label: "Stream Load", count: count(loads("stream_load")) },
+      { kind: "insert" as const, label: "INSERT", count: count(loads("insert")) },
+    ] : []),
+    ...(counts.routine ? [{ kind: "routine_load" as const, label: "Routine Load", count: counts.records ? text(`${count(loads("routine_load"))} tasks · ${counts.jobs} jobs`, `${count(loads("routine_load"))} 任务 · ${counts.jobs} 作业`) : text(`${counts.jobs} jobs`, `${counts.jobs} 作业`) }] : []),
+    ...(loads("broker") !== "0" || kind === "broker" ? [{ kind: "broker" as const, label: "Broker Load", count: count(loads("broker")) }] : []),
+  ];
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const at = options.findIndex((option) => option.kind === kind);
+    const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
+    if (step === 0) return;
+    event.preventDefault();
+    const next = options[(at + step + options.length) % options.length];
+    onKind(next.kind);
+    event.currentTarget.querySelector<HTMLButtonElement>(`button[data-kind="${next.kind ?? "all"}"]`)?.focus();
+  };
+  return <div aria-label={text("Load type", "导入类型")} className="load-type-switch" onKeyDown={onKeyDown} role="radiogroup">
+    {options.map((option) => <button aria-checked={option.kind === kind} aria-label={text(`${option.label} (${option.count})`, `${option.label}（${option.count}）`)} data-kind={option.kind ?? "all"} key={option.kind ?? "all"} onClick={() => onKind(option.kind)} role="radio" tabIndex={option.kind === kind ? 0 : -1} type="button">
+      <span>{option.label}</span><span className="mono">{option.count}</span>
+    </button>)}
+    <span className="history-muted">{text("Each type shows only its own measures; nothing is mixed.", "每类只显示自己有意义的指标，口径不混算")}</span>
+  </div>;
+}
 
 export function LoadWorkspace({ connectionId, focus, onPaused, onOpenQueries }: {
   /** The ready session; null shows how to connect. */
@@ -73,6 +104,13 @@ export function LoadWorkspace({ connectionId, focus, onPaused, onOpenQueries }: 
     drillOrigin.current = null;
     origin?.focus();
   }, [view, overview.data]);
+  // The type switch keeps the last counts while another type is read.
+  const [typeCounts, setTypeCounts] = useState<TypeCounts | null>(null);
+  useEffect(() => {
+    if (!overview.data || !connectionId) return;
+    const routineOverview = overview.data.routine;
+    setTypeCounts({ connectionId, groups: overview.data.groups, all: overview.data.all_loads, records: overview.data.support !== "unsupported_version", routine: routineOverview.support !== "unsupported_version", jobs: routineOverview.jobs });
+  }, [overview.data, connectionId]);
   const paused = routine.data ? Number(routine.data.summary.paused)
     : overview.data && overview.data.routine.support !== "unsupported_version" ? Number(overview.data.routine.paused) : null;
   // A new filter starts a new read; keep the last records (and the filter
@@ -124,19 +162,13 @@ export function LoadWorkspace({ connectionId, focus, onPaused, onOpenQueries }: 
       </div>
       <span className="history-muted">{note}</span>
       <span className="trend-toolbar">
-        {view === "overview" && <>
-          <label className="notify-filter">{text("Type", "类型")}
-            <select onChange={(event) => setOverviewFilters({ ...overviewFilters, kind: (event.target.value || null) as LoadKindFilter | null })} value={overviewFilters.kind ?? ""}>
-              <option value="">{text("All", "全部")}</option><option value="stream_load">STREAM_LOAD</option><option value="routine_load">ROUTINE_LOAD</option><option value="broker">BROKER</option><option value="insert">INSERT</option>
-            </select>
-          </label>
-          <label className="notify-check"><input checked={overviewFilters.include_system} onChange={(event) => setOverviewFilters({ ...overviewFilters, include_system: event.target.checked })} type="checkbox" /> {text("System loads", "含系统任务")}</label>
-        </>}
+        {view === "overview" && <label className="notify-check"><input checked={overviewFilters.include_system} onChange={(event) => setOverviewFilters({ ...overviewFilters, include_system: event.target.checked })} type="checkbox" /> {text("System loads", "含系统任务")}</label>}
         <RefreshBar error={current.error} loading={current.loading} onRefresh={current.refresh} text={text} updatedSeconds={current.updatedSeconds} />
       </span>
     </div>
     <div aria-labelledby={`load-tab-${view}`} className="load-panel" id="load-panel" ref={panel} role="tabpanel" tabIndex={-1}>
-    {view === "overview" && (overview.data ? <LoadOverviewPanel nowMs={nowMs} onOpenHour={(hour) => openRecords({ ...NO_RECORD_FILTERS, kind: overviewFilters.kind, include_system: overviewFilters.include_system, hour })} onOpenJob={(jobId) => { setRoutineJob(jobId); drill("routine"); }} onOpenTable={(table) => openRecords({ ...NO_RECORD_FILTERS, kind: overviewFilters.kind, include_system: overviewFilters.include_system, table })} overview={overview.data} text={text} />
+    {view === "overview" && typeCounts && typeCounts.connectionId === connectionId && <LoadTypeSwitch counts={typeCounts} kind={overviewFilters.kind} onKind={(kind) => setOverviewFilters({ ...overviewFilters, kind })} text={text} />}
+    {view === "overview" && (overview.data ? <LoadOverviewPanel kind={overviewFilters.kind} nowMs={nowMs} onOpenHour={(hour) => openRecords({ ...NO_RECORD_FILTERS, kind: overviewFilters.kind, include_system: overviewFilters.include_system, hour })} onOpenJob={(jobId) => { setRoutineJob(jobId); drill("routine"); }} onOpenTable={(table) => openRecords({ ...NO_RECORD_FILTERS, kind: overviewFilters.kind, include_system: overviewFilters.include_system, table })} overview={overview.data} text={text} />
       : overview.error ? <MonitorReadError error={overview.error} onRetry={overview.refresh} text={text} title={loadFailureText(overview.error, text)} />
         : <p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>)}
     {view === "routine" && (routine.data ? <RoutineLoadPanel initialJob={routineJob} jobs={routine.data} key={routineJob ?? ""} nowMs={nowMs} onOpenLog={openRoutineLog} text={text} />

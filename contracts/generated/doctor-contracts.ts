@@ -828,7 +828,11 @@ source_type: string,
  * Only the topic is taken from the data source properties; broker
  * lists and client properties (which may hold credentials) are not.
  */
-topic: string | null, current_tasks: string | null, statistics: RoutineLoadStatistics, max_error_number: string | null, partitions: Array<RoutineLoadPartition>,
+topic: string | null, current_tasks: string | null, statistics: RoutineLoadStatistics, max_error_number: string | null,
+/**
+ * `JOB_PROPERTIES.desireTaskConcurrentNum` and `maxBatchIntervalS`.
+ */
+desired_tasks: string | null, max_batch_interval_seconds: string | null, partitions: Array<RoutineLoadPartition>,
 /**
  * The partition with the largest lag and that lag.
  */
@@ -880,7 +884,26 @@ filtered_share_permyriad: number | null, unselected_rows: string | null, begin_t
 /**
  * Finish minus create, in whole seconds (both strings are second precision).
  */
-total_seconds: string | null, error_message: string | null, has_error_log: boolean, profile_id: string | null, system: boolean, };
+total_seconds: string | null,
+/**
+ * Task 56: `SCAN_ROWS` / `SCAN_BYTES`. For Stream Load and Routine Load
+ * tasks the bytes are what the client or Kafka sent; for INSERT and
+ * Broker Load what was read at the source.
+ */
+scan_rows: string | null, scan_bytes: string | null, commit_time: string | null,
+/**
+ * Commit minus create, and finish minus commit, in whole seconds.
+ */
+execute_seconds: string | null, publish_seconds: string | null,
+/**
+ * `PROPERTIES.timeout`.
+ */
+timeout_seconds: string | null,
+/**
+ * Total over timeout in permyriad; above 10000 when the load ran past
+ * its timeout. `None` when either is unknown.
+ */
+timeout_share_permyriad: number | null, priority: string | null, error_message: string | null, has_error_log: boolean, profile_id: string | null, system: boolean, };
 export type LoadTableSummary = { table: string, loads: string, failed: string,
 /**
  * Sum over records that report the count.
@@ -963,7 +986,17 @@ loads_permyriad: number, failed_permyriad: number,
 /**
  * The table with the most failures in this hour, if any failed.
  */
-top_failed_table: string | null, top_failed_count: string | null, };
+top_failed_table: string | null, top_failed_count: string | null,
+/**
+ * Task 56: loads of each group, stacked in `LoadKindGroup` order.
+ */
+segments: Array<LoadHourSegment>,
+/**
+ * Bytes for Stream Load, rows written otherwise (`volume_unit`), over
+ * records that report it; `volume_unknown` counts the others. `None`
+ * when the hour has loads and none of them reports it.
+ */
+volume: string | null, volume_unknown: string, volume_permyriad: number | null, };
 export type LoadKindCount = {
 /**
  * StarRocks' `TYPE` text.
@@ -978,7 +1011,7 @@ export type LoadPhaseBin = { lower_ms: string,
 /**
  * `None` for the open last bin.
  */
-upper_ms: string | null, begin_txn: string, plan: string, begin_txn_permyriad: number, plan_permyriad: number, };
+upper_ms: string | null, begin_txn: string, plan: string, receive_data: string, begin_txn_permyriad: number, plan_permyriad: number, receive_data_permyriad: number, };
 export type LoadPhaseQuantiles = {
 /**
  * Records that report this phase.
@@ -992,14 +1025,18 @@ export type LoadPhaseDistribution = { bins: Array<LoadPhaseBin>,
 /**
  * Top first: the axis top, its half and zero.
  */
-axis_ticks: Array<string>, begin_txn: LoadPhaseQuantiles, plan: LoadPhaseQuantiles, };
+axis_ticks: Array<string>, begin_txn: LoadPhaseQuantiles, plan: LoadPhaseQuantiles, receive_data: LoadPhaseQuantiles, };
 export type RoutineLagBar = { job_id: string, job_name: string, db: string, table: string, partition: string, lag: string, state_class: RoutineLoadStateClass, consumed_message_ms: string | null,
 /**
  * Log-scaled against the largest, 0..=10000.
  */
 width_permyriad: number, };
 export type RoutinePausedJob = { job_id: string, name: string, db: string, table: string, max_lag: string | null, pause_time: string | null, reason: string | null, };
-export type RoutineLoadOverview = { support: LoadViewSupport, running: string, scheduling: string, paused: string,
+export type RoutineLoadOverview = { support: LoadViewSupport,
+/**
+ * Every job read.
+ */
+jobs: string, running: string, scheduling: string, paused: string,
 /**
  * Stopped or cancelled; StarRocks drops them after 3 days.
  */
@@ -1020,6 +1057,159 @@ lags: Array<RoutineLagBar>, max_running_lag: RoutineLagBar | null,
  * Newest paused first, at most `LOAD_OVERVIEW_PAUSED`.
  */
 paused_jobs: Array<RoutinePausedJob>, truncated: boolean, };
+export type LoadKindGroup = "stream_load" | "insert" | "routine_load" | "broker" | "other";
+export type LoadHourSegment = { group: LoadKindGroup, loads: string,
+/**
+ * Against the hour axis top, 0..=10000.
+ */
+permyriad: number, };
+export type LoadVolumeUnit = "bytes" | "rows";
+export type LoadGroupSummary = { group: LoadKindGroup, loads: string, failed: string,
+/**
+ * `SINK_ROWS` summed over records that report it.
+ */
+sink_rows: string, sink_rows_unknown: string, filtered_rows: string, filtered_unknown: string,
+/**
+ * Nearest rank of finish minus create (whole seconds) over finished
+ * records; `None` below 20 of them.
+ */
+total_p95_seconds: string | null, };
+export type LoadDurationBin = { lower_seconds: string,
+/**
+ * `None` for the open last bin.
+ */
+upper_seconds: string | null, loads: string,
+/**
+ * Against the fullest bin, 0..=10000.
+ */
+permyriad: number, };
+export type LoadDurationDistribution = { bins: Array<LoadDurationBin>, samples: string,
+/**
+ * Nearest rank; `None` below 20 samples.
+ */
+p50_seconds: string | null, p95_seconds: string | null, max_seconds: string | null, };
+export type LoadFailureReason = {
+/**
+ * `filtered_ratio`, `timeout`, `label_exists` or `other` for Stream
+ * Load; the `type:` StarRocks writes (`TIMEOUT`, `LOAD_RUN_FAIL`, ...)
+ * for INSERT and Broker Load.
+ */
+reason: string, loads: string,
+/**
+ * When the newest failure of this reason finished (its creation time
+ * when the finish time is unknown); `latest_table` is the same record's.
+ */
+latest_time: string | null, latest_table: string | null,
+/**
+ * Against the most frequent reason, 0..=10000.
+ */
+width_permyriad: number, };
+export type LoadSlowRecord = { job_id: string, label: string, table: string, total_seconds: string, execute_seconds: string | null, publish_seconds: string | null, timeout_seconds: string | null,
+/**
+ * As `LoadRecord::timeout_share_permyriad`; may exceed 10000.
+ */
+timeout_share_permyriad: number | null,
+/**
+ * Segment lengths against the slowest listed, 0..=10000.
+ */
+execute_permyriad: number, publish_permyriad: number, };
+export type LoadGroupTable = { table: string, loads: string, failed: string, scan_rows: string, scan_bytes: string, sink_rows: string, filtered_rows: string, counts_unknown: string, total_p95_seconds: string | null,
+/**
+ * Stream Load only; `None` below 20 samples.
+ */
+plan_p95_ms: string | null,
+/**
+ * The most common priority (INSERT and Broker Load).
+ */
+priority: string | null, };
+export type LoadSource = {
+/**
+ * `RUNTIME_DETAILS.client_ip`.
+ */
+client_ip: string | null, user: string | null, loads: string, failed: string, };
+export type LoadStateCount = { state: string, loads: string, };
+export type StreamLoadDetail = {
+/**
+ * `SCAN_BYTES`: what clients sent.
+ */
+received_bytes: string, received_bytes_unknown: string, unselected_rows: string, unselected_unknown: string, total: LoadDurationDistribution,
+/**
+ * Finish minus commit; `None` below 20 samples.
+ */
+publish_p95_seconds: string | null, near_timeout_count: string,
+/**
+ * Highest timeout share first, at most `LOAD_OVERVIEW_SLOWEST`.
+ */
+near_timeout: Array<LoadSlowRecord>, failure_reasons: Array<LoadFailureReason>,
+/**
+ * Most loads first, at most `LOAD_OVERVIEW_TABLES`.
+ */
+tables: Array<LoadGroupTable>, sources: Array<LoadSource>, };
+export type BatchLoadDetail = { scan_rows: string, scan_bytes: string, counts_unknown: string, duration: LoadDurationDistribution,
+/**
+ * Slowest finished first, at most `LOAD_OVERVIEW_SLOWEST`.
+ */
+slowest: Array<LoadSlowRecord>, near_timeout_count: string, failure_reasons: Array<LoadFailureReason>,
+/**
+ * Loads not yet finished, by StarRocks' state.
+ */
+running_states: Array<LoadStateCount>,
+/**
+ * Most rows written first, at most `LOAD_OVERVIEW_TABLES`.
+ */
+tables: Array<LoadGroupTable>, };
+export type RoutineJobHealth = { job_id: string, name: string, db: string, table: string, state: string, state_class: RoutineLoadStateClass, current_tasks: string | null, desired_tasks: string | null,
+/**
+ * StarRocks' lifetime averages (rows or bytes over task execution
+ * time); `None` before the first committed task.
+ */
+load_rows_rate: string | null, received_bytes_rate: string | null, loaded_rows: string | null, total_rows: string | null, error_rows: string | null,
+/**
+ * Error over total rows, 0..=10000.
+ */
+error_share_permyriad: number | null, committed_tasks: string | null, aborted_tasks: string | null,
+/**
+ * Aborted over committed plus aborted, 0..=10000.
+ */
+abort_share_permyriad: number | null,
+/**
+ * Task execution time over committed tasks.
+ */
+average_task_ms: string | null, max_batch_interval_seconds: string | null, max_lag: string | null, max_lag_partition: string | null,
+/**
+ * The newest consumed message over partitions, epoch milliseconds.
+ */
+newest_consumed_ms: string | null, };
+export type RoutineJobIssue = { job_id: string, name: string, state: string, state_class: RoutineLoadStateClass,
+/**
+ * Pause time for a paused job, end time for an ended one.
+ */
+time: string | null, reason: string | null, error_share_permyriad: number | null, aborted_tasks: string | null, };
+export type RoutineLoadDetail = {
+/**
+ * Newest job first, as read.
+ */
+jobs: Array<RoutineJobHealth>,
+/**
+ * Over jobs that report both counts; `None` when none does.
+ */
+error_rows: string | null, total_rows: string | null,
+/**
+ * Jobs left out of the row counts because one of them is unknown.
+ */
+rows_unknown: string, error_share_permyriad: number | null, committed_tasks: string | null, aborted_tasks: string | null,
+/**
+ * Jobs left out of the task counts because one of them is unknown.
+ */
+tasks_unknown: string, abort_share_permyriad: number | null, average_task_ms: string | null,
+/**
+ * Routine Load tasks among the held load records (3.3+).
+ */
+held_tasks: string, tasks: LoadDurationDistribution,
+/**
+ * Paused, then ended jobs, newest first.
+ */
+issues: Array<RoutineJobIssue>, };
 export type LoadOverviewResponse = {
 /**
  * Load records; Routine Load has its own in `routine`.
@@ -1046,6 +1236,19 @@ records_outside_hours: string,
  * Top first: the axis top, its half and zero.
  */
 hour_axis_ticks: Array<string>,
+/**
+ * Task 56: every group among the visible records, whatever `kind`
+ * selects, in `LoadKindGroup` order; groups without records are left out.
+ */
+groups: Array<LoadGroupSummary>,
+/**
+ * Visible records of every group.
+ */
+all_loads: string, volume_unit: LoadVolumeUnit, volume_axis_ticks: Array<string>,
+/**
+ * Only for the matching `kind`.
+ */
+stream: StreamLoadDetail | null, batch: BatchLoadDetail | null, routine_detail: RoutineLoadDetail | null,
 /**
  * Tables with filtered rows, most first.
  */
