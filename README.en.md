@@ -15,7 +15,7 @@ Every conclusion comes with evidence; when the evidence is not enough, it says s
 [![StarRocks](https://img.shields.io/badge/StarRocks-3.1～4.1-1f55e0.svg)](docs/guide/faq.md)
 [![Backend](https://img.shields.io/badge/backend-Rust%20%2F%20Axum-b7410e.svg)](docs/development/architecture.md)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
-[![Status](https://img.shields.io/badge/v1.0.3-local%20verified%20·%20production%20pending-orange.svg)](#project-status)
+[![Status](https://img.shields.io/badge/v1.0.4-local%20verified%20·%20production%20pending-orange.svg)](#project-status)
 
 [Quick start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) · [Docs](#documentation) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
@@ -96,7 +96,7 @@ No cluster? **Import a Profile** on the first page to analyze a JSON or text Pro
 | Delivery log | Result, retries and error category of every send; 10-second timeout, network failures retry after 1/5/30 minutes; SMS has an hourly limit |
 | Content | Only the cluster, template fingerprint, severity, confidence and median change; no SQL literals, Profiles or passwords; Feishu and DingTalk only on their official hosts |
 
-### Loads (v1.0.3)
+### Loads (v1.0.4)
 
 | Capability | What it does |
 |---|---|
@@ -104,7 +104,9 @@ No cluster? **Import a Profile** on the first page to analyze a JSON or text Pro
 | Routine Load | Job state, per-partition progress and lag, rates, error rows and why a job paused; read-only, no pause or resume |
 | Load records | Stream Load, Broker Load, INSERT and Routine Load task results, filtered rows, begin-transaction / plan / receive-data times in ms, source user and IP, per-table totals |
 | Error log | Open a load to see the rows StarRocks rejected and why (the ErrorURL text, read through read-only SQL), grouped by reason; says so when the BE has already cleaned it up |
-| Limits | Read live from `information_schema`, nothing stored; StarRocks keeps only the last 3 days / about 1000 records; complete from 3.3 |
+| History | The background collector stores finished loads per hour in the local history store: 30 days of daily counts, failure and filter rates and per-table totals; Routine Load job states, increases and lag; a copy of the error log of each load with filtered rows (plain text, 30 days, 50 MB in all). Uncollected spans are not filled in; hours StarRocks cleared first are marked partial |
+| Load alerts | The Alerts page switches between "SQL regressions" and "Loads". Five trial rules are evaluated on the stored load history after every collection: Routine Load paused, stopped or cancelled, lag rising, failure rate jump and filter rate jump; too few samples, incomplete collection or a version or rule change decides nothing. Pause reasons stay in the app; notifications carry facts only |
+| Limits | Overview, Routine Load and load records read `information_schema` live; StarRocks keeps only the last 3 days / about 1000 records; complete from 3.3 |
 
 ## Screenshots
 
@@ -157,7 +159,7 @@ One process serves both the pages and the API; the frontend renders what the bac
 
 - **Read-only connections**: no DDL/DML, multi-statements or `EXPLAIN ANALYZE`; SQL and settings are never changed automatically.
 - **Credentials never touch disk**: StarRocks passwords live only in a short-lived in-memory session; they are never returned to the page or logged.
-- **Redacted history**: only redacted templates, fingerprints and hourly aggregates, kept 30 days by default; no SQL literals, raw Profiles or passwords.
+- **Redacted history**: only redacted templates, fingerprints and hourly aggregates, kept 30 days by default; no SQL literals, raw Profiles or passwords. The one exception is load error logs: the rows StarRocks rejected are kept in plain text by agreement (30 days, 50 MB in all), shown only when opened, and never put in logs, notifications or exports.
 - **Access control**: a server deployment asks for a login, `admin` / `123456` by default and changeable in `.env`; writes also require same-origin and a CSRF token. All users share one account; there are no roles. Everyone knows the default password, so change it before exposing the server to a network you do not fully trust.
 - **Transport**: plaintext by default to any reachable host, clearly labelled in the UI; TLS verify-full when the FE has SSL enabled.
 
@@ -191,11 +193,12 @@ Connecting to 2.5 or 3.0 shows "unsupported version" and reads no audit or Profi
 
 | | Status |
 |---|---|
-| Latest release | **v1.0.3** (2026-10-31), see [Releases](https://github.com/shenhui027-arch/sr-doctor/releases). Servers are deployed with Docker; there is no installer |
+| Latest release | **v1.0.4** (2026-10-31), see [Releases](https://github.com/shenhui027-arch/sr-doctor/releases). Servers are deployed with Docker; there is no installer |
 | v1.0.0 | SQL quality monitoring stages A–D developed and accepted locally; all 19 issues from the project-wide audit fixed |
 | v1.0.1 | Adds the audit overview (window performance charts and the 30-day load view) and multi-channel alert notifications; local CI and the official 3.5.14 E2E pass (email checked against a local SMTP receiver); real Feishu, DingTalk, Alibaba Cloud and Tencent Cloud delivery is **pending verification** |
 | v1.0.2 | Adds the load workspace (overview, Routine Load, load records, error logs) and a load card in the audit overview, and fixes connecting to 3.1–3.3; the official 3.5.14 + Kafka E2E and load smoke tests on official 3.2–4.1 images pass |
 | v1.0.3 | Splits the load overview into Stream Load / INSERT / Routine Load, each with only its own measures, and fixes Routine Load task phase times counted as 0; the official 3.5.14 + Kafka E2E passes and the official 3.1.17 image was checked in a browser |
+| v1.0.4 | Stores loads in the local history store (30-day statistics, Routine Load job history, copies of error logs) and adds five trial load alerts; history store schema 7; the official 3.5.14 + AuditLoader + Kafka E2E passes |
 | Local verification | Local CI passes; on fixed-digest official `starrocks/*:3.5.14` Docker fixtures, the fingerprint, collection, trends, alerts and governance, multi-BE, release-audit and TLS verify-full E2E tests pass |
 | Production acceptance | **Pending**: the G1 read-only production pilot and G2 real-workload calibration have not been done, so it is not claimed to be production-safe; remote clusters are not collected by default and alert thresholds are marked as on trial |
 | Supported versions | StarRocks **3.1 and later** (audited 3.1–4.1); 2.5 and 3.0 are not supported. See [Supported StarRocks versions](#supported-starrocks-versions) |

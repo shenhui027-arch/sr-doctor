@@ -1,0 +1,351 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LoadHistoryRoutineResponse",
+  "type": "object",
+  "required": [
+    "cell_seconds",
+    "jobs",
+    "limitations",
+    "range_start_seconds"
+  ],
+  "properties": {
+    "cell_seconds": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "jobs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/RoutineHistoryJob"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "range_start_seconds": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "selected": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/RoutineHistoryDetail"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "RoutineHistoryCell": {
+      "type": "object",
+      "required": [
+        "start_seconds",
+        "state"
+      ],
+      "properties": {
+        "start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "state": {
+          "description": "The worst state seen in the cell.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RoutineHistoryState"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutineHistoryDay": {
+      "type": "object",
+      "required": [
+        "collected",
+        "error_height_permyriad",
+        "loaded_height_permyriad",
+        "start_seconds",
+        "unknown_intervals"
+      ],
+      "properties": {
+        "collected": {
+          "type": "boolean"
+        },
+        "error_height_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "error_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "loaded_height_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "loaded_rows": {
+          "description": "`None` when no increase of the day is known.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unknown_intervals": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutineHistoryDetail": {
+      "type": "object",
+      "required": [
+        "days",
+        "events",
+        "job_id",
+        "lag",
+        "lag_axis",
+        "lag_known",
+        "name",
+        "rows_axis"
+      ],
+      "properties": {
+        "days": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoutineHistoryDay"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoutineHistoryEvent"
+          }
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "lag": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoutineLagPoint"
+          }
+        },
+        "lag_axis": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "lag_known": {
+          "description": "StarRocks before 3.3 reports no lag.",
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "rows_axis": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutineHistoryEvent": {
+      "type": "object",
+      "required": [
+        "at_seconds",
+        "to_state"
+      ],
+      "properties": {
+        "at_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "from_state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to_state": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutineHistoryJob": {
+      "type": "object",
+      "required": [
+        "cells",
+        "current_state",
+        "database",
+        "job_id",
+        "name",
+        "pauses",
+        "table",
+        "unknown_intervals"
+      ],
+      "properties": {
+        "aborted_tasks": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoutineHistoryCell"
+          }
+        },
+        "committed_tasks": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "current_state": {
+          "type": "string"
+        },
+        "database": {
+          "type": "string"
+        },
+        "error_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "loaded_rows": {
+          "description": "Sums of counter increases between close snapshots; `None` when no interval of the range is known.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_lag": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "pauses": {
+          "description": "Changes into PAUSED observed in the range.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "table": {
+          "type": "string"
+        },
+        "unknown_intervals": {
+          "description": "Intervals whose increase is unknown (counter reset or snapshots too far apart): the sums leave them out.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutineHistoryState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "running",
+            "scheduling",
+            "paused",
+            "stopped",
+            "cancelled",
+            "not_collected",
+            "unknown"
+          ]
+        },
+        {
+          "description": "Snapshots were taken, but this job was not among them.",
+          "type": "string",
+          "enum": [
+            "absent"
+          ]
+        }
+      ]
+    },
+    "RoutineLagPoint": {
+      "type": "object",
+      "required": [
+        "collected",
+        "paused",
+        "start_seconds"
+      ],
+      "properties": {
+        "collected": {
+          "type": "boolean"
+        },
+        "max_lag": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "y_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

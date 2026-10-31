@@ -18,6 +18,7 @@ use doctor_contracts::{
     RoutineLoadJob, RoutineLoadJobsResponse, RoutineLoadOverview, RoutineLoadPartition,
     RoutineLoadStateClass, RoutineLoadStatistics, RoutinePausedJob, StreamLoadDetail,
 };
+use doctor_core::{CollectedLoad, LoadHistoryKind};
 use serde_json::Value;
 
 /// Routine Load jobs read per request (newest first).
@@ -69,10 +70,33 @@ pub fn routine_load_jobs_statement(with_lag: bool) -> String {
     )
 }
 
+const LOAD_RECORD_COLUMNS: &str = "ID, LABEL, PROFILE_ID, DB_NAME, TABLE_NAME, USER, STATE, TYPE, FILTERED_ROWS, UNSELECTED_ROWS, SINK_ROWS, CAST(RUNTIME_DETAILS AS VARCHAR), CAST(CREATE_TIME AS VARCHAR), CAST(LOAD_FINISH_TIME AS VARCHAR), ERROR_MSG, TRACKING_SQL, SCAN_ROWS, SCAN_BYTES, CAST(LOAD_COMMIT_TIME AS VARCHAR), CAST(PROPERTIES AS VARCHAR), PRIORITY";
+
 pub fn load_records_statement() -> String {
     format!(
-        "SELECT ID, LABEL, PROFILE_ID, DB_NAME, TABLE_NAME, USER, STATE, TYPE, FILTERED_ROWS, UNSELECTED_ROWS, SINK_ROWS, CAST(RUNTIME_DETAILS AS VARCHAR), CAST(CREATE_TIME AS VARCHAR), CAST(LOAD_FINISH_TIME AS VARCHAR), ERROR_MSG, TRACKING_SQL, SCAN_ROWS, SCAN_BYTES, CAST(LOAD_COMMIT_TIME AS VARCHAR), CAST(PROPERTIES AS VARCHAR), PRIORITY FROM information_schema.loads ORDER BY ID DESC LIMIT {LOAD_RECORDS_READ_LIMIT}"
+        "SELECT {LOAD_RECORD_COLUMNS} FROM information_schema.loads ORDER BY ID DESC LIMIT {LOAD_RECORDS_READ_LIMIT}"
     )
+}
+
+/// Task 58: finished loads collected per slice; one row beyond the limit
+/// tells the slice was cut.
+pub const LOAD_HISTORY_SLICE_LIMIT: usize = 2000;
+
+/// Task 58: the loads that finished in `[start, end)`, oldest first, with
+/// the finish time as epoch seconds evaluated by the same session (as the
+/// audit collector does). Running loads have no finish time and drop out.
+pub fn load_history_slice_statement(start: u32, end: u32) -> String {
+    format!(
+        "SELECT {LOAD_RECORD_COLUMNS}, UNIX_TIMESTAMP(LOAD_FINISH_TIME) FROM information_schema.loads WHERE LOAD_FINISH_TIME >= FROM_UNIXTIME({start}) AND LOAD_FINISH_TIME < FROM_UNIXTIME({end}) ORDER BY ID LIMIT {}",
+        LOAD_HISTORY_SLICE_LIMIT + 1
+    )
+}
+
+/// Task 58: per load type, how many records the FE still holds and the
+/// earliest finish time among them, to tell when a batch clear or expiry
+/// reached a slice before it was read.
+pub fn load_retention_statement() -> String {
+    "SELECT TYPE, COUNT(*), UNIX_TIMESTAMP(MIN(LOAD_FINISH_TIME)) FROM information_schema.loads GROUP BY TYPE".to_owned()
 }
 
 /// One job at a time: the BE scanner fetches every listed URL and joins
@@ -1756,6 +1780,128 @@ pub fn build_load_overview(
     }
 }
 
+/// Task 58: one collected slice of finished loads.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LoadHistorySlice {
+    pub loads: Vec<CollectedLoad>,
+    /// Rows StarRocks returned, up to the limit.
+    pub read: u64,
+    /// More rows existed than the limit; the slice is partial.
+    pub cut: bool,
+    /// Finished rows without a usable finish time or job id (not counted).
+    pub unusable: u64,
+}
+
+fn history_kind(kind: &str) -> LoadHistoryKind {
+    match kind_group(kind) {
+        LoadKindGroup::StreamLoad => LoadHistoryKind::StreamLoad,
+        LoadKindGroup::RoutineLoad => LoadHistoryKind::RoutineLoad,
+        LoadKindGroup::Broker => LoadHistoryKind::Broker,
+        LoadKindGroup::Insert => LoadHistoryKind::Insert,
+        LoadKindGroup::Other => LoadHistoryKind::Other,
+    }
+}
+
+pub fn decode_load_history_slice(
+    mut rows: Vec<Vec<Option<String>>>,
+    audit_database: Option<&str>,
+) -> LoadHistorySlice {
+    let cut = rows.len() > LOAD_HISTORY_SLICE_LIMIT;
+    rows.truncate(LOAD_HISTORY_SLICE_LIMIT);
+    let read = rows.len() as u64;
+    let finish: BTreeMap<String, i64> = rows
+        .iter()
+        .filter_map(|row| Some((text(row, 0)?, text(row, 21)?.parse::<i64>().ok()?)))
+        .collect();
+    let parsed = parse_load_rows(rows, audit_database);
+    let mut unusable = read - parsed.all.len() as u64;
+    let parse = |value: Option<&str>| value.and_then(|value| value.parse::<u128>().ok());
+    let ms = |value: Option<&str>| value.and_then(|value| value.parse::<u64>().ok());
+    let loads = parsed
+        .all
+        .into_iter()
+        .filter(|record| {
+            matches!(
+                record.state_class,
+                LoadStateClass::Finished | LoadStateClass::Cancelled
+            )
+        })
+        .filter_map(|record| {
+            let (Some(job_id), Some(&finish)) = (
+                record.job_id.parse::<u64>().ok(),
+                finish.get(&record.job_id),
+            ) else {
+                unusable += 1;
+                return None;
+            };
+            Some(CollectedLoad {
+                job_id,
+                kind: history_kind(&record.kind),
+                cancelled: record.state_class == LoadStateClass::Cancelled,
+                system: record.system,
+                finish_epoch_seconds: finish,
+                loaded_rows: parse(record.loaded_rows.as_deref()),
+                filtered_rows: parse(record.filtered_rows.as_deref()),
+                unselected_rows: parse(record.unselected_rows.as_deref()),
+                scan_bytes: parse(record.scan_bytes.as_deref()),
+                total_seconds: ms(record.total_seconds.as_deref()),
+                phases_ms: [
+                    ms(record.begin_txn_ms.as_deref()),
+                    ms(record.plan_ms.as_deref()),
+                    ms(record.receive_data_ms.as_deref()),
+                ],
+                has_error_log: record.has_error_log,
+                label: record.label,
+                database: record.db,
+                table: record.table,
+            })
+        })
+        .collect();
+    LoadHistorySlice {
+        loads,
+        read,
+        cut,
+        unusable,
+    }
+}
+
+/// Task 58: what each FE manager still holds. A `None` earliest means no
+/// finished record at all.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LoadRetention {
+    pub stream_records: u64,
+    pub stream_earliest_finish: Option<i64>,
+    pub other_records: u64,
+    pub other_earliest_finish: Option<i64>,
+}
+
+pub fn decode_load_retention(rows: Vec<Vec<Option<String>>>) -> LoadRetention {
+    let mut retention = LoadRetention::default();
+    for row in rows {
+        let kind = history_kind(&text(&row, 0).unwrap_or_default());
+        let records = text(&row, 1)
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(0);
+        let earliest = text(&row, 2).and_then(|value| value.parse::<i64>().ok());
+        let (count, first) = if kind.stream_manager() {
+            (
+                &mut retention.stream_records,
+                &mut retention.stream_earliest_finish,
+            )
+        } else {
+            (
+                &mut retention.other_records,
+                &mut retention.other_earliest_finish,
+            )
+        };
+        *count += records;
+        if let Some(earliest) = earliest {
+            *first = Some(first.map_or(earliest, |current| current.min(earliest)));
+        }
+    }
+    retention
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2983,6 +3129,141 @@ mod tests {
             civil_seconds("2026-03-01 00:00:00").unwrap()
                 - civil_seconds("2026-02-28 23:59:59").unwrap(),
             1
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn slice_row(
+        id: &str,
+        db: &str,
+        kind: &str,
+        state: &str,
+        filtered: &str,
+        details: &str,
+        finish_epoch: Option<&str>,
+        tracking: bool,
+    ) -> Vec<Option<String>> {
+        let mut row = load_row(
+            id,
+            &format!("l{id}"),
+            db,
+            kind,
+            state,
+            filtered,
+            details,
+            "2026-10-30 08:10:30",
+            Some("2026-10-30 08:10:32"),
+            tracking,
+        );
+        row.extend([None, None, None, None, None]);
+        row.push(finish_epoch.map(str::to_owned));
+        row
+    }
+
+    #[test]
+    fn audit_lh_02_history_slice_keeps_finished_loads_with_unknowns_apart() {
+        let statement = load_history_slice_statement(3_600, 3_900);
+        assert!(statement.contains("LOAD_FINISH_TIME >= FROM_UNIXTIME(3600)"));
+        assert!(statement.contains("LOAD_FINISH_TIME < FROM_UNIXTIME(3900)"));
+        assert!(statement.ends_with(&format!("LIMIT {}", LOAD_HISTORY_SLICE_LIMIT + 1)));
+        assert!(!statement.contains('\''));
+        let finished = r#"{"begin_txn_time_ms": 1, "plan_time_ms": 2, "receive_data_time_ms": 0}"#;
+        let slice = decode_load_history_slice(
+            vec![
+                slice_row(
+                    "12",
+                    "lr",
+                    "STREAM_LOAD",
+                    "CANCELLED",
+                    "2",
+                    finished,
+                    Some("3700"),
+                    true,
+                ),
+                slice_row(
+                    "13",
+                    "lr",
+                    "ROUTINE_LOAD",
+                    "FINISHED",
+                    "-1",
+                    "{}",
+                    Some("3710"),
+                    false,
+                ),
+                slice_row(
+                    "14",
+                    "lr",
+                    "INSERT",
+                    "LOADING",
+                    "0",
+                    "{}",
+                    Some("3720"),
+                    false,
+                ),
+                slice_row(
+                    "15",
+                    "_statistics_",
+                    "INSERT",
+                    "FINISHED",
+                    "0",
+                    "{}",
+                    Some("3730"),
+                    false,
+                ),
+                slice_row("16", "lr", "INSERT", "FINISHED", "0", "{}", None, false),
+            ],
+            None,
+        );
+        assert_eq!((slice.read, slice.cut, slice.unusable), (5, false, 1));
+        assert_eq!(slice.loads.len(), 3);
+        let stream = &slice.loads[0];
+        assert_eq!(stream.kind, LoadHistoryKind::StreamLoad);
+        assert!(stream.cancelled && stream.wants_error_log());
+        assert_eq!(stream.finish_epoch_seconds, 3_700);
+        assert_eq!(stream.phases_ms, [Some(1), Some(2), Some(0)]);
+        assert_eq!(stream.total_seconds, Some(2));
+        let routine = &slice.loads[1];
+        assert_eq!(routine.kind, LoadHistoryKind::RoutineLoad);
+        // -1 is StarRocks' unknown; a Routine Load task measures no phases.
+        assert_eq!(routine.filtered_rows, None);
+        assert_eq!(routine.phases_ms, [None, None, None]);
+        assert!(slice.loads[2].system);
+
+        let many: Vec<_> = (0..=LOAD_HISTORY_SLICE_LIMIT)
+            .map(|id| {
+                slice_row(
+                    &id.to_string(),
+                    "lr",
+                    "INSERT",
+                    "FINISHED",
+                    "0",
+                    "{}",
+                    Some("3700"),
+                    false,
+                )
+            })
+            .collect();
+        let cut = decode_load_history_slice(many, None);
+        assert!(cut.cut);
+        assert_eq!(cut.read, LOAD_HISTORY_SLICE_LIMIT as u64);
+    }
+
+    #[test]
+    fn audit_lh_03_retention_is_read_per_fe_manager() {
+        let retention = decode_load_retention(vec![
+            vec![s("STREAM_LOAD"), s("900"), s("5000")],
+            vec![s("ROUTINE_LOAD"), s("40"), s("4000")],
+            vec![s("INSERT"), s("3"), None],
+            vec![s("BROKER"), s("2"), s("7000")],
+        ]);
+        assert_eq!(
+            retention,
+            LoadRetention {
+                stream_records: 940,
+                stream_earliest_finish: Some(4_000),
+                other_records: 5,
+                other_earliest_finish: Some(7_000),
+            }
         );
     }
 }

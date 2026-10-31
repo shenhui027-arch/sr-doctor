@@ -725,9 +725,15 @@ pub(crate) fn enqueue_alert_events(
     target: &str,
     raised: &[i64],
     resolved: &[i64],
+    load_raised: &[i64],
+    load_resolved: &[i64],
     now: i64,
 ) -> doctor_history::Result<()> {
-    if raised.is_empty() && resolved.is_empty() {
+    if raised.is_empty()
+        && resolved.is_empty()
+        && load_raised.is_empty()
+        && load_resolved.is_empty()
+    {
         return Ok(());
     }
     let channels: Vec<NotifyChannelKind> = store
@@ -758,12 +764,33 @@ pub(crate) fn enqueue_alert_events(
         }
         Ok(facts)
     };
-    let mut events = vec![(NotifyEvent::NewAlerts, facts(raised)?)];
+    let load_facts = |ids: &[i64]| -> doctor_history::Result<Vec<doctor_notify::LoadAlertFact>> {
+        let mut facts = Vec::new();
+        for id in ids {
+            if let Some(fact) = store
+                .load_alert(*id)?
+                .as_ref()
+                .and_then(crate::load_alerts::notify_fact)
+            {
+                facts.push(fact);
+            }
+        }
+        Ok(facts)
+    };
+    let mut events = vec![(
+        NotifyEvent::NewAlerts,
+        facts(raised)?,
+        load_facts(load_raised)?,
+    )];
     if settings.notify_resolved {
-        events.push((NotifyEvent::Resolved, facts(resolved)?));
+        events.push((
+            NotifyEvent::Resolved,
+            facts(resolved)?,
+            load_facts(load_resolved)?,
+        ));
     }
     let mut queued = Vec::new();
-    for (event, alerts) in events {
+    for (event, alerts, load_alerts) in events {
         for recipient in &recipients {
             let floor = severity_rank(&recipient.min_severity);
             let mut mine: Vec<AlertFact> = alerts
@@ -771,7 +798,14 @@ pub(crate) fn enqueue_alert_events(
                 .filter(|alert| severity_rank(&alert.severity) >= floor)
                 .cloned()
                 .collect();
-            if mine.is_empty() || (event == NotifyEvent::Resolved && recipient.kind.is_sms()) {
+            let mine_loads: Vec<doctor_notify::LoadAlertFact> = load_alerts
+                .iter()
+                .filter(|alert| severity_rank(&alert.severity) >= floor)
+                .cloned()
+                .collect();
+            if (mine.is_empty() && mine_loads.is_empty())
+                || (event == NotifyEvent::Resolved && recipient.kind.is_sms())
+            {
                 continue;
             }
             if recipient.kind.is_sms() {
@@ -782,6 +816,7 @@ pub(crate) fn enqueue_alert_events(
                 cluster: target.to_owned(),
                 event,
                 alerts: mine,
+                load_alerts: mine_loads,
             };
             queued.push(NewDelivery {
                 kind: recipient.kind,
@@ -789,7 +824,7 @@ pub(crate) fn enqueue_alert_events(
                 target_name: recipient.name.clone(),
                 event: text_of(&event),
                 cluster: Some(target.to_owned()),
-                alert_count: batch.alerts.len() as u32,
+                alert_count: batch.count() as u32,
                 payload_json: serde_json::to_string(&batch)
                     .map_err(|_| doctor_history::HistoryError::Internal("notify_payload"))?,
             });
@@ -1031,7 +1066,7 @@ mod tests {
         else {
             panic!()
         };
-        enqueue_alert_events(&store, "t", &[a, b], &[], 10).unwrap();
+        enqueue_alert_events(&store, "t", &[a, b], &[], &[], &[], 10).unwrap();
         let rows = store.due_deliveries(10, 10).unwrap();
         assert_eq!(rows.len(), 2);
         let count = |id: i64| {
@@ -1044,7 +1079,7 @@ mod tests {
         let batch: AlertBatch = serde_json::from_str(&rows[0].payload_json).unwrap();
         assert!(batch.alerts.iter().all(|alert| alert.template.is_none()));
         // Resolved alerts are sent only when the user chose it.
-        enqueue_alert_events(&store, "t", &[], &[a], 11).unwrap();
+        enqueue_alert_events(&store, "t", &[], &[a], &[], &[], 11).unwrap();
         assert_eq!(store.due_deliveries(11, 10).unwrap().len(), 2);
         store
             .set_notify_settings(&NotifySettings {
@@ -1052,7 +1087,7 @@ mod tests {
                 ..NotifySettings::default()
             })
             .unwrap();
-        enqueue_alert_events(&store, "t", &[], &[a], 12).unwrap();
+        enqueue_alert_events(&store, "t", &[], &[a], &[], &[], 12).unwrap();
         assert_eq!(store.due_deliveries(12, 10).unwrap().len(), 4);
     }
 
@@ -1066,7 +1101,7 @@ mod tests {
         else {
             panic!()
         };
-        enqueue_alert_events(&store, "t", &[a], &[], 10).unwrap();
+        enqueue_alert_events(&store, "t", &[a], &[], &[], &[], 10).unwrap();
         assert!(store.due_deliveries(10, 10).unwrap().is_empty());
     }
 
@@ -1087,7 +1122,7 @@ mod tests {
         else {
             panic!()
         };
-        enqueue_alert_events(&store, "t", &[a], &[], 100).unwrap();
+        enqueue_alert_events(&store, "t", &[a], &[], &[], &[], 100).unwrap();
         let mut now = 100;
         for (delay, state) in [
             (60, "pending"),
@@ -1108,7 +1143,7 @@ mod tests {
             }
         }
         // A target switched off before its turn is skipped, not sent.
-        enqueue_alert_events(&store, "t", &[a], &[], now).unwrap();
+        enqueue_alert_events(&store, "t", &[a], &[], &[], &[], now).unwrap();
         let mut write = store.notify_target(id).unwrap().unwrap();
         write.enabled = false;
         store
@@ -1198,7 +1233,7 @@ mod tests {
         else {
             panic!()
         };
-        enqueue_alert_events(&store, "t", &[a], &[], 1_500).unwrap();
+        enqueue_alert_events(&store, "t", &[a], &[], &[], &[], 1_500).unwrap();
         process_due(&store, &key, 1_500).unwrap();
         let row = &store.deliveries(&DeliveryFilter::default(), 1).unwrap()[0];
         assert_eq!(

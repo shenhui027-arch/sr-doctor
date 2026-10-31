@@ -1,0 +1,604 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LoadHistoryResponse",
+  "type": "object",
+  "required": [
+    "all_loads",
+    "collection",
+    "count_axis",
+    "days",
+    "error_logs",
+    "kinds",
+    "limitations",
+    "rate_axis",
+    "routine_jobs",
+    "segments",
+    "table_options",
+    "tables",
+    "totals"
+  ],
+  "properties": {
+    "all_loads": {
+      "description": "Every kind together, ignoring the kind filter.",
+      "type": "string"
+    },
+    "collection": {
+      "$ref": "#/definitions/LoadHistoryCollection"
+    },
+    "count_axis": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "days": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadHistoryDay"
+      }
+    },
+    "error_logs": {
+      "$ref": "#/definitions/LoadErrorStorageView"
+    },
+    "kinds": {
+      "description": "Counts per kind over the range, ignoring the kind filter.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadHistoryKindTotal"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rate_axis": {
+      "description": "Parts per million.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "routine_jobs": {
+      "description": "Routine Load jobs with a snapshot in the range: the job history has its own entry, even where no task record was collected (3.2).",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/HistoryLoadSegment"
+      }
+    },
+    "table_options": {
+      "description": "Every `db.table` with history, for the filter.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadHistoryTable"
+      }
+    },
+    "target": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "totals": {
+      "$ref": "#/definitions/LoadHistoryTotals"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "HistoryLoadCoverage": {
+      "oneOf": [
+        {
+          "description": "Every hour of the day was read completely.",
+          "type": "string",
+          "enum": [
+            "complete"
+          ]
+        },
+        {
+          "description": "Some hours were read only partly or not at all.",
+          "type": "string",
+          "enum": [
+            "partial"
+          ]
+        },
+        {
+          "description": "No hour of the day was read: nothing is drawn, nothing is zero.",
+          "type": "string",
+          "enum": [
+            "not_collected"
+          ]
+        }
+      ]
+    },
+    "HistoryLoadSegment": {
+      "description": "A run of days under one StarRocks version and one history rule set.",
+      "type": "object",
+      "required": [
+        "engine_versions",
+        "first_day_seconds",
+        "rule_versions"
+      ],
+      "properties": {
+        "engine_versions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "first_day_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "rule_versions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadErrorCategory": {
+      "type": "string",
+      "enum": [
+        "out_of_range",
+        "too_long",
+        "column_count",
+        "null_in_non_nullable",
+        "out_of_partition",
+        "json_cast",
+        "json_structure",
+        "other"
+      ]
+    },
+    "LoadErrorStorageView": {
+      "type": "object",
+      "required": [
+        "limit_bytes",
+        "logs",
+        "missed",
+        "raw_bytes",
+        "saved",
+        "used_permyriad"
+      ],
+      "properties": {
+        "earliest_saved_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "limit_bytes": {
+          "type": "string"
+        },
+        "logs": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "missed": {
+          "description": "Gone from the BE, or not read within StarRocks' retention.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "raw_bytes": {
+          "type": "string"
+        },
+        "saved": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "used_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadHistoryCollection": {
+      "type": "object",
+      "properties": {
+        "last_rows_read": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "last_run_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "watermark_seconds": {
+          "description": "Everything before this was read or recorded as a gap.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadHistoryDay": {
+      "description": "One UTC day. Sums cover only the hours that were read.",
+      "type": "object",
+      "required": [
+        "by_kind",
+        "complete_hours",
+        "coverage",
+        "not_collected_hours",
+        "partial_hours",
+        "partial_reasons",
+        "segment",
+        "start_seconds",
+        "unknown_counts"
+      ],
+      "properties": {
+        "by_kind": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadHistoryKindDay"
+          }
+        },
+        "complete_hours": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "coverage": {
+          "$ref": "#/definitions/HistoryLoadCoverage"
+        },
+        "failed": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failed_rate_ppm": {
+          "description": "Failed ÷ finished in parts per million, against `rate_axis`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "failed_rate_y_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "filtered_rate_ppm": {
+          "description": "Filtered ÷ (loaded + filtered) in parts per million.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "filtered_rate_y_permyriad": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "filtered_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "loaded_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "loads": {
+          "description": "`None` when no hour of the day was read.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "not_collected_hours": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "partial_hours": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "partial_reasons": {
+          "description": "Why hours were partial (`row_limit`, `stream_records_cleared`, ...).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "segment": {
+          "description": "Index into `segments`.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unknown_counts": {
+          "description": "Loads that did not report a count are left out of the sums.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadHistoryKindDay": {
+      "type": "object",
+      "required": [
+        "height_permyriad",
+        "kind",
+        "loads"
+      ],
+      "properties": {
+        "height_permyriad": {
+          "description": "Bar height against `count_axis`.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "kind": {
+          "$ref": "#/definitions/LoadKindGroup"
+        },
+        "loads": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadHistoryKindTotal": {
+      "type": "object",
+      "required": [
+        "failed",
+        "kind",
+        "loads"
+      ],
+      "properties": {
+        "failed": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/LoadKindGroup"
+        },
+        "loads": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadHistoryReason": {
+      "type": "object",
+      "required": [
+        "category",
+        "sample_share_permyriad",
+        "sampled_rows"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/definitions/LoadErrorCategory"
+        },
+        "column": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "new_since_seconds": {
+          "description": "First seen within the last three days, after at least three days of saved logs without it.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "sample_share_permyriad": {
+          "description": "Share of the sampled rows of this table, not of all filtered rows.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "sampled_rows": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "target_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadHistoryTable": {
+      "type": "object",
+      "required": [
+        "database",
+        "failed",
+        "filtered_rows",
+        "kinds",
+        "loaded_rows",
+        "loads",
+        "saved_logs",
+        "table",
+        "unknown_counts"
+      ],
+      "properties": {
+        "database": {
+          "type": "string"
+        },
+        "failed": {
+          "type": "string"
+        },
+        "filtered_rows": {
+          "type": "string"
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadKindGroup"
+          }
+        },
+        "loaded_rows": {
+          "type": "string"
+        },
+        "loads": {
+          "type": "string"
+        },
+        "saved_logs": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "table": {
+          "type": "string"
+        },
+        "top_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LoadHistoryReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unknown_counts": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadHistoryTotals": {
+      "type": "object",
+      "required": [
+        "failed",
+        "filtered_rows",
+        "filtered_unknown",
+        "loaded_rows",
+        "loaded_unknown",
+        "loads",
+        "not_collected_hours",
+        "partial_hours",
+        "tables_with_filtered"
+      ],
+      "properties": {
+        "failed": {
+          "type": "string"
+        },
+        "failed_ppm": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "filtered_ppm": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "filtered_rows": {
+          "type": "string"
+        },
+        "filtered_unknown": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "loaded_rows": {
+          "type": "string"
+        },
+        "loaded_unknown": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "loads": {
+          "type": "string"
+        },
+        "not_collected_hours": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "partial_hours": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "tables_with_filtered": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadKindGroup": {
+      "description": "Task 56: the overview shows each group with only the measures StarRocks reports for it.",
+      "type": "string",
+      "enum": [
+        "stream_load",
+        "insert",
+        "routine_load",
+        "broker",
+        "other"
+      ]
+    }
+  }
+}

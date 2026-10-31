@@ -62,8 +62,10 @@ pub use audit_workload::{
     decode_performance_source_rows, summary_cell as audit_performance_summary_cell,
 };
 pub use load_monitor::{
-    LOAD_RECORDS_READ_LIMIT, ROUTINE_LOAD_JOBS_LIMIT, build_load_overview, decode_load_records,
-    decode_routine_load_jobs, load_records_statement, load_support, load_tracking_log_statement,
+    LOAD_HISTORY_SLICE_LIMIT, LOAD_RECORDS_READ_LIMIT, LoadHistorySlice, LoadRetention,
+    ROUTINE_LOAD_JOBS_LIMIT, build_load_overview, decode_load_history_slice, decode_load_records,
+    decode_load_retention, decode_routine_load_jobs, load_history_slice_statement,
+    load_records_statement, load_retention_statement, load_support, load_tracking_log_statement,
     routine_load_jobs_statement, routine_overview,
 };
 
@@ -776,6 +778,13 @@ pub enum RemoteOperation {
     LoadTrackingLog {
         job_id: u64,
     },
+    /// Task 58: the finished loads of one collection slice.
+    LoadHistorySlice {
+        start: u32,
+        end: u32,
+    },
+    /// Task 58: record counts and earliest finish time per load type.
+    LoadRetention,
     ShowProfileList {
         limit: u16,
     },
@@ -1114,6 +1123,16 @@ impl SessionManager {
             },
         );
         Ok(view)
+    }
+
+    /// Task 59: the StarRocks version the session detected, for history
+    /// rows that must not be compared across versions. Does not count as use.
+    pub fn detected_version(&self, connection_id: &str) -> Option<String> {
+        self.lock_sessions()
+            .active
+            .get(connection_id)
+            .map(|session| session.view.detected_version.clone())
+            .filter(|version| !version.is_empty())
     }
 
     /// Whether the session still exists and is within its idle TTL. Does not
@@ -2242,6 +2261,58 @@ impl SessionManager {
                 audit_database.as_deref(),
                 &routine,
             ))
+        })
+    }
+
+    /// Task 58: the finished loads of one collection slice and the version
+    /// that served them; `None` before 3.3, which has no usable `loads`.
+    pub fn load_history_slice_controlled(
+        &self,
+        connection_id: &str,
+        start: u32,
+        end: u32,
+        control: Option<&Arc<OperationControl>>,
+    ) -> Result<Option<(LoadHistorySlice, String)>, ConnectorError> {
+        self.with_supported_session_controlled(connection_id, control, |session| {
+            let (_, support) = load_support(session_version(session));
+            if support == LoadViewSupport::UnsupportedVersion {
+                return Ok(None);
+            }
+            let audit_database = session
+                .audit_table
+                .as_source_name()
+                .split('.')
+                .next()
+                .map(str::to_owned);
+            let rows = nullable_rows(
+                session
+                    .remote
+                    .run(RemoteOperation::LoadHistorySlice { start, end })
+                    .map_err(|error| error.connector("load_history"))?,
+                "load_history",
+            )?;
+            Ok(Some((
+                decode_load_history_slice(rows, audit_database.as_deref()),
+                session.view.detected_version.clone(),
+            )))
+        })
+    }
+
+    /// Task 58: what each FE load manager still holds.
+    pub fn load_retention_controlled(
+        &self,
+        connection_id: &str,
+        control: Option<&Arc<OperationControl>>,
+    ) -> Result<LoadRetention, ConnectorError> {
+        self.with_supported_session_controlled(connection_id, control, |session| {
+            let rows = nullable_rows(
+                session
+                    .remote
+                    .run(RemoteOperation::LoadRetention)
+                    .map_err(|error| error.connector("load_history"))?,
+                "load_history",
+            )?;
+            Ok(decode_load_retention(rows))
         })
     }
 
@@ -4525,6 +4596,8 @@ mod tests {
                 RemoteOperation::ProfiledSelect { .. } => Operation::ProfiledSelect,
                 RemoteOperation::RoutineLoadJobs { .. }
                 | RemoteOperation::LoadRecords
+                | RemoteOperation::LoadHistorySlice { .. }
+                | RemoteOperation::LoadRetention
                 | RemoteOperation::LoadTrackingLog { .. } => Operation::Loads,
             };
             self.operations.lock().unwrap().push(kind);
@@ -4856,6 +4929,8 @@ mod tests {
                 }
                 RemoteOperation::RoutineLoadJobs { .. }
                 | RemoteOperation::LoadRecords
+                | RemoteOperation::LoadHistorySlice { .. }
+                | RemoteOperation::LoadRetention
                 | RemoteOperation::LoadTrackingLog { .. } => Err(RemoteError::Unsupported),
             }
         }
@@ -5207,6 +5282,8 @@ mod tests {
                 | RemoteOperation::ProfiledSelect { .. }
                 | RemoteOperation::RoutineLoadJobs { .. }
                 | RemoteOperation::LoadRecords
+                | RemoteOperation::LoadHistorySlice { .. }
+                | RemoteOperation::LoadRetention
                 | RemoteOperation::LoadTrackingLog { .. } => Err(RemoteError::Unsupported),
             }
         }

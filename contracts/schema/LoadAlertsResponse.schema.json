@@ -1,0 +1,593 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LoadAlertsResponse",
+  "type": "object",
+  "required": [
+    "alerts",
+    "counts",
+    "limitations",
+    "list_limit",
+    "thresholds"
+  ],
+  "properties": {
+    "alerts": {
+      "description": "Active first, then newest; each state up to `list_limit`, or the requested `more` limit for that state.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadAlertView"
+      }
+    },
+    "counts": {
+      "$ref": "#/definitions/LoadAlertCounts"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "list_limit": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "target": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "thresholds": {
+      "$ref": "#/definitions/LoadAlertThresholds"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AlertState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "open",
+            "acknowledged",
+            "muted"
+          ]
+        },
+        {
+          "description": "Back inside the baseline band; can be reopened by hand.",
+          "type": "string",
+          "enum": [
+            "resolved"
+          ]
+        }
+      ]
+    },
+    "LoadAlertCounts": {
+      "type": "object",
+      "required": [
+        "acknowledged",
+        "muted",
+        "open",
+        "resolved"
+      ],
+      "properties": {
+        "acknowledged": {
+          "type": "string"
+        },
+        "muted": {
+          "type": "string"
+        },
+        "open": {
+          "type": "string"
+        },
+        "resolved": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadAlertDetail": {
+      "description": "What the alert is about, per rule.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "database",
+            "job_id",
+            "name",
+            "observed_seconds",
+            "rule",
+            "table"
+          ],
+          "properties": {
+            "database": {
+              "type": "string"
+            },
+            "job_id": {
+              "type": "string"
+            },
+            "max_lag": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "observed_seconds": {
+              "description": "The snapshot that saw the state, not when it changed.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "reason": {
+              "description": "`REASONS_OF_STATE_CHANGED`; shown in the app, never notified.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "rule": {
+              "type": "string",
+              "enum": [
+                "routine_paused"
+              ]
+            },
+            "table": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "database",
+            "job_id",
+            "name",
+            "observed_seconds",
+            "rule",
+            "state",
+            "table"
+          ],
+          "properties": {
+            "database": {
+              "type": "string"
+            },
+            "job_id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "observed_seconds": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "rule": {
+              "type": "string",
+              "enum": [
+                "routine_stopped"
+              ]
+            },
+            "state": {
+              "type": "string"
+            },
+            "table": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "database",
+            "hours",
+            "job_id",
+            "name",
+            "ratio_permille",
+            "rule",
+            "table"
+          ],
+          "properties": {
+            "database": {
+              "type": "string"
+            },
+            "hours": {
+              "description": "The four complete hours the rule looked at, oldest first.",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/LoadAlertLagHour"
+              }
+            },
+            "job_id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "ratio_permille": {
+              "description": "Latest ÷ first, in thousandths.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "rule": {
+              "type": "string",
+              "enum": [
+                "lag_growing"
+              ]
+            },
+            "table": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "baseline",
+            "current",
+            "database",
+            "delta_ppm",
+            "kind",
+            "rule",
+            "table"
+          ],
+          "properties": {
+            "baseline": {
+              "$ref": "#/definitions/LoadAlertWindow"
+            },
+            "current": {
+              "$ref": "#/definitions/LoadAlertWindow"
+            },
+            "database": {
+              "type": "string"
+            },
+            "delta_ppm": {
+              "description": "Current minus baseline rate, parts per million, from raw counts.",
+              "type": "integer",
+              "format": "int32"
+            },
+            "kind": {
+              "$ref": "#/definitions/LoadKindGroup"
+            },
+            "ratio_permille": {
+              "description": "Current ÷ baseline in thousandths; `None` when it is not available: the baseline has none, or the counts are too large to divide exactly.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "rule": {
+              "type": "string",
+              "enum": [
+                "failure_rate"
+              ]
+            },
+            "table": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "baseline",
+            "current",
+            "database",
+            "delta_ppm",
+            "kind",
+            "rule",
+            "table"
+          ],
+          "properties": {
+            "baseline": {
+              "$ref": "#/definitions/LoadAlertWindow"
+            },
+            "current": {
+              "$ref": "#/definitions/LoadAlertWindow"
+            },
+            "database": {
+              "type": "string"
+            },
+            "delta_ppm": {
+              "description": "Current minus baseline rate, parts per million, from raw counts.",
+              "type": "integer",
+              "format": "int32"
+            },
+            "kind": {
+              "$ref": "#/definitions/LoadKindGroup"
+            },
+            "ratio_permille": {
+              "description": "Current ÷ baseline in thousandths; `None` when it is not available: the baseline has none, or the counts are too large to divide exactly.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "rule": {
+              "type": "string",
+              "enum": [
+                "filter_rate"
+              ]
+            },
+            "table": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "LoadAlertLagHour": {
+      "type": "object",
+      "required": [
+        "height_permyriad",
+        "max_lag",
+        "start_seconds"
+      ],
+      "properties": {
+        "height_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "max_lag": {
+          "type": "string"
+        },
+        "start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadAlertRule": {
+      "type": "string",
+      "enum": [
+        "routine_paused",
+        "routine_stopped",
+        "lag_growing",
+        "failure_rate",
+        "filter_rate"
+      ]
+    },
+    "LoadAlertThresholds": {
+      "description": "The trial thresholds, for the rules panel.",
+      "type": "object",
+      "required": [
+        "baseline_hours",
+        "calibrated",
+        "current_hours",
+        "failure_high_ppm",
+        "failure_min_baseline_loads",
+        "failure_min_loads",
+        "failure_min_ppm",
+        "filter_high_ppm",
+        "filter_min_baseline_rows",
+        "filter_min_ppm",
+        "filter_min_rows",
+        "lag_high",
+        "lag_hours",
+        "lag_min",
+        "mute_hours"
+      ],
+      "properties": {
+        "baseline_hours": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "calibrated": {
+          "type": "boolean"
+        },
+        "current_hours": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "failure_high_ppm": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "failure_min_baseline_loads": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "failure_min_loads": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "failure_min_ppm": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "filter_high_ppm": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "filter_min_baseline_rows": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "filter_min_ppm": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "filter_min_rows": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "lag_high": {
+          "type": "string"
+        },
+        "lag_hours": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "lag_min": {
+          "type": "string"
+        },
+        "mute_hours": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadAlertView": {
+      "type": "object",
+      "required": [
+        "alert_id",
+        "detail",
+        "engine_version",
+        "first_seen_seconds",
+        "last_seen_seconds",
+        "rule",
+        "rule_version",
+        "severity",
+        "state"
+      ],
+      "properties": {
+        "alert_id": {
+          "type": "string"
+        },
+        "detail": {
+          "$ref": "#/definitions/LoadAlertDetail"
+        },
+        "engine_version": {
+          "type": "string"
+        },
+        "first_seen_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "last_seen_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "muted_until_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "resolved_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "rule": {
+          "$ref": "#/definitions/LoadAlertRule"
+        },
+        "rule_version": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/definitions/TrendSeverity"
+        },
+        "state": {
+          "$ref": "#/definitions/AlertState"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadAlertWindow": {
+      "description": "Counts of one window: loads and failures, or input and filtered rows.",
+      "type": "object",
+      "required": [
+        "collected_hours",
+        "end_seconds",
+        "part",
+        "rate_ppm",
+        "start_seconds",
+        "total"
+      ],
+      "properties": {
+        "collected_hours": {
+          "description": "Completely collected hours that entered the counts.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "end_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "part": {
+          "description": "Failed loads, or filtered rows.",
+          "type": "string"
+        },
+        "rate_ppm": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "start_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "total": {
+          "description": "Loads, or input rows (loaded + filtered).",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadKindGroup": {
+      "description": "Task 56: the overview shows each group with only the measures StarRocks reports for it.",
+      "type": "string",
+      "enum": [
+        "stream_load",
+        "insert",
+        "routine_load",
+        "broker",
+        "other"
+      ]
+    },
+    "TrendSeverity": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  }
+}

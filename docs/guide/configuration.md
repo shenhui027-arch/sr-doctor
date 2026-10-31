@@ -56,7 +56,7 @@ DOCTOR_COOKIE_SECURE=off
 
 | 变量 | 默认 | 范围 | 说明 |
 |---|---|---|---|
-| `DOCTOR_HISTORY` | 开启 | `off` | 设为 `off` 关闭历史库，趋势、告警与治理不可用 |
+| `DOCTOR_HISTORY` | 开启 | `off` | 设为 `off` 关闭历史库，趋势、告警、治理与导入历史不可用 |
 | `DOCTOR_HISTORY_PATH` | 用户数据目录 | | 历史库文件路径。默认：Windows `%LOCALAPPDATA%\sr-doctor\history.sqlite`；Linux `$XDG_DATA_HOME` 或 `~/.local/share` 下的 `sr-doctor/history.sqlite`；容器里是 `/var/lib/sr-doctor/history.sqlite` |
 | `DOCTOR_COLLECTION_PERIOD_SECONDS` | `300` | 5–3600 | 两次读取审计日志的间隔 |
 | `DOCTOR_COLLECTION_SLICE_SECONDS` | `300` | 60–3600 | 每次读取的时间片长度 |

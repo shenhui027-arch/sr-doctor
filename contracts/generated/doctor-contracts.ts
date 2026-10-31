@@ -1264,6 +1264,226 @@ earliest_create_time: string | null,
  * one manager covers the scope.
  */
 complete_from: string | null, at_retention_limit: boolean, hidden_system: string, limitations: Array<string>, };
+export type LoadAlertRule = "routine_paused" | "routine_stopped" | "lag_growing" | "failure_rate" | "filter_rate";
+export type LoadAlertWindow = { start_seconds: number, end_seconds: number,
+/**
+ * Loads, or input rows (loaded + filtered).
+ */
+total: string,
+/**
+ * Failed loads, or filtered rows.
+ */
+part: string, rate_ppm: number,
+/**
+ * Completely collected hours that entered the counts.
+ */
+collected_hours: number, };
+export type LoadAlertLagHour = { start_seconds: number, max_lag: string, height_permyriad: number, };
+export type LoadAlertDetail = { "rule": "routine_paused", job_id: string, name: string, database: string, table: string,
+/**
+ * The snapshot that saw the state, not when it changed.
+ */
+observed_seconds: number,
+/**
+ * `REASONS_OF_STATE_CHANGED`; shown in the app, never notified.
+ */
+reason: string | null, max_lag: string | null, } | { "rule": "routine_stopped", job_id: string, name: string, database: string, table: string, state: string, observed_seconds: number, reason: string | null, } | { "rule": "lag_growing", job_id: string, name: string, database: string, table: string,
+/**
+ * The four complete hours the rule looked at, oldest first.
+ */
+hours: Array<LoadAlertLagHour>,
+/**
+ * Latest ÷ first, in thousandths.
+ */
+ratio_permille: number, } | { "rule": "failure_rate", database: string, table: string, kind: LoadKindGroup, current: LoadAlertWindow, baseline: LoadAlertWindow,
+/**
+ * Current minus baseline rate, parts per million, from raw counts.
+ */
+delta_ppm: number,
+/**
+ * Current ÷ baseline in thousandths; `None` when it is not available:
+ * the baseline has none, or the counts are too large to divide exactly.
+ */
+ratio_permille: number | null, } | { "rule": "filter_rate", database: string, table: string, kind: LoadKindGroup, current: LoadAlertWindow, baseline: LoadAlertWindow,
+/**
+ * Current minus baseline rate, parts per million, from raw counts.
+ */
+delta_ppm: number,
+/**
+ * Current ÷ baseline in thousandths; `None` when it is not available:
+ * the baseline has none, or the counts are too large to divide exactly.
+ */
+ratio_permille: number | null, };
+export type LoadAlertView = { alert_id: string, rule: LoadAlertRule, state: AlertState, severity: TrendSeverity, muted_until_seconds: number | null, first_seen_seconds: number, last_seen_seconds: number, resolved_seconds: number | null, detail: LoadAlertDetail, engine_version: string, rule_version: string, };
+export type LoadAlertCounts = { open: string, acknowledged: string, resolved: string, muted: string, };
+export type LoadAlertThresholds = { current_hours: number, baseline_hours: number, mute_hours: number, lag_hours: number, lag_min: string, lag_high: string, failure_min_loads: number, failure_min_baseline_loads: number, failure_min_ppm: number, failure_high_ppm: number, filter_min_rows: number, filter_min_baseline_rows: number, filter_min_ppm: number, filter_high_ppm: number, calibrated: boolean, };
+export type LoadAlertsMore = { state: AlertState,
+/**
+ * How many of that state to list, newest first.
+ */
+limit: number, };
+export type LoadAlertsRequest = { target: string | null, more: LoadAlertsMore | null, };
+export type LoadAlertsResponse = { target: string | null,
+/**
+ * Active first, then newest; each state up to `list_limit`, or the
+ * requested `more` limit for that state.
+ */
+alerts: Array<LoadAlertView>, list_limit: number, counts: LoadAlertCounts, thresholds: LoadAlertThresholds, limitations: Array<string>, };
+export type LoadHistoryRequest = {
+/**
+ * The connected session whose target to show; otherwise the most
+ * recently collected target.
+ */
+connection_id: string | null,
+/**
+ * The collection target to show (task 59: a load alert names it); it
+ * wins over the connected session when known.
+ */
+target: string | null, days: number, kind: LoadKindGroup | null,
+/**
+ * `db.table`.
+ */
+table: string | null, include_system: boolean, };
+export type LoadHistoryKindDay = { kind: LoadKindGroup, loads: string,
+/**
+ * Bar height against `count_axis`.
+ */
+height_permyriad: number, };
+export type LoadHistoryDay = { start_seconds: number, coverage: HistoryLoadCoverage, complete_hours: number, partial_hours: number, not_collected_hours: number,
+/**
+ * Why hours were partial (`row_limit`, `stream_records_cleared`, ...).
+ */
+partial_reasons: Array<string>,
+/**
+ * Index into `segments`.
+ */
+segment: number,
+/**
+ * `None` when no hour of the day was read.
+ */
+loads: string | null, failed: string | null, loaded_rows: string | null, filtered_rows: string | null,
+/**
+ * Loads that did not report a count are left out of the sums.
+ */
+unknown_counts: number, by_kind: Array<LoadHistoryKindDay>,
+/**
+ * Failed ÷ finished in parts per million, against `rate_axis`.
+ */
+failed_rate_ppm: number | null, failed_rate_y_permyriad: number | null,
+/**
+ * Filtered ÷ (loaded + filtered) in parts per million.
+ */
+filtered_rate_ppm: number | null, filtered_rate_y_permyriad: number | null, };
+export type LoadHistoryKindTotal = { kind: LoadKindGroup, loads: string, failed: string, };
+export type LoadHistoryTotals = { loads: string, failed: string, failed_ppm: number | null, loaded_rows: string, loaded_unknown: number, filtered_rows: string, filtered_unknown: number, filtered_ppm: number | null, tables_with_filtered: number, partial_hours: number, not_collected_hours: number, };
+export type LoadHistoryReason = { category: LoadErrorCategory, column: string | null, target_type: string | null,
+/**
+ * Share of the sampled rows of this table, not of all filtered rows.
+ */
+sample_share_permyriad: number, sampled_rows: number,
+/**
+ * First seen within the last three days, after at least three days of
+ * saved logs without it.
+ */
+new_since_seconds: number | null, };
+export type LoadHistoryTable = { database: string, table: string, kinds: Array<LoadKindGroup>, loads: string, failed: string, loaded_rows: string, filtered_rows: string, unknown_counts: number, top_reason: LoadHistoryReason | null, saved_logs: number, };
+export type LoadErrorStorageView = { logs: number, saved: number, raw_bytes: string, limit_bytes: string, used_permyriad: number, earliest_saved_seconds: number | null,
+/**
+ * Gone from the BE, or not read within StarRocks' retention.
+ */
+missed: number, };
+export type LoadHistoryCollection = {
+/**
+ * Everything before this was read or recorded as a gap.
+ */
+watermark_seconds: number | null, last_run_seconds: number | null, last_rows_read: number | null, };
+export type LoadHistoryResponse = { target: string | null, collection: LoadHistoryCollection, days: Array<LoadHistoryDay>, segments: Array<HistoryLoadSegment>,
+/**
+ * Counts per kind over the range, ignoring the kind filter.
+ */
+kinds: Array<LoadHistoryKindTotal>,
+/**
+ * Every kind together, ignoring the kind filter.
+ */
+all_loads: string,
+/**
+ * Routine Load jobs with a snapshot in the range: the job history has
+ * its own entry, even where no task record was collected (3.2).
+ */
+routine_jobs: number, totals: LoadHistoryTotals, count_axis: Array<string>,
+/**
+ * Parts per million.
+ */
+rate_axis: Array<string>, tables: Array<LoadHistoryTable>,
+/**
+ * Every `db.table` with history, for the filter.
+ */
+table_options: Array<string>, error_logs: LoadErrorStorageView, limitations: Array<string>, };
+export type LoadHistoryRoutineRequest = { connection_id: string | null,
+/**
+ * The collection target to show (task 59: a load alert names it); it
+ * wins over the connected session when known.
+ */
+target: string | null, days: number,
+/**
+ * The job whose detail to show; the first job otherwise.
+ */
+job_id: string | null, };
+export type RoutineHistoryState = "running" | "scheduling" | "paused" | "stopped" | "cancelled" | "absent" | "not_collected" | "unknown";
+export type RoutineHistoryCell = { start_seconds: number,
+/**
+ * The worst state seen in the cell.
+ */
+state: RoutineHistoryState, };
+export type RoutineHistoryJob = { job_id: string, name: string, database: string, table: string, current_state: string, cells: Array<RoutineHistoryCell>,
+/**
+ * Changes into PAUSED observed in the range.
+ */
+pauses: number,
+/**
+ * Sums of counter increases between close snapshots; `None` when no
+ * interval of the range is known.
+ */
+loaded_rows: string | null, error_rows: string | null, committed_tasks: string | null, aborted_tasks: string | null,
+/**
+ * Intervals whose increase is unknown (counter reset or snapshots too
+ * far apart): the sums leave them out.
+ */
+unknown_intervals: number, max_lag: string | null, };
+export type RoutineLagPoint = { start_seconds: number, max_lag: string | null, y_permyriad: number | null, paused: boolean, collected: boolean, };
+export type RoutineHistoryEvent = { at_seconds: number, from_state: string | null, to_state: string, reason: string | null, };
+export type RoutineHistoryDay = { start_seconds: number,
+/**
+ * `None` when no increase of the day is known.
+ */
+loaded_rows: string | null, error_rows: string | null, loaded_height_permyriad: number, error_height_permyriad: number, unknown_intervals: number, collected: boolean, };
+export type RoutineHistoryDetail = { job_id: string, name: string, lag: Array<RoutineLagPoint>, lag_axis: Array<string>,
+/**
+ * StarRocks before 3.3 reports no lag.
+ */
+lag_known: boolean, events: Array<RoutineHistoryEvent>, days: Array<RoutineHistoryDay>, rows_axis: Array<string>, };
+export type LoadHistoryRoutineResponse = { target: string | null, cell_seconds: number, range_start_seconds: number, jobs: Array<RoutineHistoryJob>, selected: RoutineHistoryDetail | null, limitations: Array<string>, };
+export type LoadHistoryErrorLogsRequest = { connection_id: string | null,
+/**
+ * The collection target to show (task 59: a load alert names it); it
+ * wins over the connected session when known.
+ */
+target: string | null, days: number, table: string | null, category: LoadErrorCategory | null, offset: number, };
+export type StoredLoadErrorLogState = "pending" | "saved" | "purged" | "no_log" | "failed" | "expired" | "trimmed";
+export type StoredLoadErrorLog = { job_id: string, label: string, database: string, table: string, kind: LoadKindGroup, finish_seconds: number, filtered_rows: string | null, state: StoredLoadErrorLogState, attempts: number, saved_seconds: number | null, sampled: number, truncated: boolean, categories: Array<LoadErrorCategoryCount>, };
+export type LoadErrorReasonSummary = { database: string, table: string, category: LoadErrorCategory, column: string | null, target_type: string | null, sampled_rows: number, loads: number, first_seconds: number, last_seconds: number, new: boolean, };
+export type LoadHistoryErrorLogsResponse = { target: string | null, storage: LoadErrorStorageView, reasons: Array<LoadErrorReasonSummary>, logs: Array<StoredLoadErrorLog>,
+/**
+ * Logs matching the filters; `logs` is one page of them.
+ */
+total: number, table_options: Array<string>, limitations: Array<string>, };
+export type LoadHistoryErrorLogRequest = { connection_id: string | null,
+/**
+ * The collection target to show (task 59: a load alert names it); it
+ * wins over the connected session when known.
+ */
+target: string | null, job_id: string, };
+export type LoadHistoryErrorLogResponse = { log: StoredLoadErrorLog, entries: Array<LoadErrorEntry>, limitations: Array<string>, };
 export type ProductSqlFingerprint = { "state": "exact", fingerprint: string, template: string, } | { "state": "partial", reason: ProductSqlFingerprintPartialReason, } | { "state": "unavailable", reason: ProductSqlFingerprintUnavailableReason, };
 export type ProductSqlFingerprintPartialReason = "statement_truncated";
 export type ProductSqlFingerprintUnavailableReason = "statement_sql_null" | "statement_not_read" | "conflicting_source_rows" | "empty_statement" | "lexical_error" | "unbalanced_parentheses" | "multiple_statements" | "unsupported_statement" | "massive_compound_predicate";
@@ -1390,7 +1610,12 @@ remote_collection_enabled: boolean,
 /**
  * Open (unacknowledged) in-app alerts of the shown target, for the badge.
  */
-open_alerts: string | null, limitations: Array<string>, };
+open_alerts: string | null,
+/**
+ * Task 59: changes when load collection moves or any load alert changes,
+ * so views re-read even when the open count stays the same.
+ */
+load_revision: string | null, limitations: Array<string>, };
 export type TrendSeverity = "high" | "medium" | "low";
 export type TrendConfidence = "high" | "medium" | "low";
 export type WorkloadSignal = "increased" | "stable";

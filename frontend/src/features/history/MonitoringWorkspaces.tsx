@@ -2,10 +2,11 @@
 // back to it. Nothing here reaches StarRocks.
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import type { AlertView, GovernanceItem, HistoryStoreState } from "../../../../contracts/generated/doctor-contracts";
+import type { AlertView, GovernanceItem, HistoryStoreState, LoadAlertsMore } from "../../../../contracts/generated/doctor-contracts";
 import { useLocale, type LocalizedText } from "../../i18n/locale";
 import { doctorApi } from "../../lib/api";
 import { AlertsPanel } from "./AlertsPanel";
+import { type AlertTab, LoadAlertsPanel, type LoadHistoryTarget } from "./LoadAlertsPanel";
 import { GovernancePanel, type GovernanceCommand, type NoteDrafts } from "./GovernancePanel";
 import { failureId, useMonitorRead } from "./monitor-read";
 import { blockedStore, HistoryOffState, MonitorReadError, RefreshBar, TargetPicker } from "./MonitorStates";
@@ -24,17 +25,43 @@ type MonitorContext = {
   onOpenQueries?(): void;
 };
 
-export function AlertsWorkspace({ target, targets = [], onTarget, store, generation = "", onRetryStatus, onOpenQueries, onChanged, onOpenTrends, onOpenItem }: MonitorContext & {
+export type AlertCategory = "sql" | "load";
+
+/** The load alert tab and "show more" of the cluster they were chosen on. */
+export type LoadView = { target: string | null; tab: AlertTab | null; more: LoadAlertsMore | null };
+
+/** Another cluster starts from its defaults, whichever picker switched it;
+ *  the old view is dropped, so switching back does not bring it back. */
+export function loadViewAt(view: LoadView, target: string | null): LoadView {
+  return view.target === target ? view : { target, tab: null, more: null };
+}
+
+export function AlertsWorkspace({ target, targets = [], onTarget, store, generation = "", onRetryStatus, onOpenQueries, onChanged, onOpenTrends, onOpenItem, initialCategory = "sql", onOpenLoadHistory }: MonitorContext & {
   /** Collector progress; a change re-reads the list. */
   generation?: string;
   /** Refreshes the header badge after a change. */
   onChanged(): void;
   onOpenTrends(templateKey: string, target: string): void;
   onOpenItem(itemId: string): void;
+  /** Task 59: which kind of alerts opens first. */
+  initialCategory?: AlertCategory;
+  onOpenLoadHistory?(target: LoadHistoryTarget): void;
 }): JSX.Element {
   const { text } = useLocale();
   const blocked = blockedStore(store, null);
   const alerts = useMonitorRead(blocked ? null : (signal) => doctorApi.readHistoryAlerts(target, signal), target ?? "", generation, "history_alerts_failed");
+  // "Show more" of one state; every state lists its newest alerts otherwise.
+  // The load tab and "show more" belong to one cluster: switching it from any
+  // picker (SQL or loads) drops them.
+  const [loadState, setLoadState] = useState<LoadView>({ target, tab: null, more: null });
+  const loadView = loadViewAt(loadState, target);
+  if (loadView !== loadState) setLoadState(loadView);
+  const { tab: loadTab, more: loadMore } = loadView;
+  const setLoadMore = (more: LoadAlertsMore) => setLoadState({ target, tab: loadTab, more });
+  const setLoadTab = (tab: AlertTab) => setLoadState({ target, tab, more: loadMore });
+  const loadAlerts = useMonitorRead(blocked ? null : (signal) => doctorApi.readLoadAlerts(target, signal, loadMore), `load:${target ?? ""}:${loadMore ? `${loadMore.state}:${loadMore.limit}` : ""}`, generation, "load_alerts_failed");
+  const [category, setCategory] = useState<AlertCategory>(initialCategory);
+  const [selectedLoad, setSelectedLoad] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Kept apart from read errors: a reload after a failed action must not hide why it failed.
@@ -43,17 +70,58 @@ export function AlertsWorkspace({ target, targets = [], onTarget, store, generat
     setBusy(true);
     setActionError(null);
     work().then((value) => after?.(value)).catch((cause: unknown) => setActionError(failureId(cause, "request_failed")))
-      .finally(() => { setBusy(false); alerts.refresh(); onChanged(); });
+      .finally(() => { setBusy(false); alerts.refresh(); loadAlerts.refresh(); onChanged(); });
   };
   const [view, setView] = useState<AlertsView>("alerts");
   const off = blocked ?? blockedStore(undefined, alerts.data ? null : alerts.error);
   if (off) return <HistoryOffState onOpenQueries={onOpenQueries} onRetry={() => { onRetryStatus(); alerts.refresh(); }} detail={store} store={off} text={text} />;
-  const views = <AlertsViews onView={setView} open={alerts.data?.counts.open ?? null} text={text} view={view} />;
+  const sqlOpen = alerts.data ? Number(alerts.data.counts.open) : null;
+  const loadOpen = loadAlerts.data ? Number(loadAlerts.data.counts.open) : null;
+  const views = <AlertsViews onView={setView} open={sqlOpen === null && loadOpen === null ? null : String((sqlOpen ?? 0) + (loadOpen ?? 0))} text={text} view={view} />;
+  const categories = <div className="alert-category-row">
+    <div aria-label={text("Alert category", "告警类别")} className="alert-category" role="radiogroup" onKeyDown={(event) => {
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+      event.preventDefault();
+      const next: AlertCategory = category === "sql" ? "load" : "sql";
+      setCategory(next);
+      event.currentTarget.querySelector<HTMLButtonElement>(`button[data-category="${next}"]`)?.focus();
+    }}>
+      {(["sql", "load"] as AlertCategory[]).map((item) => <button aria-checked={category === item} data-category={item} key={item} onClick={() => setCategory(item)} role="radio" tabIndex={category === item ? 0 : -1} type="button">
+        {item === "sql" ? text("SQL performance regressions", "SQL 性能回归") : text("Loads", "导入")}
+        <span className="tab-count">{item === "sql" ? (alerts.data?.counts.open ?? "—") : (loadAlerts.data?.counts.open ?? "—")}</span>
+      </button>)}
+    </div>
+    <span className="history-muted load-alert-key alert-category-note">{text("Numbers are new alerts (not yet acknowledged)", "数字为新告警条数（未确认）")}</span>
+  </div>;
+  if (view === "alerts" && category === "load") {
+    return <>
+      {views}
+      {categories}
+      {actionError && <p className="capability-error" role="alert">{governanceActionText(actionError, text)}</p>}
+      {loadAlerts.data ? <LoadAlertsPanel
+        alerts={loadAlerts.data}
+        busy={busy}
+        onAction={(id, action) => run(() => doctorApi.loadAlertAction({ alert_id: id, action }))}
+        onOpenHistory={(focus) => onOpenLoadHistory?.(focus)}
+        onMore={setLoadMore}
+        onTab={setLoadTab}
+        tab={loadTab}
+        onSelect={setSelectedLoad}
+        selectedId={selectedLoad}
+        text={text}
+        toolbar={<>
+          <TargetPicker onTarget={onTarget} target={loadAlerts.data.target} targets={targets} text={text} />
+          <RefreshBar error={loadAlerts.error} loading={loadAlerts.loading} onRefresh={loadAlerts.refresh} text={text} updatedSeconds={loadAlerts.updatedSeconds} />
+        </>}
+      /> : loadAlerts.error ? <MonitorReadError error={loadAlerts.error} onRetry={loadAlerts.refresh} text={text} title={text("Load alerts could not be read.", "导入告警暂时无法读取。")} /> : <p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}
+    </>;
+  }
   if (view === "channels") return <>{views}<NotifyWorkspace text={text} /></>;
   if (view === "deliveries") return <>{views}<DeliveriesWorkspace text={text} /></>;
   if (!alerts.data) return <>{views}{alerts.error ? <MonitorReadError error={alerts.error} onRetry={alerts.refresh} text={text} title={text("Alerts could not be read.", "告警暂时无法读取。")} /> : <p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}</>;
   return <>
     {views}
+    {categories}
     {actionError && <p className="capability-error" role="alert">{governanceActionText(actionError, text)}</p>}
     <AlertsPanel
       alerts={alerts.data}

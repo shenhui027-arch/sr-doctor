@@ -1,7 +1,9 @@
 //! What a notification says. A batch holds the facts of the alerts raised (or
 //! resolved) by one evaluation of one cluster; each channel renders it in its
 //! own format. Only alert facts appear: fingerprints, severities and median
-//! changes, plus the literal-free template when the user opts in.
+//! changes, plus the literal-free template when the user opts in; for load
+//! alerts (task 59) the rule, the job or table and the counted values. No
+//! error log text and no Routine Load state-change reason ever appear.
 use doctor_contracts::{NotifyEvent, NotifyLanguage};
 use serde::{Deserialize, Serialize};
 
@@ -26,12 +28,43 @@ pub struct AlertFact {
     pub rule_version: String,
 }
 
+/// One load alert (task 59): counted facts only.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LoadAlertFact {
+    pub alert_id: i64,
+    /// `high`, `medium` or `low`.
+    pub severity: String,
+    /// `routine_paused`, `routine_stopped`, `lag_growing`, `failure_rate`
+    /// or `filter_rate`.
+    pub rule: String,
+    /// The job (`name · db.table`) or the table and load kind.
+    pub subject: String,
+    /// `STOPPED` or `CANCELLED` for `routine_stopped`.
+    pub state: Option<String>,
+    /// Rates in parts per million (`failure_rate`, `filter_rate`).
+    pub baseline_ppm: Option<u32>,
+    pub current_ppm: Option<u32>,
+    /// Loads (`failure_rate`) or input rows (`filter_rate`) in the window.
+    /// Decimal text, never narrowed: counts can exceed 64 bits.
+    pub window_count: Option<String>,
+    /// Largest partition lag at the window's first and last hour.
+    pub first_lag: Option<String>,
+    pub latest_lag: Option<String>,
+    pub window_start: i64,
+    pub window_end: i64,
+    pub engine_version: String,
+    pub rule_version: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AlertBatch {
     /// The collection target, "host:port".
     pub cluster: String,
     pub event: NotifyEvent,
     pub alerts: Vec<AlertFact>,
+    /// Task 59; absent in payloads queued before it.
+    #[serde(default)]
+    pub load_alerts: Vec<LoadAlertFact>,
 }
 
 impl AlertBatch {
@@ -40,13 +73,25 @@ impl AlertBatch {
             cluster: String::new(),
             event: NotifyEvent::Test,
             alerts: Vec::new(),
+            load_alerts: Vec::new(),
         }
+    }
+
+    /// SQL and load alerts together.
+    pub fn count(&self) -> usize {
+        self.alerts.len() + self.load_alerts.len()
     }
 
     pub fn highest_severity(&self) -> &str {
         ["high", "medium", "low"]
             .into_iter()
-            .find(|level| self.alerts.iter().any(|alert| alert.severity == *level))
+            .find(|level| {
+                self.alerts.iter().any(|alert| alert.severity == *level)
+                    || self
+                        .load_alerts
+                        .iter()
+                        .any(|alert| alert.severity == *level)
+            })
             .unwrap_or("low")
     }
 }
@@ -129,6 +174,48 @@ fn short_key(key: &str) -> String {
     }
 }
 
+/// A rate in parts per million as a percent with enough digits.
+fn ppm_text(ppm: u32) -> String {
+    let percent = f64::from(ppm) / 10_000.0;
+    if ppm == 0 {
+        "0%".to_owned()
+    } else if percent >= 1.0 {
+        format!("{percent:.1}%")
+    } else if percent >= 0.01 {
+        format!("{percent:.2}%")
+    } else {
+        format!("{percent:.3}%")
+    }
+}
+
+/// Thousands-grouped decimal text; anything else is shown as unknown.
+fn grouped(value: &str) -> String {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return "—".to_owned();
+    }
+    let digits = value;
+    let mut out = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
+/// `MM-DD HH:00–HH:00 UTC` for a window of whole hours.
+fn window_text(start: i64, end: i64) -> String {
+    let at = |seconds: i64| {
+        time::OffsetDateTime::from_unix_timestamp(seconds)
+            .map(|at| (at.month() as u8, at.day(), at.hour()))
+            .unwrap_or((1, 1, 0))
+    };
+    let (month, day, hour) = at(start);
+    let (_, _, end_hour) = at(end);
+    format!("{month:02}-{day:02} {hour:02}:00–{end_hour:02}:00 UTC")
+}
+
 fn hour_text(start: i64) -> String {
     let format = |seconds: i64| {
         time::OffsetDateTime::from_unix_timestamp(seconds)
@@ -151,7 +238,7 @@ pub struct AlertLine {
 
 impl Context<'_> {
     pub fn title(&self, batch: &AlertBatch) -> String {
-        let count = batch.alerts.len();
+        let count = batch.count();
         match batch.event {
             NotifyEvent::Test => self
                 .t("SR Doctor test message", "SR Doctor 测试消息")
@@ -182,11 +269,127 @@ impl Context<'_> {
         }
     }
 
+    fn load_line(&self, alert: &LoadAlertFact) -> AlertLine {
+        let prefix = self.t("Load", "导入");
+        let change = match alert.rule.as_str() {
+            "routine_paused" => format!(
+                "{prefix} · {}",
+                self.t("Routine Load paused", "Routine Load 暂停")
+            ),
+            "routine_stopped" => format!(
+                "{prefix} · {} ({})",
+                self.t("Routine Load stopped", "Routine Load 已结束"),
+                alert.state.as_deref().unwrap_or("—")
+            ),
+            "lag_growing" => format!(
+                "{prefix} · {} {} → {} {}",
+                self.t("Lag keeps growing", "积压持续增长"),
+                alert
+                    .first_lag
+                    .as_deref()
+                    .map_or_else(|| "—".to_owned(), grouped),
+                alert
+                    .latest_lag
+                    .as_deref()
+                    .map_or_else(|| "—".to_owned(), grouped),
+                self.t("messages", "条")
+            ),
+            rule => format!(
+                "{prefix} · {} {} → {}",
+                if rule == "filter_rate" {
+                    self.t("Filter rate jump", "过滤率突增")
+                } else {
+                    self.t("Failure rate jump", "失败率突增")
+                },
+                alert.baseline_ppm.map_or_else(|| "—".to_owned(), ppm_text),
+                alert.current_ppm.map_or_else(|| "—".to_owned(), ppm_text)
+            ),
+        };
+        let window = match alert.rule.as_str() {
+            "routine_paused" | "routine_stopped" => match self.language {
+                NotifyLanguage::Zh => format!("{} 的快照", hour_text(alert.window_start)),
+                NotifyLanguage::En => format!("snapshot in {}", hour_text(alert.window_start)),
+            },
+            "failure_rate" => match self.language {
+                NotifyLanguage::Zh => format!(
+                    "最近 3 小时 {} 次导入 · {}",
+                    alert
+                        .window_count
+                        .as_deref()
+                        .map_or_else(|| "—".to_owned(), grouped),
+                    window_text(alert.window_start, alert.window_end)
+                ),
+                NotifyLanguage::En => format!(
+                    "{} loads in the last 3 hours · {}",
+                    alert
+                        .window_count
+                        .as_deref()
+                        .map_or_else(|| "—".to_owned(), grouped),
+                    window_text(alert.window_start, alert.window_end)
+                ),
+            },
+            "filter_rate" => match self.language {
+                NotifyLanguage::Zh => format!(
+                    "最近 3 小时输入 {} 行 · {}",
+                    alert
+                        .window_count
+                        .as_deref()
+                        .map_or_else(|| "—".to_owned(), grouped),
+                    window_text(alert.window_start, alert.window_end)
+                ),
+                NotifyLanguage::En => format!(
+                    "{} input rows in the last 3 hours · {}",
+                    alert
+                        .window_count
+                        .as_deref()
+                        .map_or_else(|| "—".to_owned(), grouped),
+                    window_text(alert.window_start, alert.window_end)
+                ),
+            },
+            _ => window_text(alert.window_start, alert.window_end),
+        };
+        AlertLine {
+            severity: self.level(&alert.severity),
+            change,
+            fingerprint: alert.subject.clone(),
+            detail: if alert.engine_version == "unknown" {
+                format!("{window} · {}", alert.rule_version)
+            } else {
+                format!(
+                    "{window} · StarRocks {} · {}",
+                    alert.engine_version, alert.rule_version
+                )
+            },
+            template: None,
+        }
+    }
+
     pub fn lines(&self, batch: &AlertBatch) -> Vec<AlertLine> {
-        let mut alerts: Vec<&AlertFact> = batch.alerts.iter().collect();
-        alerts.sort_by_key(|alert| std::cmp::Reverse(severity_rank(&alert.severity)));
-        alerts
-            .into_iter()
+        let mut ranked: Vec<(u8, AlertLine)> = batch
+            .load_alerts
+            .iter()
+            .map(|alert| (severity_rank(&alert.severity), self.load_line(alert)))
+            .collect();
+        ranked.extend(
+            self.sql_lines(batch)
+                .into_iter()
+                .zip(
+                    batch
+                        .alerts
+                        .iter()
+                        .map(|alert| severity_rank(&alert.severity)),
+                )
+                .map(|(line, rank)| (rank, line)),
+        );
+        // Stable: within a severity, load alerts first, then SQL alerts.
+        ranked.sort_by_key(|(rank, _)| std::cmp::Reverse(*rank));
+        ranked.into_iter().map(|(_, line)| line).collect()
+    }
+
+    fn sql_lines(&self, batch: &AlertBatch) -> Vec<AlertLine> {
+        batch
+            .alerts
+            .iter()
             .map(|alert| {
                 let medians = match (alert.baseline_median_ms, alert.current_median_ms) {
                     (Some(before), Some(after)) => {
@@ -243,8 +446,8 @@ impl Context<'_> {
             ));
         }
         footer.push_str(self.t(
-            "Sent automatically by SR Doctor; no SQL text is included.",
-            "此消息由 SR Doctor 自动发送，不含 SQL 原文。",
+            "Sent automatically by SR Doctor; no SQL text or error log text is included.",
+            "此消息由 SR Doctor 自动发送，不含 SQL 原文与错误日志原文。",
         ));
         footer
     }
@@ -374,7 +577,7 @@ pub fn sms_params(context: &Context<'_>, batch: &AlertBatch) -> [String; 3] {
         ),
         _ => (
             batch.cluster.clone(),
-            batch.alerts.len().to_string(),
+            batch.count().to_string(),
             context.level(batch.highest_severity()).to_owned(),
         ),
     };
@@ -427,6 +630,7 @@ pub(crate) fn sample_batch() -> AlertBatch {
                 rule_version: "doctor_v0_1".into(),
             },
         ],
+        load_alerts: Vec::new(),
     }
 }
 
@@ -506,6 +710,56 @@ mod tests {
         assert_eq!(cluster.chars().count(), 20);
         assert!(cluster.ends_with('…'));
         assert_eq!(sms_params(&zh(), &AlertBatch::test())[1], "0");
+    }
+
+    fn load_alert(rule: &str, severity: &str) -> LoadAlertFact {
+        LoadAlertFact {
+            alert_id: 9,
+            severity: severity.into(),
+            rule: rule.into(),
+            subject: "ods.orders · Stream Load".into(),
+            state: None,
+            baseline_ppm: Some(4_100),
+            current_ppm: Some(118_000),
+            window_count: Some("186".into()),
+            first_lag: None,
+            latest_lag: None,
+            window_start: 1_793_437_200,
+            window_end: 1_793_448_000,
+            engine_version: "3.5.14".into(),
+            rule_version: "r".into(),
+        }
+    }
+
+    #[test]
+    fn audit_la_03_load_alerts_render_facts_and_count_with_sql_alerts() {
+        let mut batch = sample_batch();
+        batch.load_alerts = vec![load_alert("failure_rate", "high"), {
+            let mut lag = load_alert("lag_growing", "medium");
+            lag.subject = "clicks_rl · ods.clicks_rt".into();
+            lag.first_lag = Some("18200".into());
+            lag.latest_lag = Some("62410".into());
+            lag
+        }];
+        let context = zh();
+        assert!(context.title(&batch).contains("4 条新告警"));
+        let lines = context.lines(&batch);
+        assert_eq!(lines.len(), 4);
+        // Highest severity first; within it the load alert comes first.
+        assert_eq!(lines[0].change, "导入 · 失败率突增 0.41% → 11.8%");
+        assert!(lines[0].detail.starts_with("最近 3 小时 186 次导入 · "));
+        assert_eq!(lines[0].fingerprint, "ods.orders · Stream Load");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.change == "导入 · 积压持续增长 18,200 → 62,410 条")
+        );
+        assert_eq!(sms_params(&context, &batch)[1], "4");
+        assert!(context.footer().contains("错误日志原文"));
+        // Payloads queued before task 59 still parse.
+        let old = serde_json::json!({ "cluster": "c", "event": "new_alerts", "alerts": [] });
+        let parsed: AlertBatch = serde_json::from_value(old).unwrap();
+        assert!(parsed.load_alerts.is_empty());
     }
 
     #[test]

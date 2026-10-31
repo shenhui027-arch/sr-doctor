@@ -61,7 +61,7 @@ export function LoadOverviewPanel({ overview, kind, ...actions }: OverviewAction
         {overview.at_retention_limit ? text("the limit is reached, older ones are gone.", "当前已到上限，更早的已不可查。") : text("older ones are gone.", "更早的已不可查。")}
         {overview.hidden_system !== "0" && text(` ${overview.hidden_system} system loads hidden.`, `另有 ${overview.hidden_system} 次系统任务已隐藏。`)}
       </span>
-      <span className="planned">Planned · {text("trends beyond 3 days and load alerts (L1/L2)", "超过 3 天的趋势与导入告警（L1/L2）")}</span>
+      <span className="planned">{text("30-day trends: History tab · load alerts: Alerts › Loads", "30 天趋势见“历史”标签 · 导入告警见“告警 › 导入”")}</span>
     </p>
   </div>;
 }

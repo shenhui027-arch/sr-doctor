@@ -117,7 +117,7 @@ Docker 的默认地址池用完了。根目录的 `compose.yaml` 已经使用默
 <details>
 <summary><b>历史数据会保存多久？包含 SQL 原文吗？</b></summary>
 
-默认保留 30 天，过期自动删除。历史库只存脱敏模板、指纹、小时聚合与告警治理记录，不存 SQL 字面量、Profile 原文或口令。用 `./deploy.sh backup` 备份。
+默认保留 30 天，过期自动删除。历史库存脱敏模板、指纹、小时聚合与告警治理记录，不存 SQL 字面量、Profile 原文或 StarRocks 口令。唯一的例外是导入的错误日志：有过滤行的导入会保存一份 StarRocks 记录的原因与原始行（明文，最多 50 MB），备份里也带着它们。用 `./deploy.sh backup` 备份。
 
 </details>
 

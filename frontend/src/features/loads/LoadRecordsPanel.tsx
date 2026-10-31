@@ -26,7 +26,7 @@ export function LoadRecordsPanel({ records, filters, onFilters, onOpenLog, text 
     <p className="history-banner" role="status">
       {text("StarRocks keeps only the last 3 days and at most about 1000 records per manager in FE memory; once Stream Load records pass 1000 it drops every finished one at once, so the count can fall to a handful.", "StarRocks 只在 FE 内存中保留最近 3 天、每类最多约 1000 条导入记录；Stream Load 记录超过 1000 条时会一次清掉所有已结束的任务，可见条数可能骤降到个位数。")}
       {records.earliest_create_time && <> {text("The oldest one still visible: ", "当前能看到的最早一条是 ")}<strong>{feTime(records.earliest_create_time)}</strong>{zone}{records.at_retention_limit ? text(" (at the limit; older ones are gone).", "（已到上限，更早的已不可查）。") : "。"}</>}
-      {" "}<span className="history-muted">{text("Planned (L1): hourly aggregates and error logs kept for 30 days.", "Planned（L1）：采集入历史库后保留 30 天的小时聚合与错误日志。")}</span>
+      {" "}<span className="history-muted">{text("The History tab keeps 30 days of hourly totals and saved error logs.", "“历史”标签保留 30 天的小时汇总与保存的错误日志。")}</span>
     </p>
     <div className="notify-kpis">
       <div className="history-card"><span className="history-muted">{text("All held loads (ignore the filters below)", "全部保留记录（不随下方筛选）")}</span><strong>{count(summary.loads)}</strong>{records.hidden_system !== "0" && <span className="history-muted">{text(`${records.hidden_system} system loads hidden`, `另有 ${records.hidden_system} 次系统任务已隐藏`)}</span>}</div>
@@ -98,8 +98,8 @@ export function LoadRecordsPanel({ records, filters, onFilters, onOpenLog, text 
             </tr>)}
           </tbody>
         </table>}
-        <p className="history-muted">{text("Click a table to filter by it. Trends across days wait for L1 collection.", "点表名把它填进筛选。跨天的趋势要等 L1 采集。")}</p>
-        <span className="planned">Planned · {text("failure and filter-rate trends, alerts (L1/L2)", "失败率与过滤率趋势、告警（L1/L2）")}</span>
+        <p className="history-muted">{text("Click a table to filter by it. Failure and filter-rate trends across days are on the History tab.", "点表名把它填进筛选。跨天的失败率与过滤率趋势见“历史”标签。")}</p>
+        <span className="planned">{text("Load alerts: Alerts › Loads", "导入告警见“告警 › 导入”")}</span>
       </section>
     </div>
   </div>;

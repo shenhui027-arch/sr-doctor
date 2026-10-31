@@ -12,7 +12,7 @@ mod smtp;
 mod transport;
 pub mod validate;
 
-pub use message::{AlertBatch, AlertFact, Context};
+pub use message::{AlertBatch, AlertFact, Context, LoadAlertFact};
 pub use secret::{KeyError, SecretKey};
 
 #[derive(Clone, Debug, Eq, PartialEq)]

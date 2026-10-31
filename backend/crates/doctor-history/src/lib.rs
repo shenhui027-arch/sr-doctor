@@ -12,16 +12,26 @@ use doctor_core::{
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 mod governance;
+mod load_alerts;
+mod loads;
 mod notify;
 pub use governance::{
     AlertFacts, AlertUpsert, ItemUpdate, StoreChange, StoredAlert, StoredEvent, StoredItem,
 };
+pub use load_alerts::{LoadAlertFacts, StoredLoadAlert};
+pub use loads::{
+    ERROR_LOG_MAX_ATTEMPTS, ERROR_LOG_MAX_BYTES_PER_LOAD, ERROR_LOG_MAX_ENTRIES,
+    ERROR_LOG_MAX_TOTAL_BYTES, ErrorLogCandidate, ErrorLogOutcome, ErrorLogState, ErrorLogStorage,
+    LoadTargetState, RoutineSnapshotJob, StoredErrorLog, StoredLoadBucket, StoredRoutineEvent,
+    StoredRoutineHour,
+};
+pub use loads::{RoutineSnapshotHour, RoutineSnapshotLast};
 pub use notify::{
     DeliveryAttempt, DeliveryFilter, NewDelivery, SecretUpdate, StoredChannel, StoredDelivery,
     StoredTarget, TargetWrite,
 };
 
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 7;
 // Privacy policy has its own revision, independent of fingerprint identity.
 const TEMPLATE_REDACTION_VERSION: &str = "literal-free-template.v2";
 
@@ -380,6 +390,12 @@ impl HistoryStore {
         }
         if version < 5 {
             tx.execute_batch(notify::MIGRATION_5)?;
+        }
+        if version < 6 {
+            tx.execute_batch(loads::MIGRATION_6)?;
+        }
+        if version < 7 {
+            tx.execute_batch(load_alerts::MIGRATION_7)?;
         }
         if version < SCHEMA_VERSION {
             tx.execute(
@@ -818,6 +834,9 @@ impl HistoryStore {
             "DELETE FROM notify_deliveries WHERE created_at < ?1 AND state <> 'pending'",
             params![cutoff],
         )? as u64;
+        removed += Self::purge_loads_before(&tx, cutoff)?;
+        removed += tx.execute(load_alerts::PURGE_LOAD_ALERTS, params![cutoff])? as u64;
+        removed += tx.execute(load_alerts::PURGE_SNAPSHOT_LAST, params![cutoff])? as u64;
         removed += tx.execute(
             "DELETE FROM templates WHERE last_seen < ?1 AND NOT EXISTS (SELECT 1 FROM buckets b WHERE b.template_key = templates.template_key)",
             params![cutoff],
@@ -826,11 +845,14 @@ impl HistoryStore {
         Ok(removed)
     }
 
-    /// Everything goes, watermarks, alerts, governance records and the
-    /// delivery log included; notification channels and targets stay.
+    /// Everything goes, watermarks, alerts, governance records, the
+    /// delivery log, load history and saved error log text included; notification channels and targets stay.
     /// The next run starts fresh.
     pub fn clear(&self) -> Result<()> {
-        self.lock().execute_batch(
+        let connection = self.lock();
+        connection.execute_batch(loads::CLEAR_LOADS)?;
+        connection.execute_batch(load_alerts::CLEAR_LOAD_ALERTS)?;
+        connection.execute_batch(
             "DELETE FROM notify_deliveries; DELETE FROM governance_events; DELETE FROM governance_items; DELETE FROM alerts; DELETE FROM exemplars; DELETE FROM buckets; DELETE FROM runs; DELETE FROM templates; DELETE FROM targets;",
         )?;
         Ok(())

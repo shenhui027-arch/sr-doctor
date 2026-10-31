@@ -55,7 +55,7 @@ export function useHistoryStatus(connectionId: string | null): HistoryStatusStat
  * the trends and alert views re-read exactly when there is something new.
  */
 export function monitorGeneration(status: HistoryStatusResponse | null): string {
-  return status ? `${status.watermark_seconds ?? "-"}|${status.open_alerts}` : "";
+  return status ? `${status.watermark_seconds ?? "-"}|${status.open_alerts}|${status.load_revision ?? "-"}` : "";
 }
 
 export function CollectionCapsule({ status, onOpen }: { status: HistoryStatusResponse | null; onOpen(): void }): JSX.Element | null {

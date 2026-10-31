@@ -178,5 +178,8 @@ pub struct HistoryStatusResponse {
     pub remote_collection_enabled: bool,
     /// Open (unacknowledged) in-app alerts of the shown target, for the badge.
     pub open_alerts: Option<String>,
+    /// Task 59: changes when load collection moves or any load alert changes,
+    /// so views re-read even when the open count stays the same.
+    pub load_revision: Option<String>,
     pub limitations: Vec<String>,
 }

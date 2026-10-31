@@ -24,6 +24,10 @@ pub use history_trend::{
 };
 mod load_error_log;
 pub use load_error_log::{LOAD_ERROR_LOG_MAX_BYTES, ParsedLoadErrorLog, parse_load_error_log};
+mod load_history;
+pub use load_history::{
+    CollectedLoad, LOAD_PHASES, LoadBucketDelta, LoadCount, LoadHistoryKind, aggregate_loads,
+};
 mod log_histogram;
 mod metrics;
 mod report;

@@ -9,7 +9,9 @@ mod audit;
 mod governance;
 mod history;
 mod history_load;
+mod history_loads;
 mod history_trend;
+mod load_alerts;
 mod loads;
 mod notify;
 pub use history::{HistoryConfig, SlicePlan, plan_slices};
@@ -1034,6 +1036,22 @@ pub fn router(state: ApiState) -> Router {
             options(preflight).post(history_load::load),
         )
         .route(
+            "/api/v1/history/loads",
+            options(preflight).post(history_loads::history),
+        )
+        .route(
+            "/api/v1/history/loads/routine",
+            options(preflight).post(history_loads::routine),
+        )
+        .route(
+            "/api/v1/history/loads/error-logs",
+            options(preflight).post(history_loads::error_logs),
+        )
+        .route(
+            "/api/v1/history/loads/error-log",
+            options(preflight).post(history_loads::error_log),
+        )
+        .route(
             "/api/v1/history/series",
             options(preflight).post(history_trend::series),
         )
@@ -1044,6 +1062,14 @@ pub fn router(state: ApiState) -> Router {
         .route(
             "/api/v1/history/alerts/action",
             options(preflight).post(governance::alert_action),
+        )
+        .route(
+            "/api/v1/history/load-alerts",
+            options(preflight).post(load_alerts::alerts),
+        )
+        .route(
+            "/api/v1/history/load-alerts/action",
+            options(preflight).post(load_alerts::action),
         )
         .route(
             "/api/v1/history/alerts/resolve-rule-changed",
@@ -1175,6 +1201,7 @@ pub fn router(state: ApiState) -> Router {
 pub async fn serve(state: ApiState) -> std::io::Result<()> {
     let listener = tokio::net::TcpListener::bind(state.bind_addr()).await?;
     tokio::spawn(notify::run_worker(state.clone()));
+    tokio::spawn(history::retention_worker(state.clone()));
     let server = axum::serve(
         listener,
         router(state.clone()).into_make_service_with_connect_info::<SocketAddr>(),
@@ -4711,6 +4738,9 @@ mod tests {
                         row(["12", "l_bad2", "", "lr", "t", "etl", "CANCELLED", "STREAM_LOAD", "2", "0", "2", r#"{"begin_txn_time_ms": 1, "client_ip": "10.0.0.9", "plan_time_ms": 2, "receive_data_time_ms": 0}"#, "2026-10-30 08:10:32", "2026-10-30 08:10:32", "too many filtered rows", "select tracking_log from information_schema.load_tracking_logs where job_id=12"]),
                         row(["11", "insert_x", "", "_statistics_", "column_statistics", "root", "FINISHED", "INSERT", "0", "0", "3", "{}", "2026-10-30 08:07:46", "2026-10-30 08:07:46", "", ""]),
                     ]))
+                }
+                RemoteOperation::LoadHistorySlice { .. } | RemoteOperation::LoadRetention => {
+                    Ok(RemoteResponse::NullableRows(Vec::new()))
                 }
                 RemoteOperation::LoadTrackingLog { job_id } => Ok(RemoteResponse::NullableRows(vec![vec![(job_id == 12).then(|| {
                     "Error: The field (name = name, pos = 1) is out of range. Type: VARCHAR(5), Value length: 11, Value: toolongname. Row: 3	toolongname	3

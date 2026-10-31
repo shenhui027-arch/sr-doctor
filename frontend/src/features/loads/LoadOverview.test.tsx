@@ -95,7 +95,7 @@ describe("load overview, all types (design board I5)", () => {
     expect(html).toContain("秒级：执行 + 发布");
     expect(html).toContain("2,980 行");
     expect(html).toContain("另有 6 次系统任务已隐藏");
-    expect(html).toContain("Planned");
+    expect(html).toContain("导入告警见“告警 › 导入”");
     expect(html).toContain("未知：早于 StarRocks 保留的最早一条记录");
     expect(html).toContain("aria-label=\"上一小时\"");
     expect(html).not.toContain("阶段耗时分布");

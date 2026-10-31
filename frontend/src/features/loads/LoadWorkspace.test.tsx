@@ -48,7 +48,7 @@ describe("Routine Load (design board I1)", () => {
     expect(html).toContain("11 分钟前");
     expect(html).toContain("max_error_number=1000");
     expect(html).toContain("SR Doctor 只读，不提供暂停、恢复或修改作业");
-    expect(html).toContain("Planned");
+    expect(html).toContain("告警见“告警 › 导入”");
   });
 
   it("explains older versions instead of showing empty data", () => {

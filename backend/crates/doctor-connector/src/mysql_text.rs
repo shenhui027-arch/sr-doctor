@@ -519,6 +519,12 @@ impl Remote for MysqlTextRemote {
             RemoteOperation::LoadRecords => self
                 .audit_query(&crate::load_records_statement())
                 .map(RemoteResponse::NullableRows),
+            RemoteOperation::LoadHistorySlice { start, end } => self
+                .audit_query(&crate::load_history_slice_statement(start, end))
+                .map(RemoteResponse::NullableRows),
+            RemoteOperation::LoadRetention => self
+                .audit_query(&crate::load_retention_statement())
+                .map(RemoteResponse::NullableRows),
             RemoteOperation::LoadTrackingLog { job_id } => self
                 .audit_query(&crate::load_tracking_log_statement(job_id))
                 .map(RemoteResponse::NullableRows),

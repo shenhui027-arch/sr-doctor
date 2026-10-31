@@ -160,8 +160,8 @@ export function HistoryWorkspace({ connectionId, history, tab, onTab, target = n
         clearConfirm={confirmClear && <div aria-labelledby="history-clear-title" className="history-banner" role="alertdialog">
         <strong id="history-clear-title">{text("Delete all local history?", "删除全部本机历史？")}</strong>{" "}
         {text(
-          "This deletes all collected history (templates, hourly buckets, watermarks, reads) and every alert, governance item with its record, and pinned baseline snapshot. It cannot be undone. StarRocks is not touched.",
-          "将删除全部采集历史（模板、小时桶、采集水位、读取记录），以及全部告警、治理项及其处理记录和钉住的基线快照，且无法恢复；不会改动 StarRocks。",
+          "This deletes all collected history (templates, hourly buckets, load history and saved error logs, watermarks, reads) and every alert, governance item with its record, and pinned baseline snapshot. It cannot be undone. StarRocks is not touched.",
+          "将删除全部采集历史（模板、小时桶、导入历史与保存的错误日志、采集水位、读取记录），以及全部告警、治理项及其处理记录和钉住的基线快照，且无法恢复；不会改动 StarRocks。",
         )}{" "}
         <button className="button danger" disabled={busy} onClick={() => { setConfirmClear(false); run(() => doctorApi.clearHistory()); }} type="button">{text("Delete everything", "全部删除")}</button>{" "}
         <button className="button secondary" onClick={() => setConfirmClear(false)} type="button">{text("Cancel", "取消")}</button>

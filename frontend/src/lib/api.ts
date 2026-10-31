@@ -20,6 +20,15 @@ import type {
   HistoryAlertsResponse,
   RoutineLoadJobsResponse,
   LoadErrorLogRequest,
+  LoadAlertsMore, LoadAlertsResponse,
+  LoadHistoryErrorLogRequest,
+  LoadHistoryErrorLogResponse,
+  LoadHistoryErrorLogsRequest,
+  LoadHistoryErrorLogsResponse,
+  LoadHistoryRequest,
+  LoadHistoryResponse,
+  LoadHistoryRoutineRequest,
+  LoadHistoryRoutineResponse,
   LoadErrorLogResponse,
   LoadOverviewRequest,
   LoadOverviewResponse,
@@ -350,6 +359,19 @@ export class DoctorApi {
     return this.postJson<HistoryLoadResponse>("/history/load", request, signal);
   }
 
+  /** Task 59: load alerts from the local store; reads no StarRocks data. */
+  async readLoadAlerts(target: string | null, signal?: AbortSignal, more: LoadAlertsMore | null = null): Promise<LoadAlertsResponse> {
+    const value = await this.postJson<unknown>("/history/load-alerts", { target, more }, signal);
+    if (!isRecord(value) || !Array.isArray(value.alerts) || !isRecord(value.counts) || !isRecord(value.thresholds)) {
+      throw { code: "invalid_load_alerts", stage: "history", message_id: "invalid_load_alerts", recoverability: "retry_same", details: {} } satisfies ApiFailure;
+    }
+    return value as LoadAlertsResponse;
+  }
+
+  async loadAlertAction(request: AlertActionRequest, signal?: AbortSignal): Promise<void> {
+    await this.postJson<unknown>("/history/load-alerts/action", request, signal);
+  }
+
   async readHistoryTrends(request: HistoryTrendsRequest, signal?: AbortSignal): Promise<HistoryTrendsResponse> {
     const value = await this.postJson<unknown>("/history/trends", request, signal);
     if (!isRecord(value) || !Array.isArray(value.rows) || !isRecord(value.counts) || !isRecord(value.rule)) {
@@ -487,6 +509,40 @@ export class DoctorApi {
       throw { code: "invalid_load_error_log", stage: "loads", message_id: "invalid_load_error_log", recoverability: "retry_same", details: {} } satisfies ApiFailure;
     }
     return value as LoadErrorLogResponse;
+  }
+
+  /** Task 58: load history from the local store; reads no StarRocks data. */
+  async readLoadHistory(request: LoadHistoryRequest, signal?: AbortSignal): Promise<LoadHistoryResponse> {
+    const value = await this.postJson<unknown>("/history/loads", request, signal);
+    if (!isRecord(value) || !Array.isArray(value.days) || !isRecord(value.totals) || !Array.isArray(value.tables) || !isRecord(value.error_logs)) {
+      throw { code: "invalid_load_history", stage: "history", message_id: "invalid_load_history", recoverability: "retry_same", details: {} } satisfies ApiFailure;
+    }
+    return value as LoadHistoryResponse;
+  }
+
+  async readLoadHistoryRoutine(request: LoadHistoryRoutineRequest, signal?: AbortSignal): Promise<LoadHistoryRoutineResponse> {
+    const value = await this.postJson<unknown>("/history/loads/routine", request, signal);
+    if (!isRecord(value) || !Array.isArray(value.jobs) || typeof value.cell_seconds !== "number") {
+      throw { code: "invalid_load_history", stage: "history", message_id: "invalid_load_history", recoverability: "retry_same", details: {} } satisfies ApiFailure;
+    }
+    return value as LoadHistoryRoutineResponse;
+  }
+
+  async readLoadHistoryErrorLogs(request: LoadHistoryErrorLogsRequest, signal?: AbortSignal): Promise<LoadHistoryErrorLogsResponse> {
+    const value = await this.postJson<unknown>("/history/loads/error-logs", request, signal);
+    if (!isRecord(value) || !Array.isArray(value.logs) || !Array.isArray(value.reasons) || !isRecord(value.storage)) {
+      throw { code: "invalid_load_history", stage: "history", message_id: "invalid_load_history", recoverability: "retry_same", details: {} } satisfies ApiFailure;
+    }
+    return value as LoadHistoryErrorLogsResponse;
+  }
+
+  /** One saved error log's text; business data, never cached. */
+  async readLoadHistoryErrorLog(request: LoadHistoryErrorLogRequest, signal?: AbortSignal): Promise<LoadHistoryErrorLogResponse> {
+    const value = await this.postJson<unknown>("/history/loads/error-log", request, signal);
+    if (!isRecord(value) || !isRecord(value.log) || !Array.isArray(value.entries)) {
+      throw { code: "invalid_load_history", stage: "history", message_id: "invalid_load_history", recoverability: "retry_same", details: {} } satisfies ApiFailure;
+    }
+    return value as LoadHistoryErrorLogResponse;
   }
 
   async readAuditOverview(request: AuditOverviewReadRequest, signal?: AbortSignal): Promise<AuditOverviewResponse> {

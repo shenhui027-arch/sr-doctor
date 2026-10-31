@@ -15,7 +15,7 @@
 [![StarRocks](https://img.shields.io/badge/StarRocks-3.1～4.1-1f55e0.svg)](docs/guide/faq.md)
 [![Backend](https://img.shields.io/badge/backend-Rust%20%2F%20Axum-b7410e.svg)](docs/development/architecture.md)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
-[![Status](https://img.shields.io/badge/v1.0.3-local%20verified%20·%20production%20pending-orange.svg)](#项目状态)
+[![Status](https://img.shields.io/badge/v1.0.4-local%20verified%20·%20production%20pending-orange.svg)](#项目状态)
 
 [快速开始](#快速开始) · [功能](#功能) · [截图](#截图) · [文档](#文档) · [安全](SECURITY.md) · [参与开发](CONTRIBUTING.md) · [更新日志](CHANGELOG.md)
 
@@ -94,7 +94,7 @@ docker compose up -d --build
 | 投递记录 | 每次发送的结果、重试与错误类别；超时 10 秒，网络类失败按 1/5/30 分钟重试；短信每小时有上限 |
 | 内容边界 | 只发集群、模板指纹、严重度、置信度与中位数变化，不含 SQL 字面量、Profile 或口令；飞书、钉钉只接受官方地址 |
 
-### 导入（v1.0.3）
+### 导入（v1.0.4）
 
 | 能力 | 说明 |
 |---|---|
@@ -102,7 +102,9 @@ docker compose up -d --build
 | Routine Load | 作业状态、每个分区的消费进度与积压、速率、错误行、暂停原因；只读，不提供暂停或恢复 |
 | 导入记录 | Stream Load、Broker Load、INSERT 与 Routine Load 任务的结果、过滤行、取事务/规划/接收数据三段毫秒耗时、来源用户与 IP，按表汇总 |
 | 错误日志 | 点开即看 StarRocks 记录的被拒绝行与原因（与 ErrorURL 同源，经只读 SQL 读取），按原因分类；被 BE 清理时如实说明 |
-| 边界 | 全部实时读取 `information_schema`，不落盘；StarRocks 只保留最近 3 天 / 约 1000 条；3.3 起完整支持 |
+| 历史 | 后台采集把已结束的导入按小时存进本机历史库：30 天的每天次数、失败率与过滤率、按表汇总；Routine Load 作业的状态、增量与积压走势；有过滤行的导入自动保存一份错误日志（明文，30 天、总量 50 MB）。未采集的时段不补数据，StarRocks 提前清理的小时标为部分 |
+| 导入告警 | 告警页按“SQL 性能回归 / 导入”切换。五条试运行规则基于已存的导入历史在每轮采集后评估：Routine Load 暂停、停止或取消、积压连续上升、失败率突增、过滤率突增；样本不足、采集不完整、版本或统计规则变化时不判定。暂停原因只在应用内显示，通知只含事实 |
+| 边界 | 概览、Routine Load、导入记录实时读取 `information_schema`；StarRocks 只保留最近 3 天 / 约 1000 条；3.3 起完整支持 |
 
 ## 截图
 
@@ -155,7 +157,7 @@ flowchart LR
 
 - **连接只读**：不执行 DDL/DML、多语句或 `EXPLAIN ANALYZE`，不自动修改 SQL 或参数。
 - **凭据不落盘**：StarRocks 口令只保存在服务进程内存的短期会话里，不返回前端，不写日志。
-- **历史库脱敏**：只存脱敏模板、指纹与小时聚合，默认保留 30 天；不存 SQL 字面量、Profile 原文或口令。
+- **历史库脱敏**：只存脱敏模板、指纹与小时聚合，默认保留 30 天；不存 SQL 字面量、Profile 原文或口令。唯一的例外是导入错误日志：StarRocks 记录的被拒绝行按约定明文保存（30 天、总量 50 MB），只在点开时显示，不进日志、通知与导出。
 - **访问控制**：服务器部署要求登录，默认账号 `admin` / `123456`，可在 `.env` 中修改；写请求还要求同源与 CSRF 校验。所有使用者共用一个账号，没有权限区分。默认密码人人都知道，服务暴露在不完全可信的网络时请先改密码。
 - **传输**：默认明文，可连接任意可达主机，界面会明确标注；FE 开启 SSL 时可选 TLS verify-full。
 
@@ -189,11 +191,12 @@ flowchart LR
 
 | | 状态 |
 |---|---|
-| 最近发布 | **v1.0.3**（2026-10-31），见 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。服务器部署统一用 Docker，不提供安装包 |
+| 最近发布 | **v1.0.4**（2026-10-31），见 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。服务器部署统一用 Docker，不提供安装包 |
 | v1.0.0 | SQL 质量监控阶段 A～D 已完成开发与本机验收；全项目审计的 19 个问题已修复 |
 | v1.0.1 | 新增审计概览（时间窗性能图表与 30 天负载视图）和多渠道告警通知；本地 CI 与官方 3.5.14 E2E 通过（邮件经本地 SMTP 接收端验证）；飞书、钉钉、阿里云与腾讯云短信的真实发送 **待验证** |
 | v1.0.2 | 新增导入工作区（概览、Routine Load、导入记录、错误日志）与审计概览里的导入摘要卡，修复 3.1～3.3 无法连接；官方 3.5.14 + Kafka E2E 与 3.2～4.1 官方镜像导入冒烟通过 |
 | v1.0.3 | 导入概览按 Stream Load / INSERT / Routine Load 分开，每类只显示自己的指标；修复 Routine Load 任务的阶段耗时计成 0；官方 3.5.14 + Kafka E2E 通过，3.1.17 官方镜像浏览器实测 |
+| v1.0.4 | 导入数据存进本机历史库（30 天统计、Routine Load 作业历史、错误日志副本），新增五条试运行的导入告警；历史库 schema 升到 7；官方 3.5.14 + AuditLoader + Kafka E2E 通过 |
 | 本机验证 | 本地 CI 全部通过；固定 digest 的官方 `starrocks/*:3.5.14` Docker 夹具上，指纹、采集、趋势、告警治理、多 BE、发布级审计、TLS verify-full 的 E2E 均通过 |
 | 生产验收 | **待验证**：G1 生产只读试点、G2 真实业务分布校准尚未进行。因此不宣称 Production-safe；远端集群默认不采集，告警阈值标为“规则试运行中” |
 | 支持版本 | StarRocks **3.1 及以后**（已审计 3.1～4.1），2.5、3.0 不支持；详见[支持的 StarRocks 版本](#支持的-starrocks-版本) |

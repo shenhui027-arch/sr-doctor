@@ -219,6 +219,10 @@ export function App(): JSX.Element {
   const [pausedLoads, setPausedLoads] = useState<{ connectionId: string; count: number } | null>(null);
   const [loadFocus, setLoadFocus] = useState<LoadFocus | null>(null);
   const openLoads = (focus: LoadFocus) => { setLoadFocus(focus); setWorkspace("Loads"); };
+  // Task 59: a load alert opens on the load category of the alerts workspace.
+  const [alertCategory, setAlertCategory] = useState<"sql" | "load">("sql");
+  // From a cluster's load history: the alerts open on that cluster.
+  const openLoadAlerts = (target: string | null) => { if (target) setPickedTarget(target); setAlertCategory("load"); setWorkspace("Alerts"); };
   const pausedLoadCount = pausedLoads && pausedLoads.connectionId === readySessionId ? pausedLoads.count : 0;
   const connected = (connection.phase === "ready" || connection.phase === "unsupported") && connectionSession !== null;
   const auditReady = canShowAuditWorkload(connectionSession);
@@ -599,8 +603,8 @@ export function App(): JSX.Element {
           />
         </>}
         {workspace === "Trends" && <HistoryWorkspace connectionId={readySessionId} focusTemplate={trendFocus} history={history} onOpenDoctor={acceptConnectedReport} onOpenItem={openGovernanceItem} onOpenQueries={() => setWorkspace("Queries")} onSessionExpired={expireConnection} onTab={setMonitoringTab} onTarget={setPickedTarget} onTargets={setKnownTargets} tab={monitoringTab} target={monitorTarget} />}
-        {workspace === "Alerts" && <AlertsWorkspace generation={monitorGeneration(history.status)} onChanged={history.refresh} onOpenItem={openGovernanceItem} onOpenQueries={() => setWorkspace("Queries")} onOpenTrends={openTrends} onRetryStatus={history.refresh} store={history.status?.store} target={monitorTarget} targets={knownTargets} onTarget={setPickedTarget} />}
-        {workspace === "Loads" && <LoadWorkspace connectionId={readySessionId} focus={loadFocus} key={readySessionId ?? "none"} onOpenQueries={() => setWorkspace("Queries")} onPaused={(count) => { if (readySessionId) setPausedLoads({ connectionId: readySessionId, count }); }} />}
+        {workspace === "Alerts" && <AlertsWorkspace generation={monitorGeneration(history.status)} initialCategory={alertCategory} key={alertCategory} onChanged={history.refresh} onOpenItem={openGovernanceItem} onOpenLoadHistory={(focus) => openLoads({ view: "history", ...focus })} onOpenQueries={() => setWorkspace("Queries")} onOpenTrends={openTrends} onRetryStatus={history.refresh} store={history.status?.store} target={monitorTarget} targets={knownTargets} onTarget={setPickedTarget} />}
+        {workspace === "Loads" && <LoadWorkspace connectionId={readySessionId} focus={loadFocus} key={readySessionId ?? "none"} onOpenAlerts={openLoadAlerts} onOpenQueries={() => setWorkspace("Queries")} onPaused={(count) => { if (readySessionId) setPausedLoads({ connectionId: readySessionId, count }); }} />}
         {workspace === "Governance" && <GovernanceWorkspace focusId={governanceFocus} onOpenQueries={() => setWorkspace("Queries")} onOpenTrends={openTrends} onRetryStatus={history.refresh} store={history.status?.store} target={monitorTarget} targets={knownTargets} onTarget={setPickedTarget} />}
         </Suspense>
       </section>

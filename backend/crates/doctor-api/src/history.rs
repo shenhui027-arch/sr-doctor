@@ -128,7 +128,13 @@ impl HistoryRuntime {
         let (store, open_failure) = match &config.path {
             None => (None, None),
             Some(path) => match HistoryStore::open(path) {
-                Ok(store) => (Some(Arc::new(store)), None),
+                Ok(store) => {
+                    // Retention does not wait for a collector: a store left
+                    // closed past it drops expired rows (error log text too).
+                    let _ =
+                        store.purge_before(unix_now() - i64::from(config.retention_days) * 86_400);
+                    (Some(Arc::new(store)), None)
+                }
                 Err(error) => {
                     let reason = error.unavailable_reason();
                     eprintln!("history_store_unavailable code={}", reason.code());
@@ -172,6 +178,21 @@ impl HistoryRuntime {
 }
 
 /// Stops a session's collector and hands collection to a waiting session.
+/// Retention runs hourly on its own, so expired rows (error log text
+/// included) go even while collection is paused or nothing is connected.
+pub(crate) async fn retention_worker(state: ApiState) {
+    let Some(store) = state.history.store.clone() else {
+        return;
+    };
+    let days = i64::from(state.history.config.retention_days);
+    loop {
+        tokio::time::sleep(Duration::from_secs(3_600)).await;
+        let store = Arc::clone(&store);
+        let _ = tokio::task::spawn_blocking(move || store.purge_before(unix_now() - days * 86_400))
+            .await;
+    }
+}
+
 pub(crate) fn stop_collector(state: &ApiState, connection_id: &str) {
     state.history.stop(connection_id);
     promote_waiting(state);
@@ -255,8 +276,37 @@ pub(crate) fn start_collector(
 }
 
 enum CycleOutcome {
-    Read,
+    /// Whether each due source read successfully; `None` when not due.
+    Read {
+        audit: Option<bool>,
+        loads: Option<bool>,
+    },
     Paused,
+}
+
+/// One source of the single collector (audit or loads). Each backs off on
+/// its own failures, so a source that keeps failing neither stops nor is
+/// masked by the other.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct SourceClock {
+    pub(crate) failures: u32,
+    pub(crate) next_run: i64,
+}
+
+impl SourceClock {
+    pub(crate) fn due(&self, now: i64) -> bool {
+        now >= self.next_run
+    }
+
+    pub(crate) fn record(&mut self, ok: bool, now: i64, period: i64) {
+        if ok {
+            self.failures = 0;
+            self.next_run = now + period;
+        } else {
+            self.failures = self.failures.saturating_add(1);
+            self.next_run = now + period.saturating_mul(1 << self.failures.min(10)).min(1800);
+        }
+    }
 }
 
 fn collected(rows: Vec<doctor_connector::AuditOccurrenceSourceRow>) -> Vec<CollectedExecution> {
@@ -289,8 +339,10 @@ fn collected(rows: Vec<doctor_connector::AuditOccurrenceSourceRow>) -> Vec<Colle
         .collect()
 }
 
-/// One cycle: the planned slices, each atomically recorded. A failed read
-/// is recorded and returned; the watermark stays at the last good slice.
+/// One cycle: the due audit slices, then the due load part (task 58). Each
+/// part's success is reported so it backs off on its own; only an ended
+/// session (or a store failure) fails the cycle.
+#[allow(clippy::too_many_arguments)]
 fn run_cycle(
     sessions: &SessionManager,
     store: &HistoryStore,
@@ -298,6 +350,8 @@ fn run_cycle(
     connection_id: &str,
     target: &str,
     now: i64,
+    audit_due: bool,
+    loads_due: bool,
 ) -> Result<CycleOutcome, ConnectorError> {
     let state = store
         .target_state(target)
@@ -313,7 +367,58 @@ fn run_cycle(
         }
         return Ok(CycleOutcome::Paused);
     }
-    let plan = plan_slices(state.watermark, now, config);
+    let expired = |error: &ConnectorError| error.code == ConnectorErrorCode::ConnectionExpired;
+    let audit = audit_due.then(|| {
+        run_audit_slices(
+            sessions,
+            store,
+            config,
+            connection_id,
+            target,
+            state.watermark,
+            now,
+        )
+    });
+    if let Some(Err(error)) = &audit
+        && expired(error)
+    {
+        return Err(error.clone());
+    }
+    // Task 58: loads are read even when the audit part failed (a cluster
+    // without AuditLoader still has load history), and the other way round.
+    let loads = loads_due.then(|| {
+        crate::history_loads::run_load_cycle(sessions, store, config, connection_id, target, now)
+    });
+    if let Some(Err(error)) = &loads
+        && expired(error)
+    {
+        return Err(error.clone());
+    }
+    let cutoff = now - i64::from(config.retention_days) * 86_400;
+    let _ = store.purge_before(cutoff);
+    // ADR-6: new data may raise, refresh or resolve in-app alerts; task 59
+    // adds the load alerts of the same cycle.
+    let loads_raised =
+        crate::load_alerts::evaluate_load_alerts(store, target, now).unwrap_or_default();
+    let _ = crate::governance::evaluate_alerts_with_loads(store, target, now, loads_raised);
+    Ok(CycleOutcome::Read {
+        audit: audit.map(|result| result.is_ok()),
+        loads: loads.map(|result| result.is_ok()),
+    })
+}
+
+/// The audit slices of one cycle, each atomically recorded. A failed read
+/// is recorded and returned; the watermark stays at the last good slice.
+fn run_audit_slices(
+    sessions: &SessionManager,
+    store: &HistoryStore,
+    config: &HistoryConfig,
+    connection_id: &str,
+    target: &str,
+    watermark: Option<i64>,
+    now: i64,
+) -> Result<(), ConnectorError> {
+    let plan = plan_slices(watermark, now, config);
     if let Some((start, end)) = plan.gap {
         let run = RunRecord {
             started_at: now,
@@ -397,14 +502,10 @@ fn run_cycle(
             break;
         }
     }
-    let cutoff = now - i64::from(config.retention_days) * 86_400;
-    let _ = store.purge_before(cutoff);
-    // ADR-6: new data may raise, refresh or resolve in-app alerts.
-    let _ = crate::governance::evaluate_alerts(store, target, now);
-    Ok(CycleOutcome::Read)
+    Ok(())
 }
 
-fn history_error(stage: &'static str) -> ConnectorError {
+pub(crate) fn history_error(stage: &'static str) -> ConnectorError {
     ConnectorError {
         code: ConnectorErrorCode::CapabilityUnavailable,
         stage,
@@ -419,6 +520,7 @@ async fn collector_loop(state: ApiState, connection_id: String, entry: Arc<Colle
     };
     let config = state.history.config.clone();
     let mut failures = 0u32;
+    let (mut audit_clock, mut loads_clock) = (SourceClock::default(), SourceClock::default());
     while !entry.stop.load(Ordering::SeqCst) {
         let (sessions, store_for_cycle, config_for_cycle, id, target) = (
             Arc::clone(&state.sessions),
@@ -428,6 +530,7 @@ async fn collector_loop(state: ApiState, connection_id: String, entry: Arc<Colle
             entry.target.clone(),
         );
         let now = unix_now();
+        let (audit_due, loads_due) = (audit_clock.due(now), loads_clock.due(now));
         let outcome = tokio::task::spawn_blocking(move || {
             run_cycle(
                 &sessions,
@@ -436,6 +539,8 @@ async fn collector_loop(state: ApiState, connection_id: String, entry: Arc<Colle
                 &id,
                 &target,
                 now,
+                audit_due,
+                loads_due,
             )
         })
         .await;
@@ -445,13 +550,27 @@ async fn collector_loop(state: ApiState, connection_id: String, entry: Arc<Colle
                 *entry.status.lock().unwrap_or_else(|p| p.into_inner()) = CollectorStatus::Paused;
                 period
             }
-            Ok(Ok(CycleOutcome::Read)) => {
+            Ok(Ok(CycleOutcome::Read { audit, loads })) => {
                 failures = 0;
+                if let Some(ok) = audit {
+                    audit_clock.record(ok, now, period);
+                }
+                if let Some(ok) = loads {
+                    loads_clock.record(ok, now, period);
+                }
+                let next_run = audit_clock.next_run.min(loads_clock.next_run);
+                // Retrying only when every source is failing; one healthy
+                // source keeps the collector running.
                 *entry.status.lock().unwrap_or_else(|p| p.into_inner()) =
-                    CollectorStatus::Running {
-                        next_run: now + period,
+                    if audit_clock.failures > 0 && loads_clock.failures > 0 {
+                        CollectorStatus::Backoff {
+                            failures: audit_clock.failures.min(loads_clock.failures),
+                            next_run,
+                        }
+                    } else {
+                        CollectorStatus::Running { next_run }
                     };
-                period
+                next_run - now
             }
             Ok(Err(error)) if error.code == ConnectorErrorCode::ConnectionExpired => {
                 *entry.status.lock().unwrap_or_else(|p| p.into_inner()) =
@@ -473,7 +592,11 @@ async fn collector_loop(state: ApiState, connection_id: String, entry: Arc<Colle
         };
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(delay.max(1) as u64)) => {}
-            _ = entry.wake.notified() => {}
+            _ = entry.wake.notified() => {
+                // Resumed or asked to read now: both sources are due.
+                audit_clock.next_run = 0;
+                loads_clock.next_run = 0;
+            }
         }
     }
 }
@@ -603,34 +726,56 @@ pub(super) async fn status(
             CollectorStatus::Stopped(reason) => CollectionState::Stopped { reason },
         },
     };
-    let (watermark, runs, coverage_runs, open_alerts) = match (runtime.store(), &target) {
-        (Some(store), Some(target)) => {
-            let watermark = store
-                .target_state(target)
-                .map_err(|_| internal_failure(&state))?
-                .watermark;
-            let runs = store
-                .runs(target, now - 24 * 3600, now + 1, 20)
-                .map_err(|_| internal_failure(&state))?;
-            let current = now.div_euclid(HISTORY_BUCKET_SECONDS) * HISTORY_BUCKET_SECONDS;
-            let coverage_runs = store
-                .runs(
-                    target,
-                    current - 23 * HISTORY_BUCKET_SECONDS,
-                    current + HISTORY_BUCKET_SECONDS,
-                    u32::MAX,
+    let (watermark, runs, coverage_runs, open_alerts, load_revision) =
+        match (runtime.store(), &target) {
+            (Some(store), Some(target)) => {
+                let watermark = store
+                    .target_state(target)
+                    .map_err(|_| internal_failure(&state))?
+                    .watermark;
+                let runs = store
+                    .runs(target, now - 24 * 3600, now + 1, 20)
+                    .map_err(|_| internal_failure(&state))?;
+                let current = now.div_euclid(HISTORY_BUCKET_SECONDS) * HISTORY_BUCKET_SECONDS;
+                let coverage_runs = store
+                    .runs(
+                        target,
+                        current - 23 * HISTORY_BUCKET_SECONDS,
+                        current + HISTORY_BUCKET_SECONDS,
+                        u32::MAX,
+                    )
+                    .map_err(|_| internal_failure(&state))?;
+                let load_counts = store
+                    .load_alert_counts(target)
+                    .map_err(|_| internal_failure(&state))?;
+                let open = store
+                    .alerts(target, 500)
+                    .map_err(|_| internal_failure(&state))?
+                    .iter()
+                    .filter(|alert| alert.state == "open")
+                    .count() as u64
+                    + load_counts[0];
+                let load_revision = format!(
+                    "{}|{}",
+                    store
+                        .load_target_state(target)
+                        .map_err(|_| internal_failure(&state))?
+                        .watermark
+                        .unwrap_or(0),
+                    store
+                        .load_alert_revision(target)
+                        .map_err(|_| internal_failure(&state))?
+                );
+                (
+                    watermark,
+                    runs,
+                    coverage_runs,
+                    Some(open.to_string()),
+                    Some(load_revision),
                 )
-                .map_err(|_| internal_failure(&state))?;
-            let open = store
-                .alerts(target, 500)
-                .map_err(|_| internal_failure(&state))?
-                .iter()
-                .filter(|alert| alert.state == "open")
-                .count();
-            (watermark, runs, coverage_runs, Some(open.to_string()))
-        }
-        _ => (None, Vec::new(), Vec::new(), None),
-    };
+            }
+            _ => (None, Vec::new(), Vec::new(), None, None),
+        };
     let response = HistoryStatusResponse {
         store: store_state,
         target,
@@ -664,6 +809,7 @@ pub(super) async fn status(
             .collect(),
         remote_collection_enabled: config.allow_remote_collection,
         open_alerts,
+        load_revision,
         limitations: [
             "collection_runs_only_while_this_session_is_connected",
             "rows_arriving_later_than_the_lag_are_not_read",
@@ -833,6 +979,25 @@ mod tests {
             crate::history_trend::coverage_map(&runs, start, start + 3600)[&start],
             CoverageHourState::Complete
         );
+    }
+
+    #[test]
+    fn audit_lh_08_each_source_backs_off_on_its_own() {
+        let (mut audit, mut loads) = (SourceClock::default(), SourceClock::default());
+        assert!(audit.due(0) && loads.due(0));
+        audit.record(false, 0, 5);
+        loads.record(true, 0, 5);
+        audit.record(false, 10, 5);
+        // The failing source waits longer each time; the healthy one keeps its period.
+        assert_eq!((audit.failures, audit.next_run), (2, 30));
+        assert_eq!((loads.failures, loads.next_run), (0, 5));
+        assert!(!audit.due(20) && loads.due(20));
+        for _ in 0..20 {
+            audit.record(false, 100, 300);
+        }
+        assert_eq!(audit.next_run, 100 + 1800);
+        audit.record(true, 2000, 300);
+        assert_eq!((audit.failures, audit.next_run), (0, 2300));
     }
 
     fn config() -> HistoryConfig {

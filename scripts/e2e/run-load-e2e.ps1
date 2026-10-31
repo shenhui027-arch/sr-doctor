@@ -18,13 +18,16 @@ param(
 # Real Stream Loads (clean, partly filtered, failed) and one Routine Load
 # with a bad message are read through the product API by a reader with no
 # grants (with -WithAuditLoader: SELECT on the audit table only). Task 52
-# adds the overview (LD-06). Serial, bounded, torn down in `finally`; test
-# data only.
+# adds the overview (LD-06); task 58 turns the history store on (a temporary
+# file, removed in `finally`) and checks what the collector stored (LH-07).
+# Serial, bounded, torn down in `finally`; test data only.
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $runtimeRoot = (Join-Path ($env:SR_DOCTOR_WORK_ROOT ?? (Join-Path ([IO.Path]::GetTempPath()) 'sr-doctor')) 'e2e')
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
 $receiptPath = Join-Path $runtimeRoot "load-workspace-$stamp.json"
+# Holds the saved error log rows (test data) in plain text; removed in `finally`.
+$historyPath = Join-Path $runtimeRoot "history-load-$stamp.sqlite"
 $starrocksImage = 'starrocks/allin1-ubuntu:3.5.14@sha256:5e1fa9c1a490f49457b8220b10ef2ea211af271b2626654ba151429f4603715f'
 $kafkaImage = 'apache/kafka:3.9.0@sha256:fbc7d7c428e3755cf36518d4976596002477e4c052d1f80b5b9eafd06d0fff2f'
 $srName = 'sr-doctor-load-e2e-3514'
@@ -187,7 +190,8 @@ FROM KAFKA ('kafka_broker_list' = '127.0.0.1:9092', 'kafka_topic' = 'ld', 'prope
 
     $stage = 'api_start'
     $saved = @{}
-    $environment = [ordered]@{ DOCTOR_PORT = [string]$ApiPort; DOCTOR_HISTORY = 'off' }
+    # Task 58: a short collector period so the load history fills within minutes.
+    $environment = [ordered]@{ DOCTOR_PORT = [string]$ApiPort; DOCTOR_HISTORY = $null; DOCTOR_HISTORY_PATH = $historyPath; DOCTOR_COLLECTION_PERIOD_SECONDS = '5'; DOCTOR_COLLECTION_SLICE_SECONDS = '60'; DOCTOR_COLLECTION_LAG_SECONDS = '5'; DOCTOR_COLLECTION_BACKFILL_SECONDS = '3600' }
     $environment.DOCTOR_FRONTEND_DIST = if ($HoldForBrowserSeconds -gt 0) { (Resolve-Path -LiteralPath (Join-Path $repoRoot 'frontend\dist')).Path } else { $null }
     foreach ($key in $environment.Keys) { $saved[$key] = [Environment]::GetEnvironmentVariable($key, 'Process'); [Environment]::SetEnvironmentVariable($key, $environment[$key], 'Process') }
     try {
@@ -204,6 +208,89 @@ FROM KAFKA ('kafka_broker_list' = '127.0.0.1:9092', 'kafka_topic' = 'ld', 'prope
     $summary.connection_state = $connection.state
     Require ($connection.state -eq 'ready') "Connection is not ready: $($connection.state)"
     $id = $connection.connection_id
+
+    $stage = 'lh07_history'
+    # Before LD-03 removes the BE error log files: the collector must read
+    # them first. Wait until the watermark passes the last non-task load.
+    $lastFinish = [long]((Invoke-Sql "SELECT UNIX_TIMESTAMP(MAX(LOAD_FINISH_TIME)) FROM information_schema.loads WHERE DB_NAME = 'lr' AND TYPE <> 'ROUTINE_LOAD';" | Select-Object -Last 1).Trim())
+    $historyRequest = @{ connection_id = $id; days = 7; kind = $null; table = $null; include_system = $false }
+    $logsRequest = @{ connection_id = $id; days = 7; table = $null; category = $null; offset = 0 }
+    $deadline = [DateTime]::UtcNow.AddSeconds(300); $savedLog = $null; $history = $null
+    do {
+        Start-Sleep -Seconds 5
+        $history = (Invoke-Post '/history/loads' $historyRequest).body
+        $logList = Invoke-Post '/history/loads/error-logs' $logsRequest
+        $savedLog = @($logList.body.logs | Where-Object { $_.label -eq 'ld_partial' -and $_.state -eq 'saved' })[0]
+    } while (([long]($history.collection.watermark_seconds ?? 0) -le $lastFinish -or $null -eq $savedLog) -and [DateTime]::UtcNow -lt $deadline)
+    Require ([long]($history.collection.watermark_seconds ?? 0) -gt $lastFinish) 'The load collector did not pass the last load.'
+    Require ($null -ne $savedLog) 'The error log of the partly filtered load was not saved.'
+    # Same watermark on both sides; a slice may land between two reads, so try again.
+    $matchedCounts = $false
+    foreach ($attempt in 1..3) {
+        $history = (Invoke-Post '/history/loads' $historyRequest).body
+        $watermark = [long]$history.collection.watermark_seconds
+        $expected = @{}
+        foreach ($line in @(Invoke-Sql "SELECT TYPE, COUNT(*), SUM(CASE WHEN STATE = 'CANCELLED' THEN 1 ELSE 0 END) FROM information_schema.loads WHERE DB_NAME = 'lr' AND LOAD_FINISH_TIME < FROM_UNIXTIME($watermark) GROUP BY TYPE;")) {
+            $cells = "$line".Trim() -split "`t"
+            if ($cells.Count -eq 3) { $expected[$cells[0]] = "$($cells[1])/$($cells[2])" }
+        }
+        $stored = @{}; foreach ($kind in $history.kinds) { $stored[$kind.kind] = "$($kind.loads)/$($kind.failed)" }
+        $matchedCounts = ($stored['stream_load'] -eq $expected['STREAM_LOAD']) -and ($stored['insert'] -eq $expected['INSERT']) -and ($stored['routine_load'] -eq $expected['ROUTINE_LOAD'])
+        if ($matchedCounts) { break }
+        Start-Sleep -Seconds 2
+    }
+    $logView = Invoke-Post '/history/loads/error-log' @{ connection_id = $id; job_id = $savedLog.job_id }
+    $routineHistory = (Invoke-Post '/history/loads/routine' @{ connection_id = $id; days = 7; job_id = $null }).body
+    $kafkaHistory = @($routineHistory.jobs | Where-Object { $_.name -eq 'ld_kafka' })[0]
+    $lrTable = @($history.tables | Where-Object { $_.database -eq 'lr' -and $_.table -eq 't' })[0]
+    $summary.history = [ordered]@{
+        watermark = $watermark; last_finish = $lastFinish; stored = @($stored.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Name):$($_.Value)" }); expected = @($expected.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Name):$($_.Value)" })
+        totals = "loads=$($history.totals.loads) failed=$($history.totals.failed) filtered=$($history.totals.filtered_rows) loaded=$($history.totals.loaded_rows)"
+        today = "coverage=$($history.days[-1].coverage) complete=$($history.days[-1].complete_hours) partial=$($history.days[-1].partial_hours) reasons=$($history.days[-1].partial_reasons -join ',')"
+        lr_t = "filtered=$($lrTable.filtered_rows) logs=$($lrTable.saved_logs) reason=$($lrTable.top_reason.category)"
+        saved_log = "$($savedLog.job_id):$($savedLog.state):sampled=$($savedLog.sampled):" + (@($savedLog.categories | ForEach-Object { "$($_.category)=$($_.count)" }) -join ',')
+        list_carries_rows = $logList.raw.Contains($secretLiteral); history_carries_rows = (Invoke-Post '/history/loads' $historyRequest).raw.Contains($secretLiteral)
+        text_view = "entries=$($logView.body.entries.Count) carries_rows=$($logView.raw.Contains($secretLiteral))"
+        routine = "jobs=$($routineHistory.jobs.Count) ld_kafka=$($kafkaHistory.current_state) cells=$($kafkaHistory.cells.Count) lag_known=$($routineHistory.selected.lag_known) events=$($routineHistory.selected.events.Count)"
+        storage = "saved=$($history.error_logs.saved) bytes=$($history.error_logs.raw_bytes)"
+    }
+    Require $matchedCounts "Stored load counts differ from StarRocks at the same watermark: stored $($summary.history.stored -join ' '), StarRocks $($summary.history.expected -join ' ')."
+    $expectedFiltered = (Invoke-Sql "SELECT SUM(CASE WHEN FILTERED_ROWS > 0 THEN FILTERED_ROWS ELSE 0 END) FROM information_schema.loads WHERE DB_NAME = 'lr' AND TABLE_NAME = 't' AND LOAD_FINISH_TIME < FROM_UNIXTIME($watermark);" | Select-Object -Last 1).Trim()
+    $summary.history.lr_t_expected_filtered = $expectedFiltered
+    Require ($lrTable.filtered_rows -eq $expectedFiltered -and [int]$expectedFiltered -ge 6 -and [int]$lrTable.saved_logs -ge 1 -and $null -ne $lrTable.top_reason) 'The lr.t history row lacks its filtered rows, saved logs or top reason.'
+    Require (@($savedLog.categories | ForEach-Object { $_.category }) -contains 'out_of_partition' -and [int]$savedLog.sampled -eq 3) 'The saved error log lacks its categories or rows.'
+    Require (-not $summary.history.list_carries_rows -and -not $summary.history.history_carries_rows) 'A history list or summary carries error log rows.'
+    Require ($logView.body.entries.Count -eq 3 -and $logView.raw.Contains($secretLiteral)) 'The saved error log text is not returned for that one load.'
+    Require ($null -ne $kafkaHistory -and $kafkaHistory.current_state -in @('RUNNING', 'NEED_SCHEDULE') -and $routineHistory.selected.lag_known) 'The Routine Load history misses ld_kafka or its lag.'
+
+    $stage = 'la05_load_alerts'
+    # Task 59: pausing the job (as root, in the fixture) raises the load
+    # alert; resuming it resolves the alert on its own.
+    Invoke-Sql 'PAUSE ROUTINE LOAD FOR lr.ld_kafka;' | Out-Null
+    $deadline = [DateTime]::UtcNow.AddSeconds(120); $pausedAlert = $null
+    do {
+        Start-Sleep -Seconds 5
+        $loadAlerts = (Invoke-Post '/history/load-alerts' @{ target = $null }).body
+        $pausedAlert = @($loadAlerts.alerts | Where-Object { $_.rule -eq 'routine_paused' -and $_.detail.name -eq 'ld_kafka' -and $_.state -eq 'open' })[0]
+    } while ($null -eq $pausedAlert -and [DateTime]::UtcNow -lt $deadline)
+    Require ($null -ne $pausedAlert -and $pausedAlert.severity -eq 'high') 'Pausing the Routine Load job raised no high load alert.'
+    $openBadge = (Invoke-Post '/history/status' @{ connection_id = $id }).body.open_alerts
+    Invoke-Sql 'RESUME ROUTINE LOAD FOR lr.ld_kafka;' | Out-Null
+    $deadline = [DateTime]::UtcNow.AddSeconds(180); $resolvedAlert = $null
+    do {
+        Start-Sleep -Seconds 5
+        $loadAlerts = (Invoke-Post '/history/load-alerts' @{ target = $null }).body
+        $resolvedAlert = @($loadAlerts.alerts | Where-Object { $_.alert_id -eq $pausedAlert.alert_id -and $_.state -eq 'resolved' })[0]
+    } while ($null -eq $resolvedAlert -and [DateTime]::UtcNow -lt $deadline)
+    $summary.load_alerts = [ordered]@{
+        paused = "$($pausedAlert.alert_id):$($pausedAlert.rule):$($pausedAlert.severity):$($pausedAlert.state)"
+        reason_in_app = [bool]$pausedAlert.detail.reason; badge_while_paused = $openBadge
+        resolved = [bool]$resolvedAlert; thresholds_calibrated = $loadAlerts.thresholds.calibrated
+    }
+    Require ([int]$openBadge -ge 1) 'The open load alert is missing from the header badge count.'
+    Require ($null -ne $resolvedAlert) 'Resuming the Routine Load job did not resolve the load alert.'
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+    do { Start-Sleep -Seconds 3; $stats = (Invoke-Sql "SELECT STATE FROM information_schema.routine_load_jobs WHERE NAME = 'ld_kafka';" | Select-Object -Last 1).Trim() } while ($stats -ne 'RUNNING' -and [DateTime]::UtcNow -lt $deadline)
 
     $stage = 'ld01_routine_jobs'
     $routine = Invoke-Post "/connections/$id/loads/routine-jobs" @{ connection_id = $id }
@@ -323,6 +410,9 @@ catch {
 finally {
     $cleanupFailure = $null
     if ($startedApi -and -not $startedApi.HasExited) { Stop-Process -Id $startedApi.Id -Force; $startedApi.WaitForExit(5000) | Out-Null }
+    # The history file holds saved error log rows; it goes with the run.
+    foreach ($file in $historyPath, "$historyPath-wal", "$historyPath-shm") { if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force } }
+    $summary.history_file_removed = -not (Test-Path -LiteralPath $historyPath)
     $logs = @('stdout', 'stderr' | ForEach-Object { Join-Path $runtimeRoot "doctor-api-load-$stamp.$_.log" } | Where-Object { Test-Path -LiteralPath $_ })
     $leaked = @($logs | Where-Object { $text = [IO.File]::ReadAllText($_); $text.Contains($readerPassword) -or $text.Contains($secretLiteral) -or $text.Contains($auditWriterPassword) }).Count
     $summary.api_log_scan = if ($logs.Count -eq 0) { 'NOT_RUN' } elseif ($leaked -gt 0) { 'FAIL' } else { 'PASS' }

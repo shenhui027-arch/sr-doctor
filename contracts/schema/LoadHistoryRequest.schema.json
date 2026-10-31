@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LoadHistoryRequest",
+  "type": "object",
+  "required": [
+    "days",
+    "include_system"
+  ],
+  "properties": {
+    "connection_id": {
+      "description": "The connected session whose target to show; otherwise the most recently collected target.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "days": {
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0.0
+    },
+    "include_system": {
+      "type": "boolean"
+    },
+    "kind": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/LoadKindGroup"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "table": {
+      "description": "`db.table`.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target": {
+      "description": "The collection target to show (task 59: a load alert names it); it wins over the connected session when known.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "LoadKindGroup": {
+      "description": "Task 56: the overview shows each group with only the measures StarRocks reports for it.",
+      "type": "string",
+      "enum": [
+        "stream_load",
+        "insert",
+        "routine_load",
+        "broker",
+        "other"
+      ]
+    }
+  }
+}

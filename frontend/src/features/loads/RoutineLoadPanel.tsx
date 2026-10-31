@@ -106,7 +106,7 @@ export function RoutineLoadPanel({ jobs, initialJob, nowMs, onOpenLog, text }: {
         </table></div>}
         <div className="alert-actions">
           <button aria-haspopup="dialog" className="button secondary" disabled={!selected.has_error_log} onClick={() => onOpenLog(selected)} type="button">{selected.has_error_log ? text("View error log", "查看错误日志") : jobs.support === "without_lag" ? text("Error logs need 3.3+", "错误日志需要 3.3 及以上") : text("No error log", "没有错误日志")}</button>
-          <span className="planned">Planned · {text("lag trend and alerts (L1/L2)", "积压趋势与告警（L1/L2）")}</span>
+          <span className="planned">{text("30-day lag: History tab · alerts: Alerts › Loads", "30 天积压见“历史”标签 · 告警见“告警 › 导入”")}</span>
         </div>
         <p className="history-muted">{text("SR Doctor is read-only: it does not pause, resume or change jobs. Run RESUME ROUTINE LOAD in StarRocks when needed.", "SR Doctor 只读，不提供暂停、恢复或修改作业；需要时在 StarRocks 里执行 RESUME ROUTINE LOAD。")}</p>
       </section>}

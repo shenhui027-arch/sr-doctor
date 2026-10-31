@@ -1,0 +1,308 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LoadHistoryErrorLogsResponse",
+  "type": "object",
+  "required": [
+    "limitations",
+    "logs",
+    "reasons",
+    "storage",
+    "table_options",
+    "total"
+  ],
+  "properties": {
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "logs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/StoredLoadErrorLog"
+      }
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LoadErrorReasonSummary"
+      }
+    },
+    "storage": {
+      "$ref": "#/definitions/LoadErrorStorageView"
+    },
+    "table_options": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "target": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "total": {
+      "description": "Logs matching the filters; `logs` is one page of them.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "LoadErrorCategory": {
+      "type": "string",
+      "enum": [
+        "out_of_range",
+        "too_long",
+        "column_count",
+        "null_in_non_nullable",
+        "out_of_partition",
+        "json_cast",
+        "json_structure",
+        "other"
+      ]
+    },
+    "LoadErrorCategoryCount": {
+      "type": "object",
+      "required": [
+        "category",
+        "count"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/definitions/LoadErrorCategory"
+        },
+        "column": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "target_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadErrorReasonSummary": {
+      "type": "object",
+      "required": [
+        "category",
+        "database",
+        "first_seconds",
+        "last_seconds",
+        "loads",
+        "new",
+        "sampled_rows",
+        "table"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/definitions/LoadErrorCategory"
+        },
+        "column": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "database": {
+          "type": "string"
+        },
+        "first_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "last_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "loads": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "new": {
+          "type": "boolean"
+        },
+        "sampled_rows": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "table": {
+          "type": "string"
+        },
+        "target_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadErrorStorageView": {
+      "type": "object",
+      "required": [
+        "limit_bytes",
+        "logs",
+        "missed",
+        "raw_bytes",
+        "saved",
+        "used_permyriad"
+      ],
+      "properties": {
+        "earliest_saved_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "limit_bytes": {
+          "type": "string"
+        },
+        "logs": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "missed": {
+          "description": "Gone from the BE, or not read within StarRocks' retention.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "raw_bytes": {
+          "type": "string"
+        },
+        "saved": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "used_permyriad": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "LoadKindGroup": {
+      "description": "Task 56: the overview shows each group with only the measures StarRocks reports for it.",
+      "type": "string",
+      "enum": [
+        "stream_load",
+        "insert",
+        "routine_load",
+        "broker",
+        "other"
+      ]
+    },
+    "StoredLoadErrorLog": {
+      "description": "Facts of one saved (or attempted) error log. No reason or row text.",
+      "type": "object",
+      "required": [
+        "attempts",
+        "categories",
+        "database",
+        "finish_seconds",
+        "job_id",
+        "kind",
+        "label",
+        "sampled",
+        "state",
+        "table",
+        "truncated"
+      ],
+      "properties": {
+        "attempts": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LoadErrorCategoryCount"
+          }
+        },
+        "database": {
+          "type": "string"
+        },
+        "filtered_rows": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "finish_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/LoadKindGroup"
+        },
+        "label": {
+          "type": "string"
+        },
+        "sampled": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "saved_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "state": {
+          "$ref": "#/definitions/StoredLoadErrorLogState"
+        },
+        "table": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "StoredLoadErrorLogState": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "saved",
+        "purged",
+        "no_log",
+        "failed",
+        "expired",
+        "trimmed"
+      ]
+    }
+  }
+}

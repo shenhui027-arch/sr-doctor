@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LoadAlertsRequest",
+  "description": "Every state lists its newest `LOAD_ALERT_LIST_LIMIT` alerts; `more` lists more of one state, so any alert can be reached.",
+  "type": "object",
+  "properties": {
+    "more": {
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/definitions/LoadAlertsMore"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AlertState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "open",
+            "acknowledged",
+            "muted"
+          ]
+        },
+        {
+          "description": "Back inside the baseline band; can be reopened by hand.",
+          "type": "string",
+          "enum": [
+            "resolved"
+          ]
+        }
+      ]
+    },
+    "LoadAlertsMore": {
+      "type": "object",
+      "required": [
+        "limit",
+        "state"
+      ],
+      "properties": {
+        "limit": {
+          "description": "How many of that state to list, newest first.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "state": {
+          "$ref": "#/definitions/AlertState"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

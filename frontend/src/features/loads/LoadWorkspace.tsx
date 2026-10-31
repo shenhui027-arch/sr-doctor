@@ -1,15 +1,17 @@
 // The load workspace (tasks 51-52, design boards I1-I4): an overview, Routine
 // Load jobs and load records, read live through the connected session every
-// 30 seconds while open. Nothing here changes StarRocks or stores what it reads.
+// 30 seconds while open, and (task 58, boards I9-I11) the history the one
+// bounded collector stored. Nothing here changes StarRocks.
 import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
-import type { LoadGroupSummary, LoadKindFilter, LoadRecord, LoadRecordsResponse, RoutineLoadJob } from "../../../../contracts/generated/doctor-contracts";
+import type { LoadGroupSummary, LoadKindFilter, LoadKindGroup, LoadRecord, LoadRecordsResponse, RoutineLoadJob } from "../../../../contracts/generated/doctor-contracts";
 import { useLocale, type LocalizedText } from "../../i18n/locale";
 import { doctorApi } from "../../lib/api";
 import { useMonitorRead } from "../history/monitor-read";
 import { MonitorReadError, RefreshBar } from "../history/MonitorStates";
 import { LoadErrorLogDialog, type ErrorLogTarget } from "./LoadErrorLogDialog";
 import { LoadOverviewPanel, type OverviewFilters } from "./LoadOverviewPanel";
+import { LoadHistoryPanel } from "./LoadHistoryPanel";
 import { LoadRecordsPanel, type RecordFilters } from "./LoadRecordsPanel";
 import { RoutineLoadPanel } from "./RoutineLoadPanel";
 import { count, feTime, loadFailureText } from "./load-text";
@@ -18,10 +20,12 @@ import "../history/notify.css";
 import "./loads.css";
 
 const REFRESH_MS = 30_000;
-type LoadView = "overview" | "routine" | "records";
-const VIEWS: LoadView[] = ["overview", "routine", "records"];
+type LoadView = "overview" | "routine" | "records" | "history";
+const VIEWS: LoadView[] = ["overview", "routine", "records", "history"];
 /** Where another workspace asks the load workspace to open. */
-export type LoadFocus = { view: "overview" } | { view: "routine"; jobId: string };
+export type LoadFocus = { view: "overview" } | { view: "routine"; jobId: string }
+  /** Task 59: from a load alert into the history tab. */
+  | { view: "history"; target: string | null; table: string | null; kind: LoadKindGroup | null; jobId: string | null; errors: boolean };
 
 const NO_RECORD_FILTERS: RecordFilters = { kind: null, outcome: null, table: "", include_system: false, hour: null };
 
@@ -56,13 +60,15 @@ function LoadTypeSwitch({ counts, kind, onKind, text }: { counts: TypeCounts; ki
   </div>;
 }
 
-export function LoadWorkspace({ connectionId, focus, onPaused, onOpenQueries }: {
+export function LoadWorkspace({ connectionId, focus, onPaused, onOpenQueries, onOpenAlerts }: {
   /** The ready session; null shows how to connect. */
   connectionId: string | null;
   focus?: LoadFocus | null;
   /** Paused job count for the header badge. */
   onPaused(count: number): void;
   onOpenQueries(): void;
+  /** Task 59: the load alerts in the alerts workspace. */
+  onOpenAlerts?(target: string | null): void;
 }): JSX.Element {
   const { text } = useLocale();
   const [view, setView] = useState<LoadView>(focus?.view ?? "overview");
@@ -72,6 +78,7 @@ export function LoadWorkspace({ connectionId, focus, onPaused, onOpenQueries }: 
   const [filters, setFilters] = useState<RecordFilters>(NO_RECORD_FILTERS);
   const [applied, setApplied] = useState<RecordFilters>(filters);
   const [log, setLog] = useState<ErrorLogTarget | null>(null);
+  const [historySystem, setHistorySystem] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [focusPanel, setFocusPanel] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
@@ -122,13 +129,20 @@ export function LoadWorkspace({ connectionId, focus, onPaused, onOpenQueries }: 
   const onPausedRef = useRef(onPaused);
   useEffect(() => { onPausedRef.current = onPaused; });
   useEffect(() => { if (paused !== null) onPausedRef.current(paused); }, [paused]);
+  if (!connectionId && focus?.view === "history") {
+    // From a load alert while not connected: the saved history still opens.
+    return <div className="history-page load-page">
+      <LoadHistoryPanel connectionId={null} focus={focus} generation={String(tick)} includeSystem={historySystem} onOpenAlerts={onOpenAlerts} onOpenLog={setLog} text={text} />
+      {log && log.connectionId === null && <LoadErrorLogDialog connectionId={null} onClose={() => setLog(null)} target={log} text={text} />}
+    </div>;
+  }
   if (!connectionId) {
     return <div className="history-page load-page">
       <p className="history-banner neutral">{text("Connect to StarRocks to see Routine Load jobs and load records. They are read live and not stored.", "连接 StarRocks 后可查看 Routine Load 作业与导入记录；内容实时读取，不保存。")}</p>
       <button className="button secondary" onClick={onOpenQueries} type="button">{text("Go to Queries to connect", "去“查询”连接")}</button>
     </div>;
   }
-  const current = view === "overview" ? overview : view === "routine" ? routine : records;
+  const current = view === "overview" ? overview : view === "routine" ? routine : view === "records" ? records : null;
   const routineCount = routine.data?.jobs.length;
   const chooseView = (next: LoadView) => { if (next === "routine") setRoutineJob(null); setView(next); };
   // Tabs follow the ARIA tabs pattern: arrows, Home and End move and select.
@@ -152,18 +166,20 @@ export function LoadWorkspace({ connectionId, focus, onPaused, onOpenQueries }: 
   const openRecordLog = (record: LoadRecord) => setLog({ connectionId, jobId: record.job_id, title: record.label, meta: `${record.kind} · ${record.db}.${record.table} · job_id ${record.job_id} · ${feTime(record.create_time)} · ${record.state}` });
   const note = view === "overview" ? text("Read live from information_schema.loads and routine_load_jobs; read-only, not stored; summed by the server", "实时读取 information_schema.loads 与 routine_load_jobs，只读、不落盘；服务端汇总")
     : view === "routine" ? text("Read live from information_schema.routine_load_jobs; read-only, every 30 s or on demand", "实时读取 information_schema.routine_load_jobs，只读；每 30 秒或手动刷新")
-      : text("Read live from information_schema.loads: Stream Load, Broker Load, INSERT and each Routine Load task", "读取 information_schema.loads，只读；Stream Load、Broker Load、INSERT 与 Routine Load 的每个提交任务");
+      : view === "records" ? text("Read live from information_schema.loads: Stream Load, Broker Load, INSERT and each Routine Load task", "读取 information_schema.loads，只读；Stream Load、Broker Load、INSERT 与 Routine Load 的每个提交任务")
+        : text("From the local history store: 30 days that the collector read; reads nothing from StarRocks", "来自本机历史库：采集任务读到的 30 天；这里不读 StarRocks");
   return <div className="history-page load-page">
     <div className="history-card-head load-toolbar">
       <div aria-label={text("Load views", "导入视图")} className="history-tabs" onKeyDown={onTabKey} role="tablist">
         {VIEWS.map((item) => <button aria-controls="load-panel" aria-selected={view === item} id={`load-tab-${item}`} key={item} onClick={() => chooseView(item)} role="tab" tabIndex={view === item ? 0 : -1} type="button">
-          {item === "overview" ? text("Overview", "概览") : item === "routine" ? <>Routine Load{routineCount !== undefined && <> <span className="tab-count">{routineCount}</span></>}</> : text("Load records", "导入记录")}
+          {item === "overview" ? text("Overview", "概览") : item === "routine" ? <>Routine Load{routineCount !== undefined && <> <span className="tab-count">{routineCount}</span></>}</> : item === "records" ? text("Load records", "导入记录") : text("History", "历史")}
         </button>)}
       </div>
       <span className="history-muted">{note}</span>
       <span className="trend-toolbar">
         {view === "overview" && <label className="notify-check"><input checked={overviewFilters.include_system} onChange={(event) => setOverviewFilters({ ...overviewFilters, include_system: event.target.checked })} type="checkbox" /> {text("System loads", "含系统任务")}</label>}
-        <RefreshBar error={current.error} loading={current.loading} onRefresh={current.refresh} text={text} updatedSeconds={current.updatedSeconds} />
+        {view === "history" && <label className="notify-check"><input checked={historySystem} onChange={(event) => setHistorySystem(event.target.checked)} type="checkbox" /> {text("System loads", "含系统任务")}</label>}
+        {current && <RefreshBar error={current.error} loading={current.loading} onRefresh={current.refresh} text={text} updatedSeconds={current.updatedSeconds} />}
       </span>
     </div>
     <div aria-labelledby={`load-tab-${view}`} className="load-panel" id="load-panel" ref={panel} role="tabpanel" tabIndex={-1}>
@@ -182,6 +198,7 @@ export function LoadWorkspace({ connectionId, focus, onPaused, onOpenQueries }: 
     </div>
       : records.error ? <MonitorReadError error={records.error} onRetry={records.refresh} text={text} title={loadFailureText(records.error, text)} />
         : <p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>)}
+    {view === "history" && <LoadHistoryPanel connectionId={connectionId} focus={focus?.view === "history" ? focus : null} generation={String(tick)} includeSystem={historySystem} onOpenAlerts={onOpenAlerts} onOpenLog={setLog} text={text} />}
     </div>
     {log && log.connectionId === connectionId && <LoadErrorLogDialog connectionId={connectionId} onClose={() => setLog(null)} target={log} text={text} />}
   </div>;

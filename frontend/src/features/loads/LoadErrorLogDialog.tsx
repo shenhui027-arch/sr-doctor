@@ -1,23 +1,31 @@
-// Design board I3: one load's error log, read live when opened. Rows are
-// business data: shown here only, never cached, logged or exported.
+// Design board I3: one load's error log, read live when opened, or (task 58)
+// the copy the collector saved. Rows are business data: shown here only,
+// never cached, logged or exported.
 import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
-import type { LoadErrorCategory, LoadErrorLogResponse } from "../../../../contracts/generated/doctor-contracts";
+import type { LoadErrorCategory, LoadErrorLogResponse, StoredLoadErrorLogState } from "../../../../contracts/generated/doctor-contracts";
 import type { LocalizedText } from "../../i18n/locale";
 import { doctorApi } from "../../lib/api";
 import { failureId } from "../history/monitor-read";
 import { categoryText, loadFailureText } from "./load-text";
 
-/** One job of one connection: a log is never read for another connection's job. */
-export type ErrorLogTarget = { connectionId: string; jobId: string; title: string; meta: string };
+/** One job of one connection: a log is never read for another connection's job.
+ * `stored` reads the saved copy from the local history store instead. */
+export type ErrorLogTarget = { connectionId: string | null; jobId: string; title: string; meta: string; stored?: boolean; target?: string | null };
 
-export function ErrorLogBody({ log, text }: { log: LoadErrorLogResponse; text: LocalizedText }): JSX.Element {
+export function ErrorLogBody({ log, storedState, text }: { log: LoadErrorLogResponse; storedState?: StoredLoadErrorLogState; text: LocalizedText }): JSX.Element {
   const [filter, setFilter] = useState<LoadErrorCategory | "all">("all");
+  if (storedState === "trimmed") {
+    return <div className="load-purged">
+      <strong>{text("The saved text was dropped under the 50 MB limit", "保存的原文已按 50 MB 上限删除")}</strong>
+      <span>{text("Error log text is kept up to 50 MB in all; the oldest goes first. The reason counts are kept.", "错误原文总量上限 50 MB，超出时先删最旧的；原因计数仍保留。")}</span>
+    </div>;
+  }
   if (log.state === "purged") {
     return <div className="load-purged">
       <strong>{text("StarRocks already cleaned up this error log", "错误日志已被 StarRocks 清理")}</strong>
       <span>{text("BEs keep error logs for 48 hours by default (load_error_log_reserve_hours). Only the error message StarRocks recorded is left.", "BE 默认保留错误日志 48 小时（load_error_log_reserve_hours），超过后只剩 StarRocks 记录的错误信息。")}</span>
-      <span className="history-muted">{text("Planned (L1): once collected into the history store, error logs are kept for 30 days.", "Planned（L1）：采集入历史库后，带过滤行的导入会在 48 小时内自动保存错误日志，保留 30 天。")}</span>
+      <span className="history-muted">{text("If SR Doctor was collecting then, a saved copy may be under History › Error logs.", "如果当时 SR Doctor 正在采集，可在“历史 › 错误日志”里查看保存的副本。")}</span>
     </div>;
   }
   if (log.state === "unavailable") {
@@ -67,12 +75,13 @@ export function ErrorLogBody({ log, text }: { log: LoadErrorLogResponse; text: L
 }
 
 export function LoadErrorLogDialog({ connectionId, target, onClose, text }: {
-  connectionId: string;
+  connectionId: string | null;
   target: ErrorLogTarget;
   onClose(): void;
   text: LocalizedText;
 }): JSX.Element {
   const [log, setLog] = useState<LoadErrorLogResponse | null>(null);
+  const [storedState, setStoredState] = useState<StoredLoadErrorLogState | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const dialog = useRef<HTMLDivElement>(null);
   // Focus moves into the dialog, stays there while it is open (aria-modal)
@@ -95,11 +104,17 @@ export function LoadErrorLogDialog({ connectionId, target, onClose, text }: {
   };
   useEffect(() => {
     const controller = new AbortController();
-    doctorApi.readLoadErrorLog(connectionId, target.jobId, controller.signal)
+    const read: Promise<LoadErrorLogResponse> = target.stored
+      ? doctorApi.readLoadHistoryErrorLog({ connection_id: connectionId, target: target.target ?? null, job_id: target.jobId }, controller.signal).then((saved) => {
+        if (!controller.signal.aborted) setStoredState(saved.log.state);
+        return { job_id: saved.log.job_id, state: saved.entries.length ? "available" : "none", entries: saved.entries, categories: saved.log.categories, truncated: saved.log.truncated, limitations: saved.limitations };
+      })
+      : connectionId ? doctorApi.readLoadErrorLog(connectionId, target.jobId, controller.signal) : Promise.reject({ code: "connection_expired" });
+    read
       .then((value) => { if (!controller.signal.aborted) setLog(value); })
       .catch((cause: unknown) => { if (!controller.signal.aborted) setError(failureId(cause, "request_failed")); });
     return () => controller.abort();
-  }, [connectionId, target.jobId]);
+  }, [connectionId, target.jobId, target.stored]);
   return <div className="notify-overlay" onKeyDown={onKeyDown} role="presentation">
     <div aria-labelledby="load-error-title" aria-modal="true" className="notify-dialog load-error-dialog" ref={dialog} role="dialog" tabIndex={-1}>
       <div className="notify-dialog-head">
@@ -113,12 +128,14 @@ export function LoadErrorLogDialog({ connectionId, target, onClose, text }: {
       </div>
       <div className="notify-dialog-body">
         {error ? <p className="capability-error" role="alert">{loadFailureText(error, text)}</p>
-          : log ? <ErrorLogBody log={log} text={text} />
+          : log ? <ErrorLogBody log={log} storedState={storedState} text={text} />
             : <p className="workspace-loading" role="status">{text("Reading the error log…", "正在读取错误日志…")}</p>}
         <ul className="notify-notes boxed">
-          <li>{text("Read from StarRocks information_schema.load_tracking_logs for this job; it is the same text as the ErrorURL. SR Doctor does not reach the BE HTTP port.", "内容由 StarRocks 的 information_schema.load_tracking_logs 按这次导入的 job_id 读取，与 ErrorURL 的内容一致；SR Doctor 不直接访问 BE 的 8040 端口。")}</li>
+          <li>{target.stored
+            ? text("A copy the collector read from information_schema.load_tracking_logs after the load finished and saved in the local history store.", "采集任务在导入结束后从 information_schema.load_tracking_logs 读取、保存在本机历史库里的副本。")
+            : text("Read from StarRocks information_schema.load_tracking_logs for this job; it is the same text as the ErrorURL. SR Doctor does not reach the BE HTTP port.", "内容由 StarRocks 的 information_schema.load_tracking_logs 按这次导入的 job_id 读取，与 ErrorURL 的内容一致；SR Doctor 不直接访问 BE 的 8040 端口。")}</li>
           <li>{text("StarRocks keeps about 50 error rows per load and only the first error of each row.", "StarRocks 每次导入最多记录约 50 行错误，每行只报第一个错误。")}</li>
-          <li>{text("Rows are business data: read when opened and not saved (saving them for 30 days is planned for L1).", "原始行含业务数据：现在只在打开时读取、不保存；L1 起按约定明文存入本机历史库，保留 30 天、总量 50 MB。")}</li>
+          <li>{text("Rows are business data. While collecting, loads with filtered rows have a copy saved in plain text in the local history store (30 days, 50 MB in all); it never goes to logs, notifications or exports.", "原始行含业务数据。采集期间，有过滤行的导入会按约定把一份副本明文保存在本机历史库（保留 30 天、总量 50 MB），不进日志、告警通知和导出。")}</li>
         </ul>
       </div>
       <div className="notify-dialog-foot">

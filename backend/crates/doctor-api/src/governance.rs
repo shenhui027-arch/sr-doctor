@@ -66,6 +66,17 @@ pub(crate) fn evaluate_alerts(
     target: &str,
     now: i64,
 ) -> doctor_history::Result<()> {
+    evaluate_alerts_with_loads(store, target, now, (Vec::new(), Vec::new()))
+}
+
+/// The SQL alerts plus the load alerts of the same cycle (task 59), sent in
+/// one notification.
+pub(crate) fn evaluate_alerts_with_loads(
+    store: &HistoryStore,
+    target: &str,
+    now: i64,
+    loads: (Vec<i64>, Vec<i64>),
+) -> doctor_history::Result<()> {
     let windows = TrendWindows::ending_at(now, ALERT_CURRENT_HOURS, ALERT_BASELINE_HOURS);
     let (mut raised, mut resolved) = (Vec::new(), Vec::new());
     for (template, trend) in evaluate(store, target, windows, windows.current_start)?.trends {
@@ -109,7 +120,9 @@ pub(crate) fn evaluate_alerts(
     }
     // Outbound notifications are best effort: a queue problem never blocks
     // the in-app alerts.
-    let _ = crate::notify::enqueue_alert_events(store, target, &raised, &resolved, now);
+    let _ = crate::notify::enqueue_alert_events(
+        store, target, &raised, &resolved, &loads.0, &loads.1, now,
+    );
     Ok(())
 }
 
