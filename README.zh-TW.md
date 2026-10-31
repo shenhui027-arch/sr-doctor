@@ -17,13 +17,25 @@
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
 [![Status](https://img.shields.io/badge/v1.0.4-local%20verified%20·%20production%20pending-orange.svg)](#專案狀態)
 
-[快速開始](#快速開始) · [功能](#功能) · [截圖](#截圖) · [文件](#文件) · [安全](SECURITY.md) · [參與開發](CONTRIBUTING.md) · [更新日誌](CHANGELOG.md)
+[最近更新](#最近更新) · [快速開始](#快速開始) · [功能](#功能) · [截圖](#截圖) · [文件](#文件) · [安全](SECURITY.md) · [參與開發](CONTRIBUTING.md) · [更新日誌](CHANGELOG.md)
 
 <img src="docs/assets/screenshots/02-doctor.png" alt="診斷工作區：執行結構圖、依嚴重度排列的發現項與證據鏈" width="900">
 
 </div>
 
 > 產品介面支援簡體中文與英文；`docs/` 下的詳細指南以簡體中文撰寫。
+
+## 最近更新
+
+| 版本 | 新增 |
+|---|---|
+| **v1.0.4** | 匯入歷史與匯入告警：保存 30 天的匯入紀錄；Routine Load 暫停、積壓上漲、匯入失敗變多時自動提醒（試運行） |
+| **v1.0.3** | Stream Load、INSERT、Routine Load 分開看各自的匯入效能 |
+| **v1.0.2** | Stream Load、Routine Load、INSERT 匯入監控：匯入次數、失敗、耗時、Routine Load 積壓、被拒絕的資料和原因 |
+| **v1.0.1** | SQL 效能概覽（耗時、掃描量、CPU、記憶體的趨勢）；告警可發郵件、飛書、釘釘、簡訊 |
+| **v1.0.0** | SQL 品質監控：同類 SQL 歸併、效能趨勢、變慢自動告警、問題追蹤到解決 |
+
+完整變更見[更新日誌](CHANGELOG.md)，下載見 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。
 
 ## 為什麼用它
 

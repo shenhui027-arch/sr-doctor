@@ -17,11 +17,23 @@
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
 [![Status](https://img.shields.io/badge/v1.0.4-local%20verified%20·%20production%20pending-orange.svg)](#项目状态)
 
-[快速开始](#快速开始) · [功能](#功能) · [截图](#截图) · [文档](#文档) · [安全](SECURITY.md) · [参与开发](CONTRIBUTING.md) · [更新日志](CHANGELOG.md)
+[最近更新](#最近更新) · [快速开始](#快速开始) · [功能](#功能) · [截图](#截图) · [文档](#文档) · [安全](SECURITY.md) · [参与开发](CONTRIBUTING.md) · [更新日志](CHANGELOG.md)
 
 <img src="docs/assets/screenshots/02-doctor.png" alt="诊断工作区：执行结构图、按严重度排列的发现项与证据链" width="900">
 
 </div>
+
+## 最近更新
+
+| 版本 | 新增 |
+|---|---|
+| **v1.0.4** | 导入历史与导入告警：保存 30 天的导入记录；Routine Load 暂停、积压上涨、导入失败变多时自动提醒（试运行） |
+| **v1.0.3** | Stream Load、INSERT、Routine Load 分开看各自的导入性能 |
+| **v1.0.2** | Stream Load、Routine Load、INSERT 导入监控：导入次数、失败、耗时、Routine Load 积压、被拒绝的数据和原因 |
+| **v1.0.1** | SQL 性能概览（耗时、扫描量、CPU、内存的趋势）；告警可发邮件、飞书、钉钉、短信 |
+| **v1.0.0** | SQL 质量监控：同类 SQL 归并、性能趋势、变慢自动告警、问题跟踪到解决 |
+
+完整变更见[更新日志](CHANGELOG.md)，下载见 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。
 
 ## 为什么用它
 

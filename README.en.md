@@ -17,13 +17,25 @@ Every conclusion comes with evidence; when the evidence is not enough, it says s
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
 [![Status](https://img.shields.io/badge/v1.0.4-local%20verified%20·%20production%20pending-orange.svg)](#project-status)
 
-[Quick start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) · [Docs](#documentation) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+[What's new](#whats-new) · [Quick start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) · [Docs](#documentation) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 <img src="docs/assets/screenshots/02-doctor.png" alt="Doctor workspace: execution structure, findings by severity and their evidence" width="900">
 
 </div>
 
 > The product UI is bilingual (English and Simplified Chinese). The detailed guides under `docs/` are written in Simplified Chinese.
+
+## What's new
+
+| Version | New |
+|---|---|
+| **v1.0.4** | Load history and load alerts: 30 days of load records kept; alerts when Routine Load pauses, lag grows or loads start failing more (on trial) |
+| **v1.0.3** | Load performance for Stream Load, INSERT and Routine Load, each on its own |
+| **v1.0.2** | Stream Load, Routine Load and INSERT monitoring: load counts, failures, durations, Routine Load lag, rejected rows and why |
+| **v1.0.1** | SQL performance overview (trends of duration, scanned data, CPU and memory); alerts by email, Feishu, DingTalk and SMS |
+| **v1.0.0** | SQL quality monitoring: similar SQL grouped, performance trends, alerts when SQL gets slower, issues tracked until fixed |
+
+See the [changelog](CHANGELOG.md) for every change and [Releases](https://github.com/shenhui027-arch/sr-doctor/releases) to download.
 
 ## Why
 
