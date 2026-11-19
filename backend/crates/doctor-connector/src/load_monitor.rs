@@ -21,6 +21,8 @@ use doctor_contracts::{
 use doctor_core::{CollectedLoad, LoadHistoryKind};
 use serde_json::Value;
 
+use crate::{CollectionTimeProof, audit_workload::collection_time_condition};
+
 /// Routine Load jobs read per request (newest first).
 pub const ROUTINE_LOAD_JOBS_LIMIT: usize = 500;
 /// Two FE managers keep about 1000 records each by default; the transport
@@ -86,8 +88,15 @@ pub const LOAD_HISTORY_SLICE_LIMIT: usize = 2000;
 /// the finish time as epoch seconds evaluated by the same session (as the
 /// audit collector does). Running loads have no finish time and drop out.
 pub fn load_history_slice_statement(start: u32, end: u32) -> String {
+    let time = collection_time_condition(&start.to_string(), &end.to_string());
     format!(
-        "SELECT {LOAD_RECORD_COLUMNS}, UNIX_TIMESTAMP(LOAD_FINISH_TIME) FROM information_schema.loads WHERE LOAD_FINISH_TIME >= FROM_UNIXTIME({start}) AND LOAD_FINISH_TIME < FROM_UNIXTIME({end}) ORDER BY ID LIMIT {}",
+        "WITH time_proof AS (SELECT CASE WHEN {time} THEN 1 ELSE 0 END AS verified), \
+         load_details AS (SELECT 2 AS collection_row, {LOAD_RECORD_COLUMNS}, UNIX_TIMESTAMP(LOAD_FINISH_TIME) AS finish_epoch \
+         FROM information_schema.loads CROSS JOIN time_proof \
+         WHERE verified = 1 AND LOAD_FINISH_TIME >= FROM_UNIXTIME({start}) AND LOAD_FINISH_TIME < FROM_UNIXTIME({end}) \
+         ORDER BY ID LIMIT {}) \
+         SELECT verified AS collection_row, NULL AS ID, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM time_proof \
+         UNION ALL SELECT * FROM load_details ORDER BY collection_row, ID",
         LOAD_HISTORY_SLICE_LIMIT + 1
     )
 }
@@ -96,7 +105,15 @@ pub fn load_history_slice_statement(start: u32, end: u32) -> String {
 /// earliest finish time among them, to tell when a batch clear or expiry
 /// reached a slice before it was read.
 pub fn load_retention_statement() -> String {
-    "SELECT TYPE, COUNT(*), UNIX_TIMESTAMP(MIN(LOAD_FINISH_TIME)) FROM information_schema.loads GROUP BY TYPE".to_owned()
+    let time = collection_time_condition("earliest_epoch", "earliest_epoch + 1");
+    format!(
+        "WITH retained AS (SELECT TYPE, COUNT(*) AS records, MIN(LOAD_FINISH_TIME) AS earliest \
+         FROM information_schema.loads GROUP BY TYPE), \
+         epochs AS (SELECT TYPE, records, earliest, UNIX_TIMESTAMP(earliest) AS earliest_epoch FROM retained) \
+         SELECT TYPE, records, earliest_epoch, CASE WHEN earliest IS NULL OR \
+         (CAST(FROM_UNIXTIME(earliest_epoch) AS DATETIME) = earliest AND ({time})) THEN 1 ELSE 0 END \
+         FROM epochs"
+    )
 }
 
 /// One job at a time: the BE scanner fetches every listed URL and joins
@@ -1790,6 +1807,7 @@ pub struct LoadHistorySlice {
     pub cut: bool,
     /// Finished rows without a usable finish time or job id (not counted).
     pub unusable: u64,
+    pub time: CollectionTimeProof,
 }
 
 fn history_kind(kind: &str) -> LoadHistoryKind {
@@ -1862,6 +1880,7 @@ pub fn decode_load_history_slice(
         read,
         cut,
         unusable,
+        time: CollectionTimeProof::Verified,
     }
 }
 
@@ -3165,7 +3184,14 @@ mod tests {
         let statement = load_history_slice_statement(3_600, 3_900);
         assert!(statement.contains("LOAD_FINISH_TIME >= FROM_UNIXTIME(3600)"));
         assert!(statement.contains("LOAD_FINISH_TIME < FROM_UNIXTIME(3900)"));
-        assert!(statement.ends_with(&format!("LIMIT {}", LOAD_HISTORY_SLICE_LIMIT + 1)));
+        // The row limit bounds the detail rows; the proof row is added after it.
+        assert!(statement.contains(&format!(
+            "ORDER BY ID LIMIT {})",
+            LOAD_HISTORY_SLICE_LIMIT + 1
+        )));
+        assert!(
+            statement.ends_with("UNION ALL SELECT * FROM load_details ORDER BY collection_row, ID")
+        );
         assert!(!statement.contains('\''));
         let finished = r#"{"begin_txn_time_ms": 1, "plan_time_ms": 2, "receive_data_time_ms": 0}"#;
         let slice = decode_load_history_slice(

@@ -295,6 +295,10 @@ impl AuditTableName {
             .join(".")
     }
 
+    pub(crate) fn database<'a>(&'a self, default_database: Option<&'a str>) -> Option<&'a str> {
+        self.0.rsplit('.').nth(1).or(default_database)
+    }
+
     pub(crate) fn as_source_name(&self) -> &str {
         &self.0
     }
@@ -391,26 +395,121 @@ pub fn audit_fingerprint_event_statement(
 /// development default; the production budget comes from G1).
 pub const AUDIT_COLLECTION_SLICE_LIMIT: u16 = 1000;
 
-/// One stage B collection slice: the canonical executions whose audit
-/// timestamp falls in the scope window, oldest first, each with its
-/// fingerprint-length `stmt` prefix and whether duplicate rows agree on it.
-/// The last column is the full slice count, so a bounded read knows it is
-/// partial. Duplicate audit rows of one execution are one event (by queryId).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AuditCollectionWindow {
+    pub start: u32,
+    pub end: u32,
+    pub context_start: u32,
+    pub context_end: u32,
+}
+
+/// The audit `queryId` shape (8-4-4-4-12 hex), lowercased before matching.
+const QUERY_ID_PATTERN: &str = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
+
+/// The source writer and collection session are assumed to use the same
+/// time zone. Comparing wall-clock widths also detects an offset change.
+pub(crate) fn collection_time_condition(start: &str, end: &str) -> String {
+    let before = format!("GREATEST(0, ({start}) - 3600)");
+    let after = format!("(({end}) + 3600)");
+    let local = |epoch: &str| format!("CAST(FROM_UNIXTIME({epoch}) AS DATETIME)");
+    let (first, last) = (local(start), local(end));
+    format!(
+        "{last} > {first} AND TIMESTAMPDIFF(SECOND, {first}, {last}) = ({end}) - ({start}) \
+         AND TIMESTAMPDIFF(SECOND, {}, {}) = {after} - {before}",
+        local(&before),
+        local(&after),
+    )
+}
+
+/// One bounded background read. Row kind 0 is the mandatory summary, 1 is
+/// a usable execution and 2 is an excluded execution's identity.
+/// Kind 2 uses the statement-proof slot for its previous/next slice flags.
 pub fn audit_collection_slice_statement(
     table: &AuditTableName,
     scope: &AuditScope,
     schema: &AuditSchema,
+    window: &AuditCollectionWindow,
 ) -> Result<String, AuditSqlBuildError> {
     validate_occurrence_scope(scope, schema)?;
     schema.require(&[AuditColumn::Statement])?;
+    let &AuditCollectionWindow {
+        start,
+        end,
+        context_start,
+        context_end,
+    } = window;
+    if start != scope.window.start_seconds
+        || end != scope.window.end_seconds
+        || context_start > start
+        || context_end < end
+        || start.saturating_sub(context_start) > end - start
+        || context_end.saturating_sub(end) > end - start
+    {
+        return Err(AuditSqlBuildError::PointOutsideWindow);
+    }
+    let time = collection_time_condition(&start.to_string(), &end.to_string());
+    let context_time =
+        collection_time_condition(&context_start.to_string(), &context_end.to_string());
+    let predicate = scope_predicate_for_window(
+        scope,
+        AuditWindow {
+            start_seconds: context_start,
+            end_seconds: context_end,
+        },
+    );
+    let error_code_source = optional_source_projection(
+        schema,
+        AuditColumn::ErrorCode,
+        "errorCode",
+        "error_code",
+        "VARCHAR",
+    );
+    let pending_time_source = optional_source_projection(
+        schema,
+        AuditColumn::PendingTimeMs,
+        "pendingTimeMs",
+        "pending_time_ms",
+        "BIGINT",
+    );
+    // Collection excludes the entire execution when rows with the same
+    // queryId disagree on any collected field, including errorCode or pendingTimeMs.
+    let base_agreement = projected_rows_agree_having();
+    let error_code_agrees = optional_rows_agree_having("error_code");
+    let pending_time_agrees = optional_rows_agree_having("pending_time_ms");
+    let statement_agrees = optional_rows_agree_having("stmt");
+    let chars = AUDIT_FINGERPRINT_STATEMENT_CHARS;
+    let limit = AUDIT_COLLECTION_SLICE_LIMIT;
+    // The 4096-byte AuditLoader default is a product-decision heuristic.
+    // A different max_stmt_length can escape it. UTF-8 may drop 1–3 tail bytes.
     Ok(format!(
-        "{}, statement_facts AS (SELECT LOWER(`queryId`) AS `statement_query_id`, MAX(LEFT(`stmt`, {chars})) AS `statement_prefix`, MAX(CASE WHEN `stmt` IS NULL THEN 1 ELSE 0 END) AS `statement_null`, MAX(CASE WHEN CHAR_LENGTH(`stmt`) > {chars} THEN 1 ELSE 0 END) AS `statement_truncated`, CASE WHEN {agrees} THEN 1 ELSE 0 END AS `statement_agrees` FROM {table}{predicate} GROUP BY LOWER(`queryId`)) SELECT {OCCURRENCE_PROJECTION}, `statement_prefix`, `statement_null`, `statement_truncated`, `statement_agrees`, COUNT(*) OVER () AS `slice_count` FROM occurrence_events INNER JOIN statement_facts ON `occurrence_events`.`query_id` = `statement_facts`.`statement_query_id` ORDER BY `event_time` ASC, `query_id` ASC LIMIT {limit}",
-        canonical_occurrence_events_cte(table, scope, schema),
-        chars = AUDIT_FINGERPRINT_STATEMENT_CHARS,
-        agrees = optional_rows_agree_having("stmt"),
+        "WITH time_proof AS (SELECT CASE WHEN ({time}) AND ({context_time}) THEN 1 ELSE 0 END AS verified), \
+         audit_window AS (SELECT LOWER(`queryId`) AS `query_id`, `timestamp` AS `event_time`, `state`, `queryTime` AS `query_time`, `scanBytes` AS `scan_bytes`, `scanRows` AS `scan_rows`, `cpuCostNs` AS `cpu_cost_ns`, `memCostBytes` AS `mem_cost_bytes`, `returnRows` AS `return_rows`, `catalog` AS `catalog_name`, `db` AS `database_name`, `resourceGroup` AS `resource_group`, `digest`, {error_code_source}, {pending_time_source}, `stmt`, \
+         CASE WHEN `timestamp` >= FROM_UNIXTIME({start}) AND `timestamp` < FROM_UNIXTIME({end}) THEN 1 ELSE 0 END AS in_slice, \
+         CASE WHEN `timestamp` < FROM_UNIXTIME({start}) THEN 1 ELSE 0 END AS in_previous, \
+         CASE WHEN `timestamp` >= FROM_UNIXTIME({end}) THEN 1 ELSE 0 END AS in_next \
+         FROM {table} CROSS JOIN time_proof{predicate} AND verified = 1), \
+         candidates AS (SELECT *, CASE WHEN `query_id` REGEXP '{QUERY_ID_PATTERN}' THEN 1 ELSE 0 END AS valid_id FROM audit_window), \
+         grouped AS (SELECT `query_id`, MIN(`event_time`) AS `event_time`, MAX(`state`) AS `state`, MAX(`query_time`) AS `query_time`, MAX(`scan_bytes`) AS `scan_bytes`, MAX(`scan_rows`) AS `scan_rows`, MAX(`cpu_cost_ns`) AS `cpu_cost_ns`, MAX(`mem_cost_bytes`) AS `mem_cost_bytes`, MAX(`return_rows`) AS `return_rows`, MAX(`catalog_name`) AS `catalog_name`, MAX(`database_name`) AS `database_name`, MAX(`resource_group`) AS `resource_group`, MAX(`digest`) AS `digest`, MAX(`error_code`) AS `error_code`, MAX(`pending_time_ms`) AS `pending_time_ms`, 1 AS `error_code_agrees`, 1 AS `pending_time_agrees`, \
+         MAX(LEFT(`stmt`, {chars})) AS statement_prefix, CASE WHEN MAX(CHAR_LENGTH(`stmt`)) > {chars} THEN 1 WHEN MAX(LENGTH(`stmt`)) BETWEEN 4093 AND 4096 THEN 2 ELSE 0 END AS statement_proof, \
+         CASE WHEN {base_agreement} AND {error_code_agrees} AND {pending_time_agrees} AND {statement_agrees} THEN 1 ELSE 2 END AS row_kind, \
+         MAX(in_slice) AS in_slice, MAX(in_previous) AS in_previous, MAX(in_next) AS in_next \
+         FROM candidates WHERE valid_id = 1 GROUP BY `query_id`), \
+         counts AS (SELECT COUNT(CASE WHEN row_kind = 1 THEN 1 END) AS eligible, \
+         COUNT(CASE WHEN row_kind = 2 AND in_previous = 0 THEN 1 END) AS owned, \
+         COUNT(CASE WHEN row_kind = 2 THEN 1 END) AS conflicts, \
+         COALESCE(MAX(CASE WHEN row_kind = 2 THEN in_previous END), 0) AS previous_conflict, \
+         COALESCE(MAX(CASE WHEN row_kind = 2 THEN in_next END), 0) AS next_conflict \
+         FROM grouped WHERE in_slice = 1), \
+         invalid AS (SELECT COUNT(*) AS invalid_ids FROM candidates WHERE valid_id = 0 AND in_slice = 1), \
+         details AS (SELECT {OCCURRENCE_PROJECTION}, CASE WHEN row_kind = 1 THEN statement_prefix END AS statement_prefix, \
+         CASE WHEN row_kind = 2 THEN in_previous + 2 * in_next ELSE statement_proof END AS statement_proof, row_kind \
+         FROM grouped WHERE in_slice = 1 ORDER BY row_kind, `event_time` ASC, `query_id` ASC LIMIT {limit}) \
+         SELECT CAST(eligible AS VARCHAR) AS `query_id`, CAST(owned AS VARCHAR) AS `event_time`, invalid_ids, conflicts, previous_conflict, next_conflict, verified, \
+         CASE WHEN eligible + conflicts > {limit} THEN 1 ELSE 0 END, \
+         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0 AS row_kind \
+         FROM counts CROSS JOIN invalid CROSS JOIN time_proof \
+         UNION ALL SELECT * FROM details ORDER BY row_kind, `event_time` ASC, `query_id` ASC",
         table = table.quoted(),
-        predicate = scope_predicate(scope),
-        limit = AUDIT_COLLECTION_SLICE_LIMIT,
     ))
 }
 

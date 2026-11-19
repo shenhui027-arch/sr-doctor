@@ -9,7 +9,8 @@ use doctor_core::{LoadBucketDelta, LoadCount, LoadHistoryKind};
 use rusqlite::{OptionalExtension, Row, Transaction, params};
 
 use crate::{
-    HistoryError, HistoryStore, Result, RunRecord, RunState, decode_metric, encode_metric,
+    HistoryError, HistoryStore, Result, RunRecord, RunState, SliceEvidence, decode_metric,
+    encode_metric,
 };
 
 pub(crate) const MIGRATION_6: &str = "
@@ -584,6 +585,53 @@ impl HistoryStore {
         buckets: &[LoadBucketDelta],
         candidates: &[ErrorLogCandidate],
     ) -> Result<bool> {
+        self.write_load_slice(
+            target,
+            engine_version,
+            rule_version,
+            run,
+            watermark,
+            buckets,
+            candidates,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_collected_load_slice(
+        &self,
+        target: &str,
+        engine_version: &str,
+        rule_version: &str,
+        run: &RunRecord,
+        evidence: &SliceEvidence,
+        buckets: &[LoadBucketDelta],
+        candidates: &[ErrorLogCandidate],
+    ) -> Result<bool> {
+        self.write_load_slice(
+            target,
+            engine_version,
+            rule_version,
+            run,
+            run.slice_end,
+            buckets,
+            candidates,
+            Some(evidence),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn write_load_slice(
+        &self,
+        target: &str,
+        engine_version: &str,
+        rule_version: &str,
+        run: &RunRecord,
+        watermark: i64,
+        buckets: &[LoadBucketDelta],
+        candidates: &[ErrorLogCandidate],
+        evidence: Option<&SliceEvidence>,
+    ) -> Result<bool> {
         let mut connection = self.lock();
         let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         let current: Option<i64> = tx
@@ -623,6 +671,7 @@ impl HistoryStore {
                         ..LoadBucketDelta::default()
                     });
             merged.merge(delta);
+            merged.system |= delta.system;
             let (tv, ts, tm, th) = encode_metric(&merged.total_seconds);
             let (av, as_, am, ah) = encode_metric(&merged.phases_ms[0]);
             let (pv, ps, pm, ph) = encode_metric(&merged.phases_ms[1]);
@@ -651,6 +700,16 @@ impl HistoryStore {
             )?;
         }
         Self::insert_load_run(&tx, target, run)?;
+        if let Some(evidence) = evidence {
+            let (read_start, read_end) = evidence.read_range.unzip();
+            tx.execute(
+                "INSERT INTO collection_slice_evidence
+                   (source, target, slice_start, slice_end, run_id, read_start, read_end, excluded_count)
+                 VALUES ('load', ?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![target, run.slice_start, run.slice_end, tx.last_insert_rowid(), read_start,
+                    read_end, evidence.excluded_count.map(|count| count.to_string())],
+            )?;
+        }
         Self::set_load_watermark(&tx, target, watermark, run.started_at)?;
         tx.commit()?;
         Ok(true)
@@ -677,8 +736,11 @@ impl HistoryStore {
     pub fn load_runs(&self, target: &str, from: i64, to: i64) -> Result<Vec<RunRecord>> {
         let connection = self.lock();
         let mut statement = connection.prepare(
-            "SELECT started_at, slice_start, slice_end, state, reason, rows_read, duration_ms
-             FROM load_runs WHERE target = ?1 AND slice_end > ?2 AND slice_start < ?3 ORDER BY slice_start DESC, id DESC",
+            "SELECT r.started_at, r.slice_start, r.slice_end, r.state, r.reason, r.rows_read, r.duration_ms, e.excluded_count
+             FROM load_runs r LEFT JOIN collection_slice_evidence e
+               ON e.source = 'load' AND e.target = r.target AND e.slice_start = r.slice_start
+                 AND e.slice_end = r.slice_end AND e.run_id = r.id
+             WHERE r.target = ?1 AND r.slice_end > ?2 AND r.slice_start < ?3 ORDER BY r.slice_start DESC, r.id DESC",
         )?;
         let rows = statement.query_map(params![target, from, to], |row| {
             Ok(RunRecord {
@@ -690,7 +752,10 @@ impl HistoryStore {
                 rows_read: row.get::<_, i64>(5)? as u64,
                 attributed: 0,
                 partial_statements: 0,
-                unavailable_statements: 0,
+                unavailable_statements: row
+                    .get::<_, Option<String>>(7)?
+                    .and_then(|count| count.parse().ok())
+                    .unwrap_or_default(),
                 duration_ms: row.get::<_, i64>(6)? as u64,
             })
         })?;

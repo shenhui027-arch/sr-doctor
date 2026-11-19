@@ -2,12 +2,13 @@
 //! repository holding literal-free templates, hourly bucket aggregates, run
 //! records, collection watermarks and (stage D) alert and governance records.
 //! It never stores raw SQL literals, Profile text or StarRocks credentials.
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Mutex;
 
 use doctor_core::{
-    HISTORY_EXEMPLARS_PER_BUCKET, HistoryBucketDelta, HistoryMetric, HistoryTemplate,
-    HistoryTemplateKind, LogHistogram, TrendBucket,
+    CollectedExecution, HISTORY_EXEMPLARS_PER_BUCKET, HistoryBucketDelta, HistoryMetric,
+    HistoryTemplate, HistoryTemplateKind, LogHistogram, TrendBucket, aggregate_collection,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
@@ -33,7 +34,48 @@ pub use notify::{
 };
 pub use saved_connection::StoredConnection;
 
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
+pub const AUDIT_REPLAY_MAX_AGE_SECONDS: i64 = 60 * 60;
+
+/// One template's contribution to a slice as stored in `audit_slice_deltas`:
+/// key, executions, errors, four metrics (valid, sum, max, histogram) and exemplars.
+type StoredSliceDelta = (
+    String,
+    u64,
+    u64,
+    [(i64, String, Option<String>, Vec<u8>); 4],
+    Vec<(String, u64, i64)>,
+);
+const MIGRATION_10: &str = "
+CREATE TABLE collection_slice_evidence (
+  source TEXT NOT NULL,
+  target TEXT NOT NULL,
+  slice_start INTEGER NOT NULL,
+  slice_end INTEGER NOT NULL,
+  run_id INTEGER NOT NULL,
+  read_start INTEGER,
+  read_end INTEGER,
+  excluded_count TEXT,
+  revision INTEGER NOT NULL DEFAULT 1,
+  source_identity TEXT,
+  engine_version TEXT,
+  rule_version TEXT,
+  replay_pending INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (source, target, slice_start, slice_end)
+);
+CREATE TABLE audit_slice_deltas (
+  target TEXT NOT NULL,
+  slice_start INTEGER NOT NULL,
+  slice_end INTEGER NOT NULL,
+  bucket_start INTEGER NOT NULL,
+  observed_ids BLOB NOT NULL,
+  conflict_ids BLOB NOT NULL,
+  owned_conflict_ids BLOB NOT NULL,
+  deltas TEXT,
+  PRIMARY KEY (target, slice_start, slice_end)
+);
+CREATE INDEX audit_slice_deltas_hour ON audit_slice_deltas (target, bucket_start);
+";
 // Privacy policy has its own revision, independent of fingerprint identity.
 const TEMPLATE_REDACTION_VERSION: &str = "literal-free-template.v2";
 
@@ -232,6 +274,52 @@ pub struct RunRecord {
     pub duration_ms: u64,
 }
 
+pub struct SliceEvidence {
+    pub read_range: Option<(i64, i64)>,
+    pub excluded_count: Option<u64>,
+    pub reasons: Vec<&'static str>,
+}
+
+pub struct AuditReplayCandidate {
+    pub start: i64,
+    pub end: i64,
+    pub revision: u64,
+}
+
+pub enum AuditSliceWrite {
+    Forward { expected_watermark: Option<i64> },
+    Replay { expected_revision: u64 },
+}
+
+pub struct AuditSliceCommit<'a> {
+    pub run: &'a RunRecord,
+    pub evidence: &'a SliceEvidence,
+    pub engine_version: &'a str,
+    pub rule_version: &'a str,
+    pub source_identity: &'a str,
+    pub rows: Vec<CollectedExecution>,
+    /// Excluded identity and whether the read saw it in the previous/next slice.
+    pub excluded_ids: &'a [([u8; 32], (bool, bool))],
+    /// Neighbours reported by a summary whose conflict identities were cut by the row limit.
+    pub affected_neighbours: &'a [(i64, i64)],
+}
+
+pub fn audit_identity(id: &str) -> [u8; 32] {
+    let hash = doctor_contracts::canonical_hash(&id);
+    let mut bytes = [0; 32];
+    for (byte, pair) in bytes.iter_mut().zip(hash.as_bytes().chunks_exact(2)) {
+        *byte = u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap();
+    }
+    bytes
+}
+
+fn audit_ids(bytes: &[u8]) -> BTreeSet<[u8; 32]> {
+    bytes
+        .chunks_exact(32)
+        .map(|id| id.try_into().unwrap())
+        .collect()
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TargetState {
     pub watermark: Option<i64>,
@@ -403,8 +491,9 @@ impl HistoryStore {
             tx.execute_batch(saved_connection::MIGRATION_8)?;
         }
         if version < SCHEMA_VERSION {
-            // v9 records VersionPack identity in new rule keys. Older keys
-            // remain untouched because their semantics cannot be recovered.
+            // v9 coverage and rule keys are retained. Their new evidence
+            // fields are unknown, and only v10 slices can be replayed.
+            tx.execute_batch(MIGRATION_10)?;
             tx.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?1)",
                 params![SCHEMA_VERSION.to_string()],
@@ -559,7 +648,30 @@ impl HistoryStore {
             return Ok(false);
         }
         let storage_rule_version = TrendBucket::storage_rule_version(engine_version, rule_version);
-        let rule_version = storage_rule_version.as_str();
+        Self::write_audit_contributions(
+            &tx,
+            target,
+            engine_version,
+            &storage_rule_version,
+            run.slice_end,
+            templates,
+            buckets,
+        )?;
+        Self::insert_run(&tx, target, run)?;
+        Self::set_watermark(&tx, target, watermark, run.started_at)?;
+        tx.commit()?;
+        Ok(true)
+    }
+
+    fn write_audit_contributions(
+        tx: &Transaction<'_>,
+        target: &str,
+        engine_version: &str,
+        rule_version: &str,
+        seen_at: i64,
+        templates: &[HistoryTemplate],
+        buckets: &[HistoryBucketDelta],
+    ) -> Result<()> {
         for template in templates {
             let clean = template.template.as_deref().and_then(|text| {
                 redacted_template(text, Some(&template.catalog), Some(&template.database))
@@ -568,7 +680,7 @@ impl HistoryStore {
                 "INSERT INTO templates (template_key, target, kind, identity, catalog, database, template, first_seen, last_seen)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
                  ON CONFLICT(template_key) DO UPDATE SET template = COALESCE(templates.template, excluded.template), last_seen = MAX(templates.last_seen, excluded.last_seen)",
-                params![template.template_key, target, template.kind.as_str(), template.identity, template.catalog, template.database, clean, run.slice_end],
+                params![template.template_key, target, template.kind.as_str(), template.identity, template.catalog, template.database, clean, seen_at],
             )?;
         }
         for delta in buckets {
@@ -622,8 +734,567 @@ impl HistoryStore {
                 )?;
             }
         }
-        Self::insert_run(&tx, target, run)?;
-        Self::set_watermark(&tx, target, watermark, run.started_at)?;
+        Ok(())
+    }
+
+    fn prune_audit_slice_deltas(
+        tx: &Transaction<'_>,
+        target: &str,
+        earliest_end: i64,
+    ) -> Result<()> {
+        // Forward catch-up can be far behind the replay horizon. Its next
+        // slice can still meet the slice ending at the watermark. A replay can
+        // meet the predecessor of any slice still inside the horizon, using
+        // that slice's stored width even if the configured width has changed.
+        let identity_cutoff: i64 = tx.query_row(
+            "SELECT COALESCE(MIN(boundary), ?2) FROM (
+               SELECT watermark AS boundary FROM targets WHERE target = ?1
+               UNION ALL
+               SELECT slice_start FROM audit_slice_deltas
+                 WHERE target = ?1 AND slice_end >= ?2 AND deltas IS NOT NULL
+             )",
+            params![target, earliest_end],
+            |row| row.get(0),
+        )?;
+        tx.execute(
+            "DELETE FROM audit_slice_deltas WHERE target = ?1
+               AND bucket_start < ?2 AND slice_end < MIN(?2, ?3)",
+            params![
+                target,
+                earliest_end - doctor_core::HISTORY_BUCKET_SECONDS,
+                identity_cutoff
+            ],
+        )?;
+        // An older slice's delta can still be needed to rebuild the full
+        // hour after its identities are outside every reachable boundary.
+        tx.execute(
+            "UPDATE audit_slice_deltas
+             SET observed_ids = X'', conflict_ids = X'', owned_conflict_ids = X''
+             WHERE target = ?1 AND slice_end < ?2
+               AND (length(observed_ids) > 0 OR length(conflict_ids) > 0 OR length(owned_conflict_ids) > 0)",
+            params![target, identity_cutoff],
+        )?;
+        Ok(())
+    }
+
+    pub fn audit_replay_candidate(
+        &self,
+        target: &str,
+        earliest_end: i64,
+        latest_end: i64,
+    ) -> Result<Option<AuditReplayCandidate>> {
+        let mut connection = self.lock();
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        Self::prune_audit_slice_deltas(&tx, target, earliest_end)?;
+        let candidate = tx
+            .query_row(
+                "SELECT e.slice_start, e.slice_end, e.revision FROM collection_slice_evidence e
+             JOIN audit_slice_deltas d USING (target, slice_start, slice_end)
+              WHERE e.source = 'audit' AND e.target = ?1 AND e.replay_pending = 1
+                AND d.deltas IS NOT NULL AND e.slice_end BETWEEN ?2 AND ?3
+             ORDER BY e.slice_end, e.slice_start LIMIT 1",
+                params![target, earliest_end, latest_end],
+                |row| {
+                    Ok(AuditReplayCandidate {
+                        start: row.get(0)?,
+                        end: row.get(1)?,
+                        revision: row.get(2)?,
+                    })
+                },
+            )
+            .optional()?;
+        tx.commit()?;
+        Ok(candidate)
+    }
+
+    pub fn record_collected_audit_slice(
+        &self,
+        target: &str,
+        mode: AuditSliceWrite,
+        slice: AuditSliceCommit<'_>,
+    ) -> Result<bool> {
+        let mut connection = self.lock();
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let run = slice.run;
+        let (start, end) = (run.slice_start, run.slice_end);
+        let hour_width = doctor_core::HISTORY_BUCKET_SECONDS;
+        let hour = start.div_euclid(hour_width) * hour_width;
+        let stored_rules =
+            TrendBucket::storage_rule_version(slice.engine_version, slice.rule_version);
+        let mut reasons: Vec<&str> = slice.evidence.reasons.to_vec();
+        let (mut read_start, mut read_end) = slice.evidence.read_range.unzip();
+        let mut excluded_count = slice.evidence.excluded_count;
+        let row_ids: Vec<_> = slice
+            .rows
+            .iter()
+            .map(|row| row.query_id.as_deref().map(audit_identity))
+            .collect();
+        let mut observed: BTreeSet<_> = row_ids.iter().flatten().copied().collect();
+        let mut conflict_ids = BTreeSet::new();
+        let mut owned_conflicts = BTreeSet::new();
+        let mut old_ids = BTreeSet::new();
+        let mut old_reason = None;
+        let mut previously_unknown_exclusions = false;
+        let mut same_source = true;
+        let target_state: Option<(Option<i64>, bool)> = tx
+            .query_row(
+                "SELECT watermark, paused FROM targets WHERE target = ?1",
+                [target],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let (watermark, paused) = target_state.unwrap_or_default();
+        if paused {
+            return Ok(false);
+        }
+        // A v9 or legacy write has no reversible delta. A slice spanning
+        // hours is append-only too, so a later replay cannot erase its data.
+        let rebuildable = end <= hour + hour_width
+            && !tx.query_row(
+                "SELECT EXISTS (
+               SELECT 1 FROM runs r WHERE r.target = ?1 AND r.slice_end > ?2 AND r.slice_start < ?3
+                 AND r.state IN ('complete', 'partial') AND NOT EXISTS (
+                   SELECT 1 FROM audit_slice_deltas d WHERE d.target = r.target
+                      AND d.slice_start = r.slice_start AND d.slice_end = r.slice_end AND d.deltas IS NOT NULL)
+             )",
+                params![target, hour, hour + hour_width],
+                |row| row.get::<_, bool>(0),
+            )?;
+        let (run_id, revision, replay_pending, replace) = match mode {
+            AuditSliceWrite::Forward { expected_watermark } => {
+                if watermark != expected_watermark || watermark.is_some_and(|value| value > start) {
+                    return Ok(false);
+                }
+                Self::insert_run(&tx, target, run)?;
+                (tx.last_insert_rowid(), 1, rebuildable, true)
+            }
+            AuditSliceWrite::Replay { expected_revision } => {
+                let old = tx.query_row(
+                    "SELECT e.run_id, e.revision, e.source_identity, e.engine_version, e.rule_version,
+                            d.observed_ids, d.conflict_ids, d.owned_conflict_ids, r.reason, e.excluded_count
+                     FROM collection_slice_evidence e JOIN audit_slice_deltas d USING (target, slice_start, slice_end)
+                     JOIN runs r ON r.id = e.run_id
+                     WHERE e.source = 'audit' AND e.target = ?1 AND e.slice_start = ?2 AND e.slice_end = ?3",
+                    params![target, start, end],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, u64>(1)?, row.get::<_, String>(2)?,
+                         row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, Vec<u8>>(5)?,
+                         row.get::<_, Vec<u8>>(6)?, row.get::<_, Vec<u8>>(7)?,
+                         row.get::<_, Option<String>>(8)?, row.get::<_, Option<String>>(9)?)),
+                ).optional()?;
+                let Some((
+                    run_id,
+                    revision,
+                    source,
+                    engine,
+                    rules,
+                    ids,
+                    conflicts,
+                    owned,
+                    reason,
+                    excluded,
+                )) = old
+                else {
+                    return Ok(false);
+                };
+                if revision != expected_revision {
+                    return Ok(false);
+                }
+                same_source = source == slice.source_identity
+                    && (run.state == RunState::Failed
+                        || (engine == slice.engine_version && rules == stored_rules));
+                old_ids = audit_ids(&ids);
+                conflict_ids = audit_ids(&conflicts);
+                owned_conflicts = audit_ids(&owned);
+                old_reason = reason;
+                previously_unknown_exclusions = excluded.is_none();
+                let still_visible = old_ids.iter().all(|id| {
+                    observed.contains(id)
+                        || slice
+                            .excluded_ids
+                            .iter()
+                            .any(|(excluded, _)| excluded == id)
+                });
+                let replace = rebuildable && same_source && still_visible && read_start.is_some();
+                if !same_source {
+                    (read_start, read_end, excluded_count) = (None, None, None);
+                }
+                // A transport failure can retry within the same horizon.
+                let retry = same_source && run.state == RunState::Failed;
+                (run_id, revision + 1, retry, replace)
+            }
+        };
+        let mut suppressed = BTreeSet::new();
+        let mut reported_owned = 0;
+        if same_source {
+            for &(id, (previous, _)) in slice.excluded_ids {
+                let new = conflict_ids.insert(id);
+                if previous {
+                    owned_conflicts.remove(&id);
+                } else {
+                    reported_owned += 1;
+                    if new {
+                        owned_conflicts.insert(id);
+                    }
+                }
+            }
+            let mut statement = tx.prepare(
+                "SELECT d.slice_start, d.slice_end, d.observed_ids, d.conflict_ids, d.owned_conflict_ids,
+                        e.run_id, e.excluded_count, e.source_identity = ?4
+                 FROM audit_slice_deltas d JOIN collection_slice_evidence e USING (target, slice_start, slice_end)
+                 WHERE e.source = 'audit' AND d.target = ?1 AND (d.slice_end = ?2 OR d.slice_start = ?3)",
+            )?;
+            let neighbours = statement
+                .query_map(params![target, start, end, slice.source_identity], |row| {
+                    Ok((
+                        (row.get::<_, i64>(0)?, row.get::<_, i64>(1)?),
+                        audit_ids(&row.get::<_, Vec<u8>>(2)?),
+                        audit_ids(&row.get::<_, Vec<u8>>(3)?),
+                        audit_ids(&row.get::<_, Vec<u8>>(4)?),
+                        row.get::<_, i64>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, bool>(7)?,
+                    ))
+                })?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            for (
+                bounds,
+                neighbour_observed,
+                mut neighbour_conflicts,
+                mut neighbour_owned,
+                neighbour_run,
+                count,
+                same_neighbour_source,
+            ) in neighbours
+            {
+                let previous = bounds.1 == start;
+                let mut shared = BTreeSet::new();
+                // AuditLoader is append-only. Dedup does not follow source-side
+                // timestamp rewrites of one row across multiple slices.
+                for &id in observed.intersection(&neighbour_observed) {
+                    shared.insert(id);
+                    suppressed.insert(id);
+                    let new = conflict_ids.insert(id);
+                    if previous {
+                        owned_conflicts.remove(&id);
+                    } else if new {
+                        owned_conflicts.insert(id);
+                    }
+                }
+                if same_neighbour_source {
+                    shared.extend(slice.excluded_ids.iter().filter_map(
+                        |&(id, (before, after))| {
+                            (if previous { before } else { after }).then_some(id)
+                        },
+                    ));
+                }
+                // A limited summary can prove the neighbour is affected
+                // even when no conflict identity fits in the detail rows.
+                let unidentified =
+                    same_neighbour_source && slice.affected_neighbours.contains(&bounds);
+                let mark = !shared.is_empty() || unidentified;
+                let new_ids: Vec<_> = shared
+                    .iter()
+                    .copied()
+                    .filter(|&id| neighbour_conflicts.insert(id))
+                    .collect();
+                let has_new_ids = !new_ids.is_empty();
+                // The earlier slice now owns the exclusion. A later neighbour
+                // can already know the ID and still need to give up its count.
+                let removed = if previous {
+                    0
+                } else {
+                    let prior = neighbour_owned.len();
+                    neighbour_owned.retain(|id| !shared.contains(id));
+                    (prior - neighbour_owned.len()) as u64
+                };
+                if has_new_ids || removed != 0 || (unidentified && count.is_some()) {
+                    let added = if previous { new_ids.len() as u64 } else { 0 };
+                    if previous {
+                        neighbour_owned.extend(new_ids);
+                    }
+                    let count = count
+                        .filter(|_| !unidentified)
+                        .and_then(|value| value.parse::<u64>().ok())
+                        .map(|prior| {
+                            prior
+                                .saturating_sub(removed)
+                                .saturating_add(added)
+                                .to_string()
+                        });
+                    tx.execute(
+                        "UPDATE audit_slice_deltas SET conflict_ids = ?4, owned_conflict_ids = ?5
+                         WHERE target = ?1 AND slice_start = ?2 AND slice_end = ?3",
+                        params![
+                            target,
+                            bounds.0,
+                            bounds.1,
+                            neighbour_conflicts
+                                .into_iter()
+                                .collect::<Vec<_>>()
+                                .as_flattened(),
+                            neighbour_owned
+                                .into_iter()
+                                .collect::<Vec<_>>()
+                                .as_flattened()
+                        ],
+                    )?;
+                    tx.execute(
+                        "UPDATE collection_slice_evidence AS e SET revision = revision + 1, excluded_count = ?3,
+                            replay_pending = CASE WHEN NOT ?5 THEN replay_pending
+                             WHEN slice_end >= ?4 AND EXISTS (
+                                SELECT 1 FROM audit_slice_deltas d WHERE d.target = e.target
+                                  AND d.slice_start = e.slice_start AND d.slice_end = e.slice_end AND d.deltas IS NOT NULL
+                            ) THEN 1 ELSE 0 END
+                         WHERE source = 'audit' AND target = ?1 AND run_id = ?2",
+                        params![target, neighbour_run, count, run.started_at - AUDIT_REPLAY_MAX_AGE_SECONDS, has_new_ids],
+                    )?;
+                }
+                if mark {
+                    tx.execute(
+                        "UPDATE runs SET state = 'partial', reason = CASE WHEN reason IS NULL OR reason = 'first_look_unproven'
+                           THEN 'conflicting_query_id' ELSE reason || ',conflicting_query_id' END
+                         WHERE id = ?1 AND instr(',' || COALESCE(reason, '') || ',', ',conflicting_query_id,') = 0",
+                        [neighbour_run],
+                    )?;
+                }
+            }
+        }
+        observed.retain(|id| !suppressed.contains(id));
+        let rows: Vec<_> = slice
+            .rows
+            .into_iter()
+            .zip(row_ids)
+            .filter_map(|(row, id)| (!id.is_some_and(|id| suppressed.contains(&id))).then_some(row))
+            .collect();
+        let (templates, buckets, tally) = aggregate_collection(target, &rows);
+        let unavailable = tally.unavailable + tally.missing_context + tally.missing_time;
+        if tally.partial != 0 {
+            reasons.push("statement_truncated");
+        }
+        if !reasons.contains(&"conflicting_query_id")
+            && (!conflict_ids.is_empty()
+                || old_reason.as_deref().is_some_and(|reason| {
+                    reason
+                        .split(',')
+                        .any(|reason| reason == "conflicting_query_id")
+                }))
+        {
+            reasons.retain(|reason| *reason != "first_look_unproven");
+            reasons.push("conflicting_query_id");
+        }
+        // A capped replay cannot restore a count invalidated by an omitted identity.
+        excluded_count = excluded_count
+            .filter(|_| !(previously_unknown_exclusions && reasons.contains(&"row_limit")))
+            .map(|count| {
+                count
+                    .saturating_sub(reported_owned)
+                    .saturating_add(owned_conflicts.len() as u64)
+            });
+        // Product decision: a clean bounded replay completes the slice unless
+        // a conflict was already recorded.
+        // Rows arriving after the replay horizon can still go uncollected.
+        if reasons.is_empty()
+            && run.reason.is_none()
+            && (!matches!(mode, AuditSliceWrite::Replay { .. }) || !replace || unavailable != 0)
+        {
+            reasons.push("first_look_unproven");
+        }
+        if same_source
+            && matches!(mode, AuditSliceWrite::Replay { .. })
+            && !reasons.is_empty()
+            && observed.iter().any(|id| !old_ids.contains(id))
+        {
+            reasons.push("late_rows");
+        }
+        let reason = match (reasons.is_empty(), run.reason.as_deref()) {
+            (true, reason) => reason.map(str::to_owned),
+            (false, Some(reason)) => Some(format!("{},{}", reasons.join(","), reason)),
+            (false, None) => Some(reasons.join(",")),
+        };
+        let state =
+            if reason.is_some() || (matches!(mode, AuditSliceWrite::Replay { .. }) && !replace) {
+                RunState::Partial
+            } else {
+                run.state
+            };
+        tx.execute(
+            "UPDATE runs SET state = ?2, reason = ?3, started_at = ?4, duration_ms = ?5,
+               rows_read = CASE WHEN ?6 THEN ?7 ELSE rows_read END,
+               attributed = CASE WHEN ?6 THEN ?8 ELSE attributed END,
+               partial_statements = CASE WHEN ?6 THEN ?9 ELSE partial_statements END,
+               unavailable_statements = CASE WHEN ?6 THEN ?10 ELSE unavailable_statements END
+             WHERE id = ?1",
+            params![
+                run_id,
+                state.as_str(),
+                reason,
+                run.started_at,
+                run.duration_ms,
+                replace,
+                tally.read + suppressed.len() as u64,
+                tally.attributed,
+                tally.partial,
+                unavailable
+            ],
+        )?;
+        tx.execute(
+            "INSERT INTO collection_slice_evidence
+               (source, target, slice_start, slice_end, run_id, read_start, read_end, excluded_count,
+                revision, source_identity, engine_version, rule_version, replay_pending)
+             VALUES ('audit', ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+             ON CONFLICT(source, target, slice_start, slice_end) DO UPDATE SET
+               read_start = excluded.read_start, read_end = excluded.read_end, excluded_count = excluded.excluded_count,
+               revision = excluded.revision, replay_pending = excluded.replay_pending",
+             params![target, start, end, run_id, read_start, read_end, excluded_count.map(|count| count.to_string()), revision,
+                slice.source_identity, slice.engine_version, stored_rules, replay_pending],
+        )?;
+        if replace {
+            Self::write_audit_contributions(
+                &tx,
+                target,
+                slice.engine_version,
+                &stored_rules,
+                end,
+                &templates,
+                if matches!(mode, AuditSliceWrite::Forward { .. }) {
+                    &buckets
+                } else {
+                    &[]
+                },
+            )?;
+            let payload = if rebuildable {
+                let deltas: Vec<_> = buckets
+                    .iter()
+                    .map(|delta| {
+                        let exemplars: Vec<_> = delta
+                            .exemplars
+                            .iter()
+                            .map(|example| {
+                                (&example.query_id, example.query_time, example.event_seconds)
+                            })
+                            .collect();
+                        (
+                            &delta.template_key,
+                            delta.executions,
+                            delta.errors,
+                            [
+                                encode_metric(&delta.query_time),
+                                encode_metric(&delta.scan_bytes),
+                                encode_metric(&delta.cpu_cost),
+                                encode_metric(&delta.memory_cost),
+                            ],
+                            exemplars,
+                        )
+                    })
+                    .collect();
+                Some(
+                    serde_json::to_string(&deltas)
+                        .map_err(|_| HistoryError::Internal("audit_slice_deltas"))?,
+                )
+            } else {
+                None
+            };
+            tx.execute(
+                "INSERT OR REPLACE INTO audit_slice_deltas VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    target,
+                    start,
+                    end,
+                    hour,
+                    observed.into_iter().collect::<Vec<_>>().as_flattened(),
+                    conflict_ids.into_iter().collect::<Vec<_>>().as_flattened(),
+                    owned_conflicts
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                        .as_flattened(),
+                    payload
+                ],
+            )?;
+            if matches!(mode, AuditSliceWrite::Replay { .. }) {
+                tx.execute(
+                        "DELETE FROM buckets WHERE bucket_start = ?2 AND template_key IN (SELECT template_key FROM templates WHERE target = ?1)",
+                        params![target, hour],
+                    )?;
+                tx.execute(
+                        "DELETE FROM exemplars WHERE bucket_start = ?2 AND template_key IN (SELECT template_key FROM templates WHERE target = ?1)",
+                        params![target, hour],
+                    )?;
+                let mut statement = tx.prepare(
+                    "SELECT e.engine_version, e.rule_version, d.deltas FROM audit_slice_deltas d
+                         JOIN collection_slice_evidence e USING (target, slice_start, slice_end)
+                         WHERE e.source = 'audit' AND d.target = ?1 AND d.bucket_start = ?2
+                           AND d.deltas IS NOT NULL ORDER BY d.slice_start",
+                )?;
+                let mut rows = statement.query(params![target, hour])?;
+                while let Some(row) = rows.next()? {
+                    let (engine, rules, payload): (String, String, String) =
+                        (row.get(0)?, row.get(1)?, row.get(2)?);
+                    let encoded: Vec<StoredSliceDelta> = serde_json::from_str(&payload)
+                        .map_err(|_| HistoryError::Internal("audit_slice_deltas"))?;
+                    let deltas = encoded
+                        .into_iter()
+                        .map(|(template_key, executions, errors, metrics, exemplars)| {
+                            let [query_time, scan_bytes, cpu_cost, memory_cost] =
+                                metrics.map(|(valid, sum, max, hist)| {
+                                    decode_metric(valid, sum, max, hist)
+                                });
+                            Ok(HistoryBucketDelta {
+                                template_key,
+                                bucket_start: hour,
+                                executions,
+                                errors,
+                                query_time: query_time?,
+                                scan_bytes: scan_bytes?,
+                                cpu_cost: cpu_cost?,
+                                memory_cost: memory_cost?,
+                                exemplars: exemplars
+                                    .into_iter()
+                                    .map(|(query_id, query_time, event_seconds)| {
+                                        doctor_core::HistoryExemplar {
+                                            query_id,
+                                            query_time,
+                                            event_seconds,
+                                        }
+                                    })
+                                    .collect(),
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    Self::write_audit_contributions(
+                        &tx,
+                        target,
+                        &engine,
+                        &rules,
+                        end,
+                        &[],
+                        &deltas,
+                    )?;
+                }
+            }
+        } else {
+            tx.execute(
+                "UPDATE audit_slice_deltas SET conflict_ids = ?4, owned_conflict_ids = ?5
+                 WHERE target = ?1 AND slice_start = ?2 AND slice_end = ?3",
+                params![
+                    target,
+                    start,
+                    end,
+                    conflict_ids.into_iter().collect::<Vec<_>>().as_flattened(),
+                    owned_conflicts
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                        .as_flattened()
+                ],
+            )?;
+        }
+        if matches!(mode, AuditSliceWrite::Forward { .. }) {
+            Self::set_watermark(&tx, target, end, run.started_at)?;
+            Self::prune_audit_slice_deltas(
+                &tx,
+                target,
+                run.started_at - AUDIT_REPLAY_MAX_AGE_SECONDS,
+            )?;
+        }
         tx.commit()?;
         Ok(true)
     }
@@ -839,6 +1510,14 @@ impl HistoryStore {
             params![cutoff],
         )? as u64;
         tx.execute(governance::PURGE_ALERT_HANDOFFS, [])?;
+        removed += tx.execute(
+            "DELETE FROM audit_slice_deltas WHERE bucket_start < ?1",
+            params![cutoff],
+        )? as u64;
+        removed += tx.execute(
+            "DELETE FROM collection_slice_evidence WHERE slice_end < ?1",
+            params![cutoff],
+        )? as u64;
         removed += tx.execute("DELETE FROM runs WHERE slice_end < ?1", params![cutoff])? as u64;
         removed += tx.execute(
             "DELETE FROM notify_deliveries WHERE created_at < ?1 AND state <> 'pending'",
@@ -865,7 +1544,7 @@ impl HistoryStore {
         connection.execute_batch(load_alerts::CLEAR_LOAD_ALERTS)?;
         connection.execute_batch(saved_connection::CLEAR_SAVED_CONNECTION)?;
         connection.execute_batch(
-            &format!("DELETE FROM notify_deliveries; DELETE FROM governance_events; DELETE FROM governance_items; DELETE FROM alerts; {}; DELETE FROM exemplars; DELETE FROM buckets; DELETE FROM runs; DELETE FROM templates; DELETE FROM targets;", governance::PURGE_ALERT_HANDOFFS),
+            &format!("DELETE FROM notify_deliveries; DELETE FROM governance_events; DELETE FROM governance_items; DELETE FROM alerts; {}; DELETE FROM audit_slice_deltas; DELETE FROM collection_slice_evidence; DELETE FROM exemplars; DELETE FROM buckets; DELETE FROM runs; DELETE FROM templates; DELETE FROM targets;", governance::PURGE_ALERT_HANDOFFS),
         )?;
         Ok(())
     }
@@ -1111,6 +1790,713 @@ mod tests {
                 )],
             })
             .collect()
+    }
+
+    #[test]
+    fn audit_replay_replaces_effective_coverage_atomically() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        let mut executions = rows("x", 3_601);
+        executions.truncate(1);
+        let query_id = "00000000-0000-0000-0000-000000000009";
+        executions[0].query_id = Some(query_id.into());
+        let id = audit_identity(query_id);
+        let commit = |mode, state, reasons, observed: &[[u8; 32]], excluded: &[[u8; 32]]| {
+            let evidence = SliceEvidence {
+                read_range: Some((3_600, 3_900)),
+                excluded_count: Some(excluded.len() as u64),
+                reasons,
+            };
+            store
+                .record_collected_audit_slice(
+                    "t1",
+                    mode,
+                    AuditSliceCommit {
+                        run: &run(3_600, 3_900, state),
+                        evidence: &evidence,
+                        engine_version: "3.5.14",
+                        rule_version: "v1",
+                        source_identity: "s1",
+                        rows: if observed.is_empty() {
+                            Vec::new()
+                        } else {
+                            executions.clone()
+                        },
+                        excluded_ids: &excluded
+                            .iter()
+                            .map(|&id| (id, (false, false)))
+                            .collect::<Vec<_>>(),
+                        affected_neighbours: &[],
+                    },
+                )
+                .unwrap()
+        };
+        assert!(commit(
+            AuditSliceWrite::Forward {
+                expected_watermark: None
+            },
+            RunState::Partial,
+            vec!["first_look_unproven"],
+            &[id],
+            &[]
+        ));
+        assert!(commit(
+            AuditSliceWrite::Replay {
+                expected_revision: 1
+            },
+            RunState::Complete,
+            vec![],
+            &[id],
+            &[]
+        ));
+        assert_eq!(
+            store.runs("t1", 3_600, 3_900, 10).unwrap()[0].state,
+            RunState::Complete
+        );
+        assert!(commit(
+            AuditSliceWrite::Replay {
+                expected_revision: 2
+            },
+            RunState::Partial,
+            vec!["conflicting_query_id"],
+            &[],
+            &[id]
+        ));
+        assert!(!commit(
+            AuditSliceWrite::Replay {
+                expected_revision: 2
+            },
+            RunState::Complete,
+            vec![],
+            &[id],
+            &[]
+        ));
+        let runs = store.runs("t1", 3_600, 3_900, 10).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].state, RunState::Partial);
+        assert_eq!(runs[0].reason.as_deref(), Some("conflicting_query_id"));
+        assert!(store.buckets("t1", 3_600, 7_200, None).unwrap().is_empty());
+        let (revision, excluded): (u64, String) = store.lock().query_row(
+            "SELECT revision, excluded_count FROM collection_slice_evidence WHERE source = 'audit'",
+            [], |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+        assert_eq!((revision, excluded.as_str()), (3, "1"));
+        assert_eq!(store.target_state("t1").unwrap().watermark, Some(3_900));
+    }
+
+    #[test]
+    fn audit_adjacent_commit_keeps_the_stored_execution_once() {
+        for (start, replay_earlier) in [(3_300, false), (3_600, false), (3_300, true)] {
+            let store = HistoryStore::open_in_memory().unwrap();
+            let mut first = rows("x", start + 1).remove(0);
+            let id = "00000000-0000-0000-0000-000000000001";
+            first.query_id = Some(id.into());
+            let mut moved = first.clone();
+            moved.event_epoch_seconds = Some(start + 301);
+            moved.metrics[0].1 = AuditMetricInput::from_sql_cell(Some("999".into()));
+            let commit = |slice_start, mode, rows| {
+                let end = slice_start + 300;
+                store
+                    .record_collected_audit_slice(
+                        "t1",
+                        mode,
+                        AuditSliceCommit {
+                            run: &run(slice_start, end, RunState::Partial),
+                            evidence: &SliceEvidence {
+                                read_range: Some((slice_start, end)),
+                                excluded_count: Some(0),
+                                reasons: Vec::new(),
+                            },
+                            engine_version: "3.5.14",
+                            rule_version: "v1",
+                            source_identity: "s1",
+                            rows,
+                            excluded_ids: &[],
+                            affected_neighbours: &[],
+                        },
+                    )
+                    .unwrap()
+            };
+            let forward = |expected_watermark| AuditSliceWrite::Forward { expected_watermark };
+            let first_read = if replay_earlier {
+                vec![]
+            } else {
+                vec![first.clone()]
+            };
+            assert!(commit(start, forward(None), first_read));
+            assert!(commit(start + 300, forward(Some(start + 300)), vec![moved]));
+            if replay_earlier {
+                assert!(commit(
+                    start,
+                    AuditSliceWrite::Replay {
+                        expected_revision: 1
+                    },
+                    vec![first]
+                ));
+            }
+
+            let buckets = store.buckets("t1", 0, 7_200, None).unwrap();
+            assert_eq!(buckets.len(), 1);
+            let bucket = &buckets[0].delta;
+            let expected = if replay_earlier {
+                (3_600, 999, (1, 0))
+            } else {
+                (start.div_euclid(3_600) * 3_600, 10, (0, 1))
+            };
+            assert_eq!(bucket.bucket_start, expected.0);
+            assert_eq!(bucket.executions, 1);
+            assert_eq!(
+                (bucket.query_time.valid_count, bucket.query_time.max),
+                (1, Some(expected.1))
+            );
+            assert_eq!(bucket.query_time.histogram.count(), 1);
+            let exemplars = store.exemplars(&bucket.template_key, 0, 7_200, 10).unwrap();
+            assert_eq!(exemplars.len(), 1);
+            assert_eq!(exemplars[0].query_id, id);
+            assert_eq!(
+                exemplars[0].event_time,
+                if replay_earlier {
+                    start + 301
+                } else {
+                    start + 1
+                }
+            );
+            let runs = store.runs("t1", start, start + 600, 10).unwrap();
+            assert_eq!(runs.len(), 2);
+            assert_eq!((runs[0].attributed, runs[1].attributed), expected.2);
+            assert!(runs.iter().all(|run| run.state == RunState::Partial
+                && run.reason.as_deref() == Some("conflicting_query_id")));
+        }
+    }
+
+    #[test]
+    fn audit_new_conflict_requeues_an_already_partial_earliest_slice_once() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        let mut execution = rows("y", 3_601).remove(0);
+        let y = "00000000-0000-0000-0000-000000000002";
+        execution.query_id = Some(y.into());
+        let x = audit_identity("00000000-0000-0000-0000-000000000001");
+        let y = audit_identity(y);
+        let commit = |start, mode, rows, excluded_ids: &[([u8; 32], (bool, bool))]| {
+            let end = start + 300;
+            let mut run = run(start, end, RunState::Partial);
+            run.started_at = 6_000;
+            store
+                .record_collected_audit_slice(
+                    "t1",
+                    mode,
+                    AuditSliceCommit {
+                        run: &run,
+                        evidence: &SliceEvidence {
+                            read_range: Some((start, end)),
+                            excluded_count: Some(
+                                excluded_ids
+                                    .iter()
+                                    .filter(|(_, (previous, _))| !*previous)
+                                    .count() as u64,
+                            ),
+                            reasons: if excluded_ids.is_empty() {
+                                vec![]
+                            } else {
+                                vec!["conflicting_query_id"]
+                            },
+                        },
+                        engine_version: "3.5.14",
+                        rule_version: "v1",
+                        source_identity: "s1",
+                        rows,
+                        excluded_ids,
+                        affected_neighbours: &[],
+                    },
+                )
+                .unwrap()
+        };
+        let forward = |expected_watermark| AuditSliceWrite::Forward { expected_watermark };
+        let replay = |expected_revision| AuditSliceWrite::Replay { expected_revision };
+        assert!(commit(3_600, forward(None), vec![execution.clone()], &[]));
+        assert!(commit(3_900, forward(Some(3_900)), vec![], &[]));
+        assert!(commit(
+            3_600,
+            replay(1),
+            vec![execution],
+            &[(x, (false, false))]
+        ));
+        assert!(commit(3_900, replay(1), vec![], &[(y, (true, false))]));
+        assert!(commit(3_900, replay(2), vec![], &[(y, (true, false))]));
+
+        let candidate = store
+            .audit_replay_candidate("t1", 2_400, 4_200)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (candidate.start, candidate.end, candidate.revision),
+            (3_600, 3_900, 3)
+        );
+        let exclusions = |start| {
+            store
+                .lock()
+                .query_row(
+                    "SELECT excluded_count FROM collection_slice_evidence
+             WHERE source = 'audit' AND target = 't1' AND slice_start = ?1",
+                    [start],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(exclusions(3_600), "2");
+        assert_eq!(exclusions(3_900), "0");
+        assert!(commit(
+            3_600,
+            replay(candidate.revision),
+            vec![],
+            &[(x, (false, false)), (y, (false, true)),]
+        ));
+        assert_eq!(exclusions(3_600), "2");
+        assert!(store.buckets("t1", 3_600, 7_200, None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn audit_prunes_identities_only_after_forward_and_replay_neighbours_expire() {
+        for (earliest_end, replayable) in [(3_900, true), (10_800, false)] {
+            let store = HistoryStore::open_in_memory().unwrap();
+            let now = earliest_end + AUDIT_REPLAY_MAX_AGE_SECONDS;
+            let mut execution = rows("x", 3_301).remove(0);
+            execution.query_id = Some("00000000-0000-0000-0000-000000000001".into());
+            let commit = |start, mode, epoch| {
+                let end = start + 300;
+                let mut run = run(start, end, RunState::Complete);
+                run.started_at = now;
+                let mut execution = execution.clone();
+                execution.event_epoch_seconds = Some(epoch);
+                store
+                    .record_collected_audit_slice(
+                        "t1",
+                        mode,
+                        AuditSliceCommit {
+                            run: &run,
+                            evidence: &SliceEvidence {
+                                read_range: Some((start, end)),
+                                excluded_count: Some(0),
+                                reasons: vec![],
+                            },
+                            engine_version: "3.5.14",
+                            rule_version: "v1",
+                            source_identity: "s1",
+                            rows: vec![execution],
+                            excluded_ids: &[],
+                            affected_neighbours: &[],
+                        },
+                    )
+                    .unwrap()
+            };
+            let has_identity = || -> bool {
+                store
+                    .lock()
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM audit_slice_deltas
+                     WHERE target = 't1' AND slice_end = 3600 AND length(observed_ids) > 0)",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap()
+            };
+            let forward = |expected_watermark| AuditSliceWrite::Forward { expected_watermark };
+
+            assert!(commit(3_300, forward(None), 3_301));
+            let latest_end = now - 1_800;
+            assert!(
+                store
+                    .audit_replay_candidate("t1", earliest_end, latest_end)
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(has_identity());
+            assert!(commit(3_600, forward(Some(3_600)), 3_601));
+            assert_eq!(has_identity(), replayable);
+            if replayable {
+                let candidate = store
+                    .audit_replay_candidate("t1", earliest_end, latest_end)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!((candidate.start, candidate.end), (3_600, 3_900));
+                assert!(commit(
+                    3_600,
+                    AuditSliceWrite::Replay {
+                        expected_revision: candidate.revision,
+                    },
+                    3_601
+                ));
+                assert!(
+                    store
+                        .audit_replay_candidate("t1", earliest_end + 1, latest_end)
+                        .unwrap()
+                        .is_none()
+                );
+                assert!(!has_identity());
+            }
+            let buckets = store.buckets("t1", 0, 7_200, None).unwrap();
+            assert_eq!(buckets.len(), 1);
+            assert_eq!(buckets[0].delta.bucket_start, 0);
+            assert_eq!(buckets[0].delta.executions, 1);
+        }
+    }
+
+    #[test]
+    fn audit_limited_summary_marks_neighbour_without_requeuing_it() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        let commit = |start, mode, limited: bool| {
+            let end = start + 300;
+            let mut run = run(start, end, RunState::Complete);
+            run.started_at = 6_000;
+            store
+                .record_collected_audit_slice(
+                    "t1",
+                    mode,
+                    AuditSliceCommit {
+                        run: &run,
+                        evidence: &SliceEvidence {
+                            read_range: (!limited).then_some((start, end)),
+                            excluded_count: Some(0),
+                            reasons: if limited {
+                                vec!["row_limit", "conflicting_query_id"]
+                            } else {
+                                vec![]
+                            },
+                        },
+                        engine_version: "3.5.14",
+                        rule_version: "v1",
+                        source_identity: "s1",
+                        rows: vec![],
+                        excluded_ids: &[],
+                        affected_neighbours: if limited { &[(3_600, 3_900)] } else { &[] },
+                    },
+                )
+                .unwrap()
+        };
+        let neighbour = || store.runs("t1", 3_600, 3_900, 10).unwrap().remove(0);
+        assert!(commit(
+            3_600,
+            AuditSliceWrite::Forward {
+                expected_watermark: None
+            },
+            false
+        ));
+        assert!(commit(
+            3_600,
+            AuditSliceWrite::Replay {
+                expected_revision: 1
+            },
+            false
+        ));
+        assert_eq!(neighbour().state, RunState::Complete);
+
+        assert!(commit(
+            3_900,
+            AuditSliceWrite::Forward {
+                expected_watermark: Some(3_900)
+            },
+            true
+        ));
+        assert_eq!(neighbour().state, RunState::Partial);
+        assert_eq!(neighbour().reason.as_deref(), Some("conflicting_query_id"));
+        assert!(
+            store
+                .audit_replay_candidate("t1", 2_400, 3_900)
+                .unwrap()
+                .is_none()
+        );
+        assert!(commit(
+            3_600,
+            AuditSliceWrite::Replay {
+                expected_revision: 3
+            },
+            false
+        ));
+        assert_eq!(neighbour().state, RunState::Partial);
+        assert_eq!(neighbour().reason.as_deref(), Some("conflicting_query_id"));
+    }
+
+    #[test]
+    fn audit_known_conflict_moves_exclusion_to_earlier_slice() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        let id = audit_identity("00000000-0000-0000-0000-000000000001");
+        let other_id = audit_identity("00000000-0000-0000-0000-000000000002");
+        let commit = |start, mode, excluded_ids: &[([u8; 32], (bool, bool))], limited: bool| {
+            let end = start + 300;
+            let mut run = run(start, end, RunState::Complete);
+            run.started_at = 6_000;
+            let mut reasons = Vec::new();
+            if limited {
+                reasons.push("row_limit");
+            }
+            if !excluded_ids.is_empty() {
+                reasons.push("conflicting_query_id");
+            }
+            store
+                .record_collected_audit_slice(
+                    "t1",
+                    mode,
+                    AuditSliceCommit {
+                        run: &run,
+                        evidence: &SliceEvidence {
+                            read_range: (!limited).then_some((start, end)),
+                            excluded_count: Some(excluded_ids.len() as u64),
+                            reasons,
+                        },
+                        engine_version: "3.5.14",
+                        rule_version: "v1",
+                        source_identity: "s1",
+                        rows: vec![],
+                        excluded_ids,
+                        affected_neighbours: &[],
+                    },
+                )
+                .unwrap()
+        };
+        let exclusions = |start| {
+            store
+                .lock()
+                .query_row(
+                    "SELECT excluded_count FROM collection_slice_evidence
+                 WHERE source = 'audit' AND target = 't1' AND slice_start = ?1",
+                    [start],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap()
+        };
+        let forward = |expected_watermark| AuditSliceWrite::Forward { expected_watermark };
+        let replay = |expected_revision| AuditSliceWrite::Replay { expected_revision };
+
+        assert!(commit(3_600, forward(None), &[], false));
+        let local_conflicts = [(id, (false, false)), (other_id, (false, false))];
+        assert!(commit(3_900, forward(Some(3_900)), &local_conflicts, false));
+        assert_eq!(exclusions(3_600), "0");
+        assert_eq!(exclusions(3_900), "2");
+
+        assert!(commit(3_600, replay(1), &[(id, (false, true))], false));
+        assert_eq!(exclusions(3_600), "1");
+        assert_eq!(exclusions(3_900), "1");
+        // A later limited read still sees the ID as locally owned. The
+        // details identify it, so it must not reclaim the exclusion count.
+        assert!(commit(3_900, replay(2), &local_conflicts, true));
+        assert_eq!(exclusions(3_600), "1");
+        assert_eq!(exclusions(3_900), "1");
+        let runs = store.runs("t1", 3_600, 4_200, 10).unwrap();
+        assert_eq!(runs.len(), 2);
+        assert!(runs.iter().all(|run| {
+            run.state == RunState::Partial
+                && run
+                    .reason
+                    .as_deref()
+                    .unwrap()
+                    .contains("conflicting_query_id")
+        }));
+    }
+
+    #[test]
+    fn audit_unidentified_conflict_transfer_keeps_exclusions_unknown_until_full_replay() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        let id = audit_identity("00000000-0000-0000-0000-000000000001");
+        let commit = |start,
+                      mode,
+                      count,
+                      excluded_ids: &[([u8; 32], (bool, bool))],
+                      affected_neighbours: &[(i64, i64)]| {
+            let end = start + 300;
+            let mut run = run(start, end, RunState::Complete);
+            run.started_at = 6_000;
+            store
+                .record_collected_audit_slice(
+                    "t1",
+                    mode,
+                    AuditSliceCommit {
+                        run: &run,
+                        evidence: &SliceEvidence {
+                            read_range: affected_neighbours.is_empty().then_some((start, end)),
+                            excluded_count: count,
+                            reasons: if !affected_neighbours.is_empty() {
+                                vec!["row_limit", "conflicting_query_id"]
+                            } else if !excluded_ids.is_empty() {
+                                vec!["conflicting_query_id"]
+                            } else {
+                                vec![]
+                            },
+                        },
+                        engine_version: "3.5.14",
+                        rule_version: "v1",
+                        source_identity: "s1",
+                        rows: vec![],
+                        excluded_ids,
+                        affected_neighbours,
+                    },
+                )
+                .unwrap()
+        };
+        let exclusions = || {
+            let connection = store.lock();
+            let mut statement = connection
+                .prepare(
+                    "SELECT excluded_count FROM collection_slice_evidence
+                     WHERE source = 'audit' AND target = 't1' ORDER BY slice_start",
+                )
+                .unwrap();
+            statement
+                .query_map([], |row| row.get::<_, Option<String>>(0))
+                .unwrap()
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        let forward = |expected_watermark| AuditSliceWrite::Forward { expected_watermark };
+        let replay = |expected_revision| AuditSliceWrite::Replay { expected_revision };
+
+        assert!(commit(3_600, forward(None), Some(0), &[], &[]));
+        assert!(commit(
+            3_900,
+            forward(Some(3_900)),
+            Some(1),
+            &[(id, (false, false))],
+            &[]
+        ));
+        assert_eq!(exclusions(), [Some("0".into()), Some("1".into())]);
+
+        // A late copy in the earlier slice takes ownership, but neither capped
+        // read includes its identity. The later slice cannot keep its old 1.
+        assert!(commit(3_600, replay(1), None, &[], &[(3_900, 4_200)]));
+        assert_eq!(exclusions(), [None, None]);
+        assert!(commit(3_900, replay(2), None, &[], &[(3_600, 3_900)]));
+        assert_eq!(exclusions(), [None, None]);
+
+        assert!(commit(
+            3_900,
+            replay(3),
+            Some(0),
+            &[(id, (true, false))],
+            &[]
+        ));
+        assert_eq!(exclusions(), [None, Some("0".into())]);
+        assert!(commit(
+            3_600,
+            replay(3),
+            Some(1),
+            &[(id, (false, true))],
+            &[]
+        ));
+        assert_eq!(exclusions(), [Some("1".into()), Some("0".into())]);
+    }
+
+    #[test]
+    fn schema_v9_preserves_history_and_downgrades_unproven_coverage() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        let (templates, buckets, _) = aggregate_collection("t1", &rows("x", 3_601));
+        let first = run(3_600, 3_900, RunState::Complete);
+        store
+            .record_slice("t1", "3.5.14", "v1", &first, 3_900, &templates, &buckets)
+            .unwrap();
+        let load = run(0, 3_600, RunState::Complete);
+        store
+            .record_load_slice("t1", "3.5.14", "v1", &load, 3_600, &[], &[])
+            .unwrap();
+        let key = &templates[0].template_key;
+        let item = store
+            .create_item("t1", key, "old item", "manual", None, 3_601)
+            .unwrap()
+            .unwrap();
+        let alert = {
+            let connection = store.lock();
+            connection.execute(
+                "INSERT INTO alerts (target, template_key, state, first_seen, last_seen, severity,
+                 confidence, evidence, workload, bucket_start, engine_version, rule_version)
+                 VALUES ('t1', ?1, 'open', 3601, 3601, 'high', 'high', '{}', '{}', 3600, '3.5.14', 'v1')",
+                [key],
+            ).unwrap();
+            let alert = connection.last_insert_rowid();
+            connection
+                .execute_batch(
+                    "DROP TABLE audit_slice_deltas; DROP TABLE collection_slice_evidence;
+                 UPDATE meta SET value = '9' WHERE key = 'schema_version';",
+                )
+                .unwrap();
+            alert
+        };
+        store.migrate().unwrap();
+        assert_eq!(store.target_state("t1").unwrap().watermark, Some(3_900));
+        assert_eq!(
+            store.load_target_state("t1").unwrap().watermark,
+            Some(3_600)
+        );
+        assert_eq!(store.runs("t1", 3_600, 3_900, 10).unwrap(), [first]);
+        assert_eq!(
+            store.load_runs("t1", 0, 3_600).unwrap()[0].state,
+            RunState::Complete
+        );
+        assert_eq!(store.items(Some("t1")).unwrap()[0].id, item);
+        assert_eq!(store.alerts("t1", 10).unwrap()[0].id, alert);
+        assert_eq!(
+            store.buckets("t1", 3_600, 7_200, None).unwrap()[0]
+                .delta
+                .executions,
+            2
+        );
+        assert!(
+            store
+                .audit_replay_candidate("t1", 3_600, 3_900)
+                .unwrap()
+                .is_none()
+        );
+        let (version, legacy_read, legacy_excluded): (String, Option<i64>, Option<String>) = store
+            .lock()
+            .query_row(
+                "SELECT m.value, e.read_start, e.excluded_count FROM meta m
+                 JOIN runs r ON r.target = 't1'
+                 LEFT JOIN collection_slice_evidence e ON e.source = 'audit' AND e.run_id = r.id
+                 WHERE m.key = 'schema_version'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (version.as_str(), legacy_read, legacy_excluded),
+            ("10", None, None)
+        );
+
+        let next = run(3_900, 4_200, RunState::Partial);
+        let write = || {
+            store
+                .record_collected_audit_slice(
+                    "t1",
+                    AuditSliceWrite::Forward {
+                        expected_watermark: Some(3_900),
+                    },
+                    AuditSliceCommit {
+                        run: &next,
+                        evidence: &SliceEvidence {
+                            read_range: Some((3_900, 4_200)),
+                            excluded_count: Some(0),
+                            reasons: vec!["first_look_unproven"],
+                        },
+                        engine_version: "3.5.14",
+                        rule_version: "v1",
+                        source_identity: "s1",
+                        rows: rows("y", 3_901),
+                        excluded_ids: &[],
+                        affected_neighbours: &[],
+                    },
+                )
+                .unwrap()
+        };
+        assert!(write());
+        assert!(!write());
+        assert_eq!(
+            store.buckets("t1", 3_600, 7_200, None).unwrap()[0]
+                .delta
+                .executions,
+            4
+        );
+        assert!(
+            store
+                .audit_replay_candidate("t1", 3_600, 4_200)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

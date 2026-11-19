@@ -1145,6 +1145,163 @@ mod tests {
     }
 
     #[test]
+    fn load_unusable_row_marks_hour_partial_and_blocks_failure_rate() {
+        let now = 1_000 * HOUR + 600;
+        let end = now - now.rem_euclid(HOUR);
+        for unusable in [true, false] {
+            let store = HistoryStore::open_in_memory().unwrap();
+            for index in 0..27 {
+                let hour = end - (27 - index) * HOUR;
+                let rows = if unusable && index == 26 {
+                    let mut row = vec![None; 22];
+                    for (index, value) in [
+                        (0, "not-a-job-id"),
+                        (3, "ods"),
+                        (4, "orders"),
+                        (6, "FINISHED"),
+                        (7, "STREAM_LOAD"),
+                    ] {
+                        row[index] = Some(value.into());
+                    }
+                    row[21] = Some((hour + 10).to_string());
+                    vec![row]
+                } else {
+                    Vec::new()
+                };
+                let mut slice = doctor_connector::decode_load_history_slice(rows, None);
+                slice.loads = loads(hour, 10, if index >= 24 { 3 } else { 0 });
+                slice.read += slice.loads.len() as u64;
+                let evidence = crate::history_loads::load_slice_evidence(
+                    &slice,
+                    hour,
+                    hour + HOUR,
+                    &doctor_history::LoadTargetState::default(),
+                );
+                let mut record = run(hour);
+                record.rows_read = slice.read;
+                if !evidence.reasons.is_empty() {
+                    record.state = RunState::Partial;
+                    record.reason = Some(evidence.reasons.join(","));
+                }
+                store
+                    .record_collected_load_slice(
+                        "t",
+                        "3.5.14",
+                        &history_rule_version(),
+                        &record,
+                        &evidence,
+                        &aggregate_loads(&slice.loads),
+                        &[],
+                    )
+                    .unwrap();
+            }
+            let runs = store.load_runs("t", end - HOUR, end).unwrap();
+            assert_eq!(runs[0].unavailable_statements, u64::from(unusable));
+            assert_eq!(
+                runs[0].reason.as_deref(),
+                unusable.then_some("unusable_load_rows")
+            );
+            assert_eq!(
+                coverage_map(&runs, end - HOUR, end)[&(end - HOUR)],
+                if unusable {
+                    CoverageHourState::Partial
+                } else {
+                    CoverageHourState::Complete
+                }
+            );
+            let (raised, _) = evaluate_load_alerts(&store, "t", now).unwrap();
+            assert_eq!(raised.len(), usize::from(!unusable));
+            if !unusable {
+                assert_eq!(
+                    store.load_alert(raised[0]).unwrap().unwrap().rule,
+                    "failure_rate"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn load_slice_updates_existing_system_bucket_classification() {
+        let now = 1_000 * HOUR + 600;
+        let end = now - now.rem_euclid(HOUR);
+        for mark_system in [true, false] {
+            let store = HistoryStore::open_in_memory().unwrap();
+            for index in 0..27 {
+                let hour = end - (27 - index) * HOUR;
+                let mut record = run(hour);
+                let deltas = aggregate_loads(&loads(hour, 10, if index >= 24 { 3 } else { 0 }));
+                if index >= 24 {
+                    record.slice_end = hour + HOUR / 2;
+                }
+                store
+                    .record_load_slice(
+                        "t",
+                        "3.5.14",
+                        &history_rule_version(),
+                        &record,
+                        record.slice_end,
+                        &deltas,
+                        &[],
+                    )
+                    .unwrap();
+                if index >= 24 {
+                    let mut next = loads(hour, 1, 0);
+                    next[0].finish_epoch_seconds += HOUR / 2;
+                    next[0].system = mark_system;
+                    let record = RunRecord {
+                        slice_start: hour + HOUR / 2,
+                        ..run(hour)
+                    };
+                    store
+                        .record_load_slice(
+                            "t",
+                            "3.5.14",
+                            &history_rule_version(),
+                            &record,
+                            record.slice_end,
+                            &aggregate_loads(&next),
+                            &[],
+                        )
+                        .unwrap();
+                }
+            }
+            let current = store.load_buckets("t", end - 3 * HOUR, end).unwrap();
+            assert_eq!(current.len(), 3);
+            assert!(
+                current
+                    .iter()
+                    .all(|bucket| bucket.delta.loads == 11 && bucket.delta.system == mark_system)
+            );
+            let history = crate::history_loads::build_history(
+                &store,
+                Some("t".into()),
+                &doctor_contracts::LoadHistoryRequest {
+                    connection_id: None,
+                    target: Some("t".into()),
+                    days: 7,
+                    kind: None,
+                    table: None,
+                    include_system: false,
+                },
+                now,
+            )
+            .unwrap();
+            assert_eq!(
+                history.totals.loads,
+                if mark_system { "240" } else { "273" }
+            );
+            let (raised, _) = evaluate_load_alerts(&store, "t", now).unwrap();
+            assert_eq!(raised.len(), usize::from(!mark_system));
+            if !mark_system {
+                assert_eq!(
+                    store.load_alert(raised[0]).unwrap().unwrap().rule,
+                    "failure_rate"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn audit_la_01_failure_rate_raises_resolves_and_skips_partial_windows() {
         let store = HistoryStore::open_in_memory().unwrap();
         let now = 1_000 * HOUR + 600;

@@ -39,21 +39,22 @@ pub use audit_workload::{
     AUDIT_CONCURRENCY_MAX_TRANSITIONS, AUDIT_FAMILY_PROFILE_CANDIDATE_LIMIT,
     AUDIT_HISTORICAL_LOOKBACK_SECONDS, AUDIT_OVERVIEW_FAMILY_TOP_LIMIT,
     AUDIT_QUERY_TIMEOUT_SECONDS, AUDIT_STATEMENT_SAMPLE_CHARS, AuditActiveAtParticipantSource,
-    AuditActiveAtSource, AuditColumn, AuditConcurrencyCoverageSource, AuditConcurrencyDeltaSource,
-    AuditConcurrencySource, AuditErrorCodeSource, AuditFamilyDetailSource, AuditFamilySourceRow,
-    AuditFamilyTarget, AuditOccurrenceSampleWindow, AuditOccurrenceSourceRow, AuditSchema,
-    AuditSourceStatementSample, AuditSqlBuildError, AuditSqlLookupRequest,
-    AuditStatementSampleSource, AuditTableName, DOCTOR_STATEMENT_MARKER, DOCTOR_STATEMENT_MARKERS,
-    attach_family_samples, attach_occurrence_samples, audit_active_at_sql_lookup_statement,
-    audit_active_at_statement, audit_collection_slice_statement, audit_concurrency_statement,
-    audit_coverage_statement, audit_family_detail_sql_lookup_statement,
-    audit_family_detail_statement, audit_family_sample_statement, audit_family_statement,
-    audit_fingerprint_event_statement, audit_fingerprint_sample_statement,
-    audit_historical_source_window, audit_occurrence_sample_statement, audit_occurrence_statement,
-    audit_sql_lookup_statement, decode_active_at_source_rows, decode_concurrency_source_rows,
-    decode_family_detail_source_rows, decode_family_sample_row, decode_family_source_row,
-    decode_occurrence_sample_row, decode_occurrence_source_row, doctor_statement,
-    family_sample_targets, occurrence_sample_targets,
+    AuditActiveAtSource, AuditCollectionWindow, AuditColumn, AuditConcurrencyCoverageSource,
+    AuditConcurrencyDeltaSource, AuditConcurrencySource, AuditErrorCodeSource,
+    AuditFamilyDetailSource, AuditFamilySourceRow, AuditFamilyTarget, AuditOccurrenceSampleWindow,
+    AuditOccurrenceSourceRow, AuditSchema, AuditSourceStatementSample, AuditSqlBuildError,
+    AuditSqlLookupRequest, AuditStatementSampleSource, AuditTableName, DOCTOR_STATEMENT_MARKER,
+    DOCTOR_STATEMENT_MARKERS, attach_family_samples, attach_occurrence_samples,
+    audit_active_at_sql_lookup_statement, audit_active_at_statement,
+    audit_collection_slice_statement, audit_concurrency_statement, audit_coverage_statement,
+    audit_family_detail_sql_lookup_statement, audit_family_detail_statement,
+    audit_family_sample_statement, audit_family_statement, audit_fingerprint_event_statement,
+    audit_fingerprint_sample_statement, audit_historical_source_window,
+    audit_occurrence_sample_statement, audit_occurrence_statement, audit_sql_lookup_statement,
+    decode_active_at_source_rows, decode_concurrency_source_rows, decode_family_detail_source_rows,
+    decode_family_sample_row, decode_family_source_row, decode_occurrence_sample_row,
+    decode_occurrence_source_row, doctor_statement, family_sample_targets,
+    occurrence_sample_targets,
 };
 pub use audit_workload::{
     AUDIT_PERFORMANCE_SUMMARY_COLUMNS, AUDIT_PERFORMANCE_TOP_LIMIT,
@@ -354,11 +355,53 @@ pub struct AuditFingerprintWorkload {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AuditCollectionSlice {
     pub session_identity: AuditSessionIdentity,
-    pub rows: Vec<AuditOccurrenceSourceRow>,
-    /// Exact decimal count of canonical executions in the whole slice.
-    pub slice_count: String,
+    pub rows: Vec<AuditCollectionRow>,
+    pub counts: Option<AuditCollectionCounts>,
+    pub time: CollectionTimeProof,
+    // Retain the existing connector fixture assertions.
     /// The tool's own and non-query statements were excluded at the source.
     pub statement_filter_applied: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum CollectionTimeProof {
+    Verified,
+    #[default]
+    AmbiguousLocalTime,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AuditStatementProof {
+    Complete,
+    ConnectorTruncated,
+    SourceTruncated,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuditCollectionRow {
+    /// For excluded identities, whether the source also saw the ID before or after the slice.
+    pub conflict_neighbours: (bool, bool),
+    pub occurrence: AuditOccurrenceSourceRow,
+    pub statement_proof: AuditStatementProof,
+}
+
+#[cfg(test)]
+impl std::ops::Deref for AuditCollectionRow {
+    type Target = AuditOccurrenceSourceRow;
+
+    fn deref(&self) -> &Self::Target {
+        &self.occurrence
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AuditCollectionCounts {
+    pub eligible: u64,
+    pub excluded: u64,
+    pub missing_conflict_ids: bool,
+    pub limited: bool,
+    pub previous_slice_conflict: bool,
+    pub next_slice_conflict: bool,
 }
 
 /// A2 sources: one page of exact families with long samples, the window
@@ -736,6 +779,7 @@ pub enum RemoteOperation {
         table: AuditTableName,
         scope: AuditScope,
         schema: AuditSchema,
+        window: AuditCollectionWindow,
     },
     /// The newest digest-missing executions, for product fingerprints.
     AuditFingerprintEvents {
@@ -1164,6 +1208,27 @@ impl SessionManager {
             .active
             .get(connection_id)
             .is_some_and(|session| now.saturating_sub(session.last_used) <= self.idle_ttl)
+    }
+
+    pub fn audit_collection_source_identity(
+        &self,
+        connection_id: &str,
+        target: &str,
+    ) -> Result<String, ConnectorError> {
+        let sessions = self.lock_sessions();
+        let session = sessions.active.get(connection_id).ok_or_else(|| {
+            ConnectorError::new(ConnectorErrorCode::ConnectionExpired, "connection")
+        })?;
+        let table = session.audit_table.as_source_name();
+        let qualified = match (
+            table.split('.').count(),
+            session.default_database.as_deref(),
+        ) {
+            (1, Some(database)) => format!("default_catalog.{database}.{table}"),
+            (2, _) => format!("default_catalog.{table}"),
+            _ => table.to_owned(),
+        };
+        Ok(doctor_contracts::canonical_hash(&(target, qualified)))
     }
 
     /// Task 71: a reloaded page re-attaches to its live session by ID instead of
@@ -1819,7 +1884,14 @@ impl SessionManager {
                 },
             };
             scope.validate().map_err(audit_request_error)?;
-            audit_collection_slice_statement(&session.audit_table, &scope, &schema)
+            let width = end_seconds - start_seconds;
+            let window = AuditCollectionWindow {
+                start: start_seconds,
+                end: end_seconds,
+                context_start: start_seconds.saturating_sub(width),
+                context_end: end_seconds.saturating_add(width),
+            };
+            audit_collection_slice_statement(&session.audit_table, &scope, &schema, &window)
                 .map_err(audit_schema_error)?;
             let table = session.audit_table.clone();
             let raw_rows = nullable_rows(
@@ -1829,55 +1901,154 @@ impl SessionManager {
                         table,
                         scope,
                         schema: schema.clone(),
+                        window,
                     })
                     .map_err(|error| error.connector("audit_collection_slice"))?,
                 "audit_collection_slice",
             )?;
-            if raw_rows.len() > usize::from(AUDIT_COLLECTION_SLICE_LIMIT) {
-                return Err(audit_response_error("audit_collection_slice_limit"));
+            let error = || audit_response_error("audit_collection_slice_shape");
+            let mut raw_rows = raw_rows.into_iter();
+            let summary = raw_rows.next().ok_or_else(error)?;
+            if summary.len() != 21
+                || summary[20].as_deref() != Some("0")
+                || summary[8..20].iter().any(Option::is_some)
+                || raw_rows.len() > usize::from(AUDIT_COLLECTION_SLICE_LIMIT)
+            {
+                return Err(error());
             }
-            let mut slice_count = String::from("0");
+            let count = |index: usize| {
+                summary[index]
+                    .as_deref()
+                    .filter(|value| {
+                        !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
+                    })
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .ok_or_else(error)
+            };
+            let flag = |index: usize| match summary[index].as_deref() {
+                Some("1") => Ok(true),
+                Some("0") => Ok(false),
+                _ => Err(error()),
+            };
+            let (eligible, owned, invalid, conflicts) =
+                (count(0)?, count(1)?, count(2)?, count(3)?);
+            let (previous_slice_conflict, next_slice_conflict) = (flag(4)?, flag(5)?);
+            let (verified, limited) = (flag(6)?, flag(7)?);
+            let total = eligible.checked_add(conflicts).ok_or_else(error)?;
+            let excluded = owned.checked_add(invalid).ok_or_else(error)?;
+            let received = raw_rows.len() as u64;
+            if owned > conflicts
+                || (owned < conflicts && !previous_slice_conflict)
+                || (conflicts == 0 && (previous_slice_conflict || next_slice_conflict))
+                || received > total
+                || limited != (received < total)
+            {
+                return Err(error());
+            }
+            if !verified && (total != 0 || excluded != 0) {
+                return Err(error());
+            }
             let mut rows = Vec::with_capacity(raw_rows.len());
+            let mut last = None;
+            let mut ids = BTreeSet::new();
+            let mut read_eligible = 0;
+            let mut read_conflicts = 0;
             for mut row in raw_rows {
-                if row.len() != 23 {
-                    return Err(audit_response_error("audit_collection_slice_shape"));
+                if row.len() != 21 {
+                    return Err(error());
                 }
-                let flag = |cell: Option<String>| match cell.as_deref() {
-                    Some("1") => Ok(true),
-                    Some("0") => Ok(false),
-                    _ => Err(audit_response_error("audit_collection_slice_flag")),
+                let kind = match row.pop().flatten().as_deref() {
+                    Some("1") => 1,
+                    Some("2") => 2,
+                    _ => return Err(error()),
                 };
-                let count = row
-                    .pop()
-                    .flatten()
-                    .filter(|count| {
-                        !count.is_empty() && count.bytes().all(|byte| byte.is_ascii_digit())
-                    })
-                    .ok_or_else(|| audit_response_error("audit_collection_slice_count"))?;
-                let agrees = flag(row.pop().flatten())?;
-                let truncated = flag(row.pop().flatten())?;
-                let null = flag(row.pop().flatten())?;
+                let (statement_proof, conflict_neighbours) =
+                    match (kind, row.pop().flatten().as_deref()) {
+                        (1, Some("0")) => (AuditStatementProof::Complete, (false, false)),
+                        (1, Some("1")) => (AuditStatementProof::ConnectorTruncated, (false, false)),
+                        (1, Some("2")) => (AuditStatementProof::SourceTruncated, (false, false)),
+                        (2, Some("0")) => (AuditStatementProof::Complete, (false, false)),
+                        (2, Some("1")) if previous_slice_conflict => {
+                            (AuditStatementProof::Complete, (true, false))
+                        }
+                        (2, Some("2")) if next_slice_conflict => {
+                            (AuditStatementProof::Complete, (false, true))
+                        }
+                        (2, Some("3")) if previous_slice_conflict && next_slice_conflict => {
+                            (AuditStatementProof::Complete, (true, true))
+                        }
+                        _ => return Err(error()),
+                    };
                 let prefix = row.pop().flatten();
-                let mut decoded =
+                let mut occurrence =
                     decode_occurrence_source_row(row, &schema).map_err(audit_response_error)?;
-                decoded.statement_sample = if !agrees {
+                let id = occurrence
+                    .query_id
+                    .as_deref()
+                    .filter(|id| is_valid_query_id(id))
+                    .filter(|id| !id.bytes().any(|byte| byte.is_ascii_uppercase()))
+                    .ok_or_else(error)?;
+                let event_time = occurrence.event_time.as_deref().ok_or_else(error)?;
+                let key = (kind, event_time.to_owned(), id.to_owned());
+                if last.as_ref().is_some_and(|previous| previous >= &key)
+                    || !ids.insert(id.to_owned())
+                {
+                    return Err(error());
+                }
+                last = Some(key);
+                occurrence.statement_sample = if kind == 2 {
+                    if prefix.is_some() {
+                        return Err(error());
+                    }
+                    read_conflicts += 1;
                     AuditSourceStatementSample::ConflictingSourceRows
-                } else if null {
-                    AuditSourceStatementSample::Read(AuditStatementSampleSource::SqlNull)
                 } else {
-                    AuditSourceStatementSample::Read(AuditStatementSampleSource::Text {
-                        value: prefix
-                            .ok_or_else(|| audit_response_error("audit_collection_slice_prefix"))?,
-                        truncated,
+                    let epoch = occurrence
+                        .event_epoch_seconds
+                        .as_deref()
+                        .and_then(|epoch| epoch.parse::<u32>().ok())
+                        .filter(|epoch| (window.start..window.end).contains(epoch));
+                    if epoch.is_none()
+                        || (prefix.is_none() && statement_proof != AuditStatementProof::Complete)
+                    {
+                        return Err(error());
+                    }
+                    read_eligible += 1;
+                    AuditSourceStatementSample::Read(match prefix {
+                        Some(value) => AuditStatementSampleSource::Text {
+                            value,
+                            truncated: statement_proof != AuditStatementProof::Complete,
+                        },
+                        None => AuditStatementSampleSource::SqlNull,
                     })
                 };
-                rows.push(decoded);
-                slice_count = count;
+                rows.push(AuditCollectionRow {
+                    occurrence,
+                    statement_proof,
+                    conflict_neighbours,
+                });
             }
+            if read_eligible > eligible || read_conflicts > conflicts {
+                return Err(error());
+            }
+            let counts = verified.then_some(AuditCollectionCounts {
+                eligible,
+                excluded,
+                missing_conflict_ids: read_conflicts < conflicts,
+                limited,
+                previous_slice_conflict,
+                next_slice_conflict,
+            });
+            let time = if verified {
+                CollectionTimeProof::Verified
+            } else {
+                CollectionTimeProof::AmbiguousLocalTime
+            };
             Ok(AuditCollectionSlice {
                 session_identity: audit_session_identity(session),
                 rows,
-                slice_count,
+                counts,
+                time,
                 statement_filter_applied,
             })
         })
@@ -2225,12 +2396,7 @@ impl SessionManager {
                 .time_zone
                 .as_ref()
                 .map(|zone| zone.system_time_zone.clone());
-            let audit_database = session
-                .audit_table
-                .as_source_name()
-                .split('.')
-                .next()
-                .map(str::to_owned);
+            let audit_database = load_audit_database(session).map(str::to_owned);
             if support == LoadViewSupport::UnsupportedVersion {
                 return Ok(decode_load_records(
                     Vec::new(),
@@ -2272,12 +2438,7 @@ impl SessionManager {
                 .time_zone
                 .as_ref()
                 .map(|zone| zone.system_time_zone.clone());
-            let audit_database = session
-                .audit_table
-                .as_source_name()
-                .split('.')
-                .next()
-                .map(str::to_owned);
+            let audit_database = load_audit_database(session).map(str::to_owned);
             let job_rows = if routine_support == LoadViewSupport::UnsupportedVersion {
                 Vec::new()
             } else {
@@ -2328,12 +2489,7 @@ impl SessionManager {
             if support == LoadViewSupport::UnsupportedVersion {
                 return Ok(None);
             }
-            let audit_database = session
-                .audit_table
-                .as_source_name()
-                .split('.')
-                .next()
-                .map(str::to_owned);
+            let audit_database = load_audit_database(session).map(str::to_owned);
             let rows = nullable_rows(
                 session
                     .remote
@@ -2341,10 +2497,36 @@ impl SessionManager {
                     .map_err(|error| error.connector("load_history"))?,
                 "load_history",
             )?;
-            Ok(Some((
-                decode_load_history_slice(rows, audit_database.as_deref()),
-                session.view.detected_version.clone(),
-            )))
+            let mut rows = rows.into_iter();
+            // A verified empty slice still has a summary. Without one,
+            // there is no time proof and no retention boundary to advance.
+            let summary = rows
+                .next()
+                .ok_or_else(|| audit_response_error("load_history_time"))?;
+            if summary.len() != 23 || summary[1..].iter().any(Option::is_some) {
+                return Err(audit_response_error("load_history_time"));
+            }
+            let mut details = Vec::with_capacity(rows.len());
+            for mut row in rows {
+                if row.len() != 23 || row.remove(0).as_deref() != Some("2") {
+                    return Err(audit_response_error("load_history_shape"));
+                }
+                details.push(row);
+            }
+            let result = match summary[0].as_deref() {
+                Some("0") if details.is_empty() => LoadHistorySlice::default(),
+                Some("1") if details.len() <= LOAD_HISTORY_SLICE_LIMIT + 1 => {
+                    let mut slice = decode_load_history_slice(details, audit_database.as_deref());
+                    let before = slice.loads.len();
+                    slice.loads.retain(|load| {
+                        (i64::from(start)..i64::from(end)).contains(&load.finish_epoch_seconds)
+                    });
+                    slice.unusable += (before - slice.loads.len()) as u64;
+                    slice
+                }
+                _ => return Err(audit_response_error("load_history_time")),
+            };
+            Ok(Some((result, session.view.detected_version.clone())))
         })
     }
 
@@ -2353,7 +2535,7 @@ impl SessionManager {
         &self,
         connection_id: &str,
         control: Option<&Arc<OperationControl>>,
-    ) -> Result<LoadRetention, ConnectorError> {
+    ) -> Result<Option<LoadRetention>, ConnectorError> {
         self.with_supported_session_controlled(connection_id, control, |session| {
             let rows = nullable_rows(
                 session
@@ -2362,7 +2544,20 @@ impl SessionManager {
                     .map_err(|error| error.connector("load_history"))?,
                 "load_history",
             )?;
-            Ok(decode_load_retention(rows))
+            let mut verified = true;
+            let mut facts = Vec::with_capacity(rows.len());
+            for mut row in rows {
+                if row.len() != 4 {
+                    return Err(audit_response_error("load_retention_shape"));
+                }
+                match row.pop().flatten().as_deref() {
+                    Some("1") => {}
+                    Some("0") => verified = false,
+                    _ => return Err(audit_response_error("load_retention_time")),
+                }
+                facts.push(row);
+            }
+            Ok(verified.then(|| decode_load_retention(facts)))
         })
     }
 
@@ -4463,11 +4658,30 @@ fn sql_tokens(sql: &str) -> Option<Vec<String>> {
 /// multi-version audit covers it (3.1–4.1); anything else connects as
 /// unsupported and never borrows a nearby release.
 fn supported_release(value: &str) -> Option<doctor_core::ReleaseProfile> {
-    let release = value.trim().split(['-', '+']).next()?;
+    let release = match value.split_once('-') {
+        Some((release, suffix))
+            if suffix.len() == 7
+                && suffix
+                    .bytes()
+                    .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')) =>
+        {
+            release
+        }
+        Some(_) => return None,
+        None => value,
+    };
     match doctor_core::resolve_release(release) {
-        doctor_core::ReleaseResolution::Audited(profile) => Some(profile),
+        doctor_core::ReleaseResolution::Audited(profile) if profile.release == release => {
+            Some(profile)
+        }
         _ => None,
     }
+}
+
+fn load_audit_database(session: &Session) -> Option<&str> {
+    session
+        .audit_table
+        .database(session.default_database.as_deref())
 }
 
 fn valid_host(value: &str) -> bool {
@@ -4685,15 +4899,27 @@ mod tests {
                     table,
                     scope,
                     schema,
+                    window,
                 } => {
                     self.audit_search?;
-                    let sql = audit_collection_slice_statement(&table, &scope, &schema).unwrap();
-                    assert!(sql.ends_with("ORDER BY `event_time` ASC, `query_id` ASC LIMIT 1000"));
+                    let sql =
+                        audit_collection_slice_statement(&table, &scope, &schema, &window).unwrap();
+                    assert!(sql.contains(
+                        "ORDER BY row_kind, `event_time` ASC, `query_id` ASC LIMIT 1000)"
+                    ));
+                    assert!(sql.ends_with(
+                        "UNION ALL SELECT * FROM details ORDER BY row_kind, `event_time` ASC, `query_id` ASC"
+                    ));
+                    // A real queryId has five groups (8-4-4-4-12); a four-group
+                    // pattern excluded every execution on the 3.5.14 E2E.
+                    assert!(sql.contains(
+                        "REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'"
+                    ));
                     let row = |id: &str, digest: Option<&str>, sql: &str| {
-                        let mut row: Vec<Option<String>> = vec![Some("0".into()); 23];
+                        let mut row: Vec<Option<String>> = vec![Some("0".into()); 21];
                         row[0] = Some(id.into());
                         row[1] = Some("2026-08-30 00:00:00".into());
-                        row[2] = Some("1788048000".into());
+                        row[2] = Some(window.start.to_string());
                         row[3] = Some("EOF".into());
                         (row[10], row[11], row[13]) = (
                             Some("default_catalog".into()),
@@ -4701,12 +4927,19 @@ mod tests {
                             digest.map(str::to_owned),
                         );
                         row[18] = Some(sql.into());
-                        (row[19], row[20], row[21]) =
-                            (Some("0".into()), Some("0".into()), Some("1".into()));
-                        row[22] = Some("3".into());
+                        row[20] = Some("1".into());
                         row
                     };
+                    let mut summary = vec![None; 21];
+                    for (index, value) in ["3", "0", "0", "0", "0", "0", "1", "1"]
+                        .into_iter()
+                        .enumerate()
+                    {
+                        summary[index] = Some(value.into());
+                    }
+                    summary[20] = Some("0".into());
                     Ok(RemoteResponse::NullableRows(vec![
+                        summary,
                         row(
                             "00000000-0000-0000-0000-000000000001",
                             Some("ab12"),
@@ -6375,6 +6608,164 @@ mod tests {
     }
 
     #[test]
+    fn supported_release_requires_audited_version_and_matching_official_build() {
+        for version in [
+            "3.5.14",
+            "3.5.14-23a56ec",
+            "3.5.21-85fccf8",
+            "4.1.7-b81ff9c",
+        ] {
+            assert!(supported_release(version).is_some(), "{version}");
+        }
+        for version in [
+            "3.5.14-rc1",
+            "3.5.14+vendor",
+            "3.5.14-RC1abcd",
+            "3.5.14-23a56ecf",
+            "3.5.22",
+            "4.1.8",
+        ] {
+            assert!(supported_release(version).is_none(), "{version}");
+            let mut fake = FakeFactory::supported();
+            fake.version = version.into();
+            let factory = Arc::new(fake);
+            let manager = session_manager(Arc::clone(&factory), Arc::new(TestClock::default()));
+            let view = manager.connect(request()).unwrap();
+            assert_eq!(view.state, ConnectionState::Unsupported);
+            assert_eq!(view.detected_version, version);
+            assert_eq!(*factory.operations.lock().unwrap(), [Operation::Version]);
+        }
+    }
+
+    #[test]
+    fn load_audit_database_uses_database_segment_for_all_read_paths() {
+        struct LoadsFactory(FakeFactory);
+        struct LoadsRemote(Box<dyn Remote>);
+        impl RemoteFactory for LoadsFactory {
+            fn open(&self, options: RemoteConnectOptions) -> Result<Box<dyn Remote>, RemoteError> {
+                Ok(Box::new(LoadsRemote(self.0.open(options)?)))
+            }
+        }
+        impl Remote for LoadsRemote {
+            fn run(&mut self, operation: RemoteOperation) -> Result<RemoteResponse, RemoteError> {
+                let row = |id: &str, db: &str| {
+                    let mut cells = vec![None; 21];
+                    for (index, value) in [
+                        (0, id),
+                        (1, "load"),
+                        (3, db),
+                        (4, "t"),
+                        (6, "FINISHED"),
+                        (7, "STREAM_LOAD"),
+                        (12, "2026-11-01 09:00:00"),
+                        (13, "2026-11-01 09:00:05"),
+                    ] {
+                        cells[index] = Some(value.into());
+                    }
+                    cells
+                };
+                let rows = || vec![row("1", "audit_db"), row("2", "default_catalog")];
+                match operation {
+                    RemoteOperation::LoadRecords => Ok(RemoteResponse::NullableRows(rows())),
+                    RemoteOperation::RoutineLoadJobs { .. } => {
+                        Ok(RemoteResponse::NullableRows(vec![]))
+                    }
+                    RemoteOperation::LoadHistorySlice { .. } => {
+                        let mut summary = vec![None; 23];
+                        summary[0] = Some("1".into());
+                        let mut reply = vec![summary];
+                        for mut row in rows() {
+                            row.insert(0, Some("2".into()));
+                            row.push(Some("3601".into()));
+                            reply.push(row);
+                        }
+                        Ok(RemoteResponse::NullableRows(reply))
+                    }
+                    operation => self.0.run(operation),
+                }
+            }
+        }
+        for (table, default_db, hidden) in [
+            ("default_catalog.audit_db.audit_tbl", None, true),
+            ("audit_db.audit_tbl", None, true),
+            ("audit_tbl", Some("audit_db"), true),
+            ("audit_tbl", None, false),
+        ] {
+            let manager = SessionManager::new(Arc::new(LoadsFactory(FakeFactory::supported())));
+            let view = manager
+                .connect(CreateConnectionRequest {
+                    audit_table: Some(table.into()),
+                    default_database: default_db.map(str::to_owned),
+                    ..request()
+                })
+                .unwrap();
+            let id = &view.connection_id;
+            let records = manager
+                .load_records_controlled(
+                    id,
+                    &LoadRecordsRequest {
+                        connection_id: id.clone(),
+                        kind: None,
+                        outcome: None,
+                        table: None,
+                        include_system: false,
+                        created_hour: None,
+                    },
+                    None,
+                )
+                .unwrap();
+            let overview = manager
+                .load_overview_controlled(
+                    id,
+                    &LoadOverviewRequest {
+                        connection_id: id.clone(),
+                        kind: None,
+                        include_system: false,
+                    },
+                    None,
+                )
+                .unwrap();
+            let (history, _) = manager
+                .load_history_slice_controlled(id, 3_600, 3_900, None)
+                .unwrap()
+                .unwrap();
+            let hidden_count = if hidden { "1" } else { "0" };
+            assert_eq!(
+                (
+                    records.hidden_system.as_str(),
+                    overview.hidden_system.as_str()
+                ),
+                (hidden_count, hidden_count),
+                "{table}"
+            );
+            assert!(
+                records
+                    .records
+                    .iter()
+                    .any(|record| record.db == "default_catalog")
+            );
+            assert_eq!(history.loads.len(), 2);
+            assert_eq!(
+                history
+                    .loads
+                    .iter()
+                    .find(|load| load.database == "audit_db")
+                    .unwrap()
+                    .system,
+                hidden
+            );
+            assert!(
+                !history
+                    .loads
+                    .iter()
+                    .find(|load| load.database == "default_catalog")
+                    .unwrap()
+                    .system
+            );
+        }
+    }
+
+    #[test]
     fn collection_slices_are_bounded_oldest_first_and_carry_statement_prefixes() {
         let factory = Arc::new(FakeFactory::supported());
         let manager = session_manager(Arc::clone(&factory), Arc::new(TestClock::default()));
@@ -6382,7 +6773,9 @@ mod tests {
         let slice = manager
             .audit_collection_slice_controlled(&view.connection_id, 100, 400, None)
             .unwrap();
-        assert_eq!(slice.slice_count, "3");
+        let counts = slice.counts.unwrap();
+        assert_eq!(counts.eligible, 3);
+        assert!(counts.limited);
         assert_eq!(slice.rows.len(), 2);
         assert_eq!(slice.rows[0].native_digest.as_deref(), Some("ab12"));
         assert_eq!(

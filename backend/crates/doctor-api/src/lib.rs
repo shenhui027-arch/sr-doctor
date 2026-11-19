@@ -4207,24 +4207,29 @@ mod tests {
                     table,
                     scope,
                     schema,
+                    window,
                 } => {
-                    doctor_connector::audit_collection_slice_statement(&table, &scope, &schema)
+                    doctor_connector::audit_collection_slice_statement(&table, &scope, &schema, &window)
                         .unwrap();
                     let row = |index: u32, sql: &str| {
-                        let mut row: Vec<Option<String>> = vec![Some("1".into()); 23];
-                        row[0] = Some(format!("00000000-0000-0000-0000-00000000000{index}"));
+                        let mut row: Vec<Option<String>> = vec![Some("1".into()); 21];
+                        row[0] = Some(format!("00000000-0000-0000-{index:04x}-{:012x}", window.start));
                         row[1] = Some("2026-08-30 00:00:00".into());
                         row[2] = Some((scope.window.start_seconds + index).to_string());
                         row[3] = Some("EOF".into());
                         (row[10], row[11], row[13]) =
                             (Some("default_catalog".into()), Some("demo".into()), None);
                         row[18] = Some(sql.into());
-                        (row[19], row[20], row[21]) =
-                            (Some("0".into()), Some("0".into()), Some("1".into()));
-                        row[22] = Some("2".into());
+                        row[19] = Some("0".into());
                         row
                     };
+                    let mut summary = vec![None; 21];
+                    for (index, value) in ["2", "0", "0", "0", "0", "0", "1", "0"].into_iter().enumerate() {
+                        summary[index] = Some(value.into());
+                    }
+                    summary[20] = Some("0".into());
                     Ok(RemoteResponse::NullableRows(vec![
+                        summary,
                         row(1, "SELECT id FROM t WHERE name = 'history_secret_literal'"),
                         row(2, "SELECT id FROM t WHERE name = 'other'"),
                     ]))
@@ -4789,7 +4794,12 @@ mod tests {
                         row(["11", "insert_x", "", "_statistics_", "column_statistics", "root", "FINISHED", "INSERT", "0", "0", "3", "{}", "2026-10-30 08:07:46", "2026-10-30 08:07:46", "", ""]),
                     ]))
                 }
-                RemoteOperation::LoadHistorySlice { .. } | RemoteOperation::LoadRetention => {
+                RemoteOperation::LoadHistorySlice { .. } => {
+                    let mut summary = vec![None; 23];
+                    summary[0] = Some("1".into());
+                    Ok(RemoteResponse::NullableRows(vec![summary]))
+                }
+                RemoteOperation::LoadRetention => {
                     Ok(RemoteResponse::NullableRows(Vec::new()))
                 }
                 RemoteOperation::LoadTrackingLog { job_id } => Ok(RemoteResponse::NullableRows(vec![vec![(job_id == 12).then(|| {
@@ -9939,7 +9949,7 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
         let factory = Arc::new(ConnectorTestFactory::connected());
         let app = router(history_state(Arc::clone(&factory), &path));
         let connection_id = connector_connection_id(app.clone()).await;
-        // The first cycle runs right after connecting: backfill of 3 slices.
+        // The first cycle fits two backfill slices with their neighbour context.
         let mut status = serde_json::Value::Null;
         for _ in 0..100 {
             let (_, body) = history_post(
@@ -9951,7 +9961,7 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
             status = body;
             if status["runs"]
                 .as_array()
-                .is_some_and(|runs| runs.len() >= 3)
+                .is_some_and(|runs| runs.len() >= 2)
             {
                 break;
             }
@@ -9959,13 +9969,13 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
         }
         assert_eq!(status["collection"]["state"], "running");
         assert_eq!(status["target"], "127.0.0.1:9030");
-        assert_eq!(status["runs"].as_array().unwrap().len(), 3);
+        assert_eq!(status["runs"].as_array().unwrap().len(), 2);
         assert!(
             status["runs"]
                 .as_array()
                 .unwrap()
                 .iter()
-                .all(|run| run["state"] == "complete")
+                .all(|run| run["state"] == "partial" && run["reason"] == "first_look_unproven")
         );
         assert_eq!(status["store"]["templates"], "1");
         assert_eq!(status["budget"]["production_budget_measured"], false);

@@ -493,7 +493,8 @@ impl Remote for MysqlTextRemote {
                 table,
                 scope,
                 schema,
-            } => audit_collection_slice_statement(&table, &scope, &schema)
+                window,
+            } => audit_collection_slice_statement(&table, &scope, &schema, &window)
                 .map_err(|_| RemoteError::Protocol)
                 .and_then(|statement| self.audit_query(&statement))
                 .map(RemoteResponse::NullableRows),

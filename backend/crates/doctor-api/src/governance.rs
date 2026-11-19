@@ -1216,9 +1216,9 @@ mod tests {
         };
         rusqlite::Connection::open(&path)
             .unwrap()
-            .execute(
-                "UPDATE meta SET value = '8' WHERE key = 'schema_version'",
-                [],
+            .execute_batch(
+                "DROP TABLE collection_slice_evidence; DROP TABLE audit_slice_deltas;
+                 UPDATE meta SET value = '8' WHERE key = 'schema_version';",
             )
             .unwrap();
         let state = ApiState::new(ApiConfig {
@@ -1928,9 +1928,9 @@ mod tests {
                 .execute("UPDATE buckets SET rule_version = ?1", [&rule])
                 .unwrap();
             connection
-                .execute(
-                    "UPDATE meta SET value = '8' WHERE key = 'schema_version'",
-                    [],
+                .execute_batch(
+                    "DROP TABLE collection_slice_evidence; DROP TABLE audit_slice_deltas;
+                 UPDATE meta SET value = '8' WHERE key = 'schema_version';",
                 )
                 .unwrap();
         }
@@ -1943,15 +1943,25 @@ mod tests {
                 ..ApiConfig::default()
             })
             .unwrap();
-            let version: String = rusqlite::Connection::open(&path)
-                .unwrap()
+            let db = rusqlite::Connection::open(&path).unwrap();
+            let version: String = db
                 .query_row(
                     "SELECT value FROM meta WHERE key = 'schema_version'",
                     [],
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(version, "9");
+            assert_eq!(version, "10");
+            let collection_tables: i64 = db
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table'
+                       AND name IN ('collection_slice_evidence', 'audit_slice_deltas')",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(collection_tables, 2);
+            drop(db);
             let store = state.history.store().unwrap();
             let buckets: Vec<_> = store
                 .buckets("t", windows.baseline_start, windows.end, None)

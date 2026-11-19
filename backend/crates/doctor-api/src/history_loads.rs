@@ -6,6 +6,7 @@
 //! cleared records into it before it was read; nothing is interpolated.
 use std::collections::{BTreeMap, BTreeSet};
 
+use doctor_connector::{CollectionTimeProof, LoadHistorySlice};
 use doctor_contracts::{
     CoverageHourState, HistoryLoadCoverage, HistoryLoadSegment, LOAD_HISTORY_ERROR_LOGS_PAGE,
     LOAD_HISTORY_REASONS, LOAD_HISTORY_TABLES, LoadErrorCategory, LoadErrorLogState,
@@ -23,7 +24,7 @@ use doctor_core::{
 };
 use doctor_history::{
     ERROR_LOG_MAX_TOTAL_BYTES, ErrorLogCandidate, ErrorLogOutcome, ErrorLogState, HistoryStore,
-    RoutineSnapshotJob, RunRecord, RunState, StoredErrorLog,
+    LoadTargetState, RoutineSnapshotJob, RunRecord, RunState, SliceEvidence, StoredErrorLog,
 };
 
 use super::*;
@@ -143,6 +144,7 @@ pub(crate) fn run_load_cycle(
     let state = store.load_target_state(target).map_err(store_error)?;
     let plan = plan_slices(state.watermark, now, config);
     let mut looked: Option<doctor_history::LoadTargetState> = None;
+    let mut retention_verified = true;
     let mut snapshot_failure: Option<ConnectorError> = None;
     let mut supported = true;
     for (index, (start, end)) in plan.slices.iter().copied().enumerate() {
@@ -173,71 +175,70 @@ pub(crate) fn run_load_cycle(
             supported = false;
             break;
         };
-        if index == 0 {
-            if let Some((gap_start, gap_end)) = plan.gap {
-                let run = RunRecord {
-                    started_at: now,
-                    slice_start: gap_start,
-                    slice_end: gap_end,
-                    state: RunState::Gap,
-                    reason: Some("beyond_catch_up".into()),
-                    rows_read: 0,
-                    attributed: 0,
-                    partial_statements: 0,
-                    unavailable_statements: 0,
-                    duration_ms: 0,
-                };
-                store
-                    .record_load_run(target, &run, Some(gap_end))
-                    .map_err(store_error)?;
-            }
-            let held = sessions
+        if index == 0
+            && let Some((gap_start, gap_end)) = plan.gap
+        {
+            let run = RunRecord {
+                started_at: now,
+                slice_start: gap_start,
+                slice_end: gap_end,
+                state: RunState::Gap,
+                reason: Some("beyond_catch_up".into()),
+                rows_read: 0,
+                attributed: 0,
+                partial_statements: 0,
+                unavailable_statements: 0,
+                duration_ms: 0,
+            };
+            store
+                .record_load_run(target, &run, Some(gap_end))
+                .map_err(store_error)?;
+        }
+        if slice.time == CollectionTimeProof::AmbiguousLocalTime {
+            retention_verified = false;
+        }
+        if index == 0 && retention_verified {
+            if let Some(held) = sessions
                 .load_retention_controlled(connection_id, None)
-                .map_err(failed)?;
-            looked = Some(doctor_history::LoadTargetState {
-                watermark: state.watermark,
-                earliest_stream: held.stream_earliest_finish,
-                earliest_other: held.other_earliest_finish,
-                observed: true,
-                cleared_stream: clearing_reach(
-                    state.cleared_stream,
-                    held.stream_earliest_finish,
-                    state.earliest_stream,
-                    state.observed,
-                    state.watermark,
-                ),
-                cleared_other: clearing_reach(
-                    state.cleared_other,
-                    held.other_earliest_finish,
-                    state.earliest_other,
-                    state.observed,
-                    state.watermark,
-                ),
-                // Kept from the first look on; only the first look sets it.
-                unproven_until: if state.observed {
-                    state.unproven_until
-                } else {
-                    held.stream_earliest_finish.max(held.other_earliest_finish)
-                },
-            });
-        }
-        let held = looked.clone().unwrap_or_default();
-        let mut reasons = Vec::new();
-        if slice.cut {
-            reasons.push("row_limit");
-        }
-        let managers = [
-            (held.cleared_stream, "stream_records_cleared"),
-            (held.cleared_other, "load_records_cleared"),
-        ];
-        for (reach, cleared) in managers {
-            match clearing(start, reach, held.unproven_until) {
-                Clearing::Cleared => reasons.push(cleared),
-                Clearing::Unproven if !reasons.contains(&"first_look_unproven") => {
-                    reasons.push("first_look_unproven")
-                }
-                _ => {}
+                .map_err(failed)?
+            {
+                looked = Some(LoadTargetState {
+                    watermark: state.watermark,
+                    earliest_stream: held.stream_earliest_finish,
+                    earliest_other: held.other_earliest_finish,
+                    observed: true,
+                    cleared_stream: clearing_reach(
+                        state.cleared_stream,
+                        held.stream_earliest_finish,
+                        state.earliest_stream,
+                        state.observed,
+                        state.watermark,
+                    ),
+                    cleared_other: clearing_reach(
+                        state.cleared_other,
+                        held.other_earliest_finish,
+                        state.earliest_other,
+                        state.observed,
+                        state.watermark,
+                    ),
+                    // Kept from the first look on; only the first look sets it.
+                    unproven_until: if state.observed {
+                        state.unproven_until
+                    } else {
+                        held.stream_earliest_finish.max(held.other_earliest_finish)
+                    },
+                });
+            } else {
+                retention_verified = false;
             }
+        }
+        let mut evidence =
+            load_slice_evidence(&slice, start, end, looked.as_ref().unwrap_or(&state));
+        if !retention_verified
+            && slice.time == CollectionTimeProof::Verified
+            && !evidence.reasons.contains(&"first_look_unproven")
+        {
+            evidence.reasons.push("first_look_unproven");
         }
         let buckets = aggregate_loads(&slice.loads);
         let candidates: Vec<ErrorLogCandidate> = slice
@@ -258,12 +259,12 @@ pub(crate) fn run_load_cycle(
             started_at: now,
             slice_start: start,
             slice_end: end,
-            state: if reasons.is_empty() {
+            state: if evidence.reasons.is_empty() {
                 RunState::Complete
             } else {
                 RunState::Partial
             },
-            reason: (!reasons.is_empty()).then(|| reasons.join(",")),
+            reason: (!evidence.reasons.is_empty()).then(|| evidence.reasons.join(",")),
             rows_read: slice.read,
             attributed: slice.loads.len() as u64,
             partial_statements: 0,
@@ -271,12 +272,12 @@ pub(crate) fn run_load_cycle(
             duration_ms: began.elapsed().as_millis() as u64,
         };
         let recorded = store
-            .record_load_slice(
+            .record_collected_load_slice(
                 target,
                 &engine,
                 &history_rule_version(),
                 &run,
-                end,
+                &evidence,
                 &buckets,
                 &candidates,
             )
@@ -285,7 +286,7 @@ pub(crate) fn run_load_cycle(
             break;
         }
     }
-    if let Some(held) = looked {
+    if let Some(held) = looked.filter(|_| retention_verified) {
         store
             .set_load_retention(target, &held, now)
             .map_err(store_error)?;
@@ -352,6 +353,46 @@ pub(crate) fn run_load_cycle(
     }
     // A failed Routine Load snapshot fails this source even when slices read.
     snapshot_failure.map_or(Ok(()), Err)
+}
+
+pub(crate) fn load_slice_evidence(
+    slice: &LoadHistorySlice,
+    start: i64,
+    end: i64,
+    retention: &LoadTargetState,
+) -> SliceEvidence {
+    if slice.time == CollectionTimeProof::AmbiguousLocalTime {
+        return SliceEvidence {
+            read_range: None,
+            excluded_count: None,
+            reasons: vec!["ambiguous_local_time"],
+        };
+    }
+    let mut reasons = Vec::new();
+    if slice.cut {
+        reasons.push("row_limit");
+    }
+    if slice.unusable != 0 {
+        reasons.push("unusable_load_rows");
+    }
+    let managers = [
+        (retention.cleared_stream, "stream_records_cleared"),
+        (retention.cleared_other, "load_records_cleared"),
+    ];
+    for (reach, cleared) in managers {
+        match clearing(start, reach, retention.unproven_until) {
+            Clearing::Cleared => reasons.push(cleared),
+            Clearing::Unproven if !reasons.contains(&"first_look_unproven") => {
+                reasons.push("first_look_unproven")
+            }
+            _ => {}
+        }
+    }
+    SliceEvidence {
+        read_range: (!slice.cut).then_some((start, end)),
+        excluded_count: Some(slice.unusable),
+        reasons,
+    }
 }
 
 fn invalid(state: &ApiState, code: &'static str) -> ApiFailure {
