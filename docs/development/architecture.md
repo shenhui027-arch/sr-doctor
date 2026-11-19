@@ -41,7 +41,7 @@ flowchart LR
 | 统一 IR 与 Typed Metric Parser | 单位、缺失、溢出只在一个地方处理；`missing`/`invalid`/`partial` 与 `0` 可区分 | [统一 IR 与诊断](../02-unified-ir-and-diagnosis.md)、[Metric Parser 契约](../06-metric-parser-contract.md) |
 | 执行结构的四种状态 | `explicit`、`derived`、`partial`、`unavailable`，只在唯一可证时推导边 | [统一 IR 与诊断](../02-unified-ir-and-diagnosis.md) |
 | VersionPack | 每个 StarRocks 版本独立的语义包，未注册版本不自动套用 | [Fixture、VersionPack 与 RuleSet](../10-fixture-versionpack-and-ruleset-contract.md) |
-| 只读连接器 | 显式主机端口、禁用多语句、固定操作、凭据只在内存 | [连接器与优化闭环](../11-starrocks-connector-and-optimization-loop.md) |
+| 只读连接器 | 显式主机端口、禁用多语句、固定操作、凭据默认只在内存（可选加密保存一个连接，见 SECURITY.md） | [连接器与优化闭环](../11-starrocks-connector-and-optimization-loop.md) |
 | 有界采集 | 单任务、单连接、固定周期与上限；超预算宁可漏采并标“部分” | [配置参考](../guide/configuration.md#历史与采集) |
 | 嵌入式 SQLite | 唯一的数据库，只存脱敏模板与聚合 | [部署指南](../guide/deployment.md#数据都在哪里) |
 | HTTP 契约与失败语义 | 统一的错误码、阶段与可恢复性 | [HTTP API 契约](../09-http-api-contract.md) |

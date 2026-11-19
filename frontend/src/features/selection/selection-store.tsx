@@ -14,8 +14,12 @@ type SelectionStore = Selection & {
   selectSubject(subjectRef: string | null): void;
   selectFinding(findingId: string, subjectRef: string | null): void;
   selectNode(nodeId: string): void;
+  /** Selects a plan node from a table and brings the graph forward to show it (v1.0-65 tabs). */
+  revealNode(nodeId: string): void;
   /** Opens a finding's plan node without leaving that finding. */
   showFindingNode(nodeId: string): void;
+  /** Counts "show in graph" requests, so a view holding the graph behind a tab can bring it forward. */
+  revealCount: number;
   clearSelection(): void;
 };
 
@@ -33,6 +37,7 @@ export function showFindingNodeState(current: Selection, nodeId: string): Select
 
 export function SelectionProvider({ children, initialSelection = emptySelection }: PropsWithChildren<{ initialSelection?: Selection }>): JSX.Element {
   const [selection, setSelection] = useState<Selection>(() => initialSelection);
+  const [revealCount, setRevealCount] = useState(0);
   const store = useMemo<SelectionStore>(() => ({
     ...selection,
     selectSourceRef: (sourceRef) => setSelection((current) => ({ ...current, sourceRef })),
@@ -40,9 +45,11 @@ export function SelectionProvider({ children, initialSelection = emptySelection 
     selectSubject: (subjectRef) => setSelection((current) => selectSubjectState(current, subjectRef)),
     selectFinding: (findingId, subjectRef) => setSelection((current) => ({ ...current, findingId, subjectRef, nodeId: null })),
     selectNode: (nodeId) => setSelection((current) => ({ ...current, nodeId, subjectRef: null, findingId: null })),
-    showFindingNode: (nodeId) => setSelection((current) => showFindingNodeState(current, nodeId)),
+    revealNode: (nodeId) => { setSelection((current) => ({ ...current, nodeId, subjectRef: null, findingId: null })); setRevealCount((count) => count + 1); },
+    showFindingNode: (nodeId) => { setSelection((current) => showFindingNodeState(current, nodeId)); setRevealCount((count) => count + 1); },
+    revealCount,
     clearSelection: () => setSelection(emptySelection),
-  }), [selection]);
+  }), [selection, revealCount]);
 
   return <SelectionContext.Provider value={store}>{children}</SelectionContext.Provider>;
 }

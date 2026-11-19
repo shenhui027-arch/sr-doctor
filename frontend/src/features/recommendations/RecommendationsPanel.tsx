@@ -18,6 +18,7 @@ import { localizedFindingText, type FindingTextField } from "../../i18n/finding-
 import { measurementLabel } from "../../i18n/measurement-label";
 import { useLocale, type LocalizedText } from "../../i18n/locale";
 import { compactCountText } from "../../lib/duration-display";
+import { InfoTip } from "../shell/ui";
 import "./recommendations.css";
 
 type RecommendationItem =
@@ -164,6 +165,68 @@ export function RecommendationsPanel({
 }
 
 type StepView = { title: string; detail: string | null; evidence: MetricEvidenceRow[] };
+
+/**
+ * Task 65 (board 5): a finding's recommendation inside its detail on the
+ * Doctor page — what to check, the expected direction, risk and how to verify.
+ * Reads the same DTO fields as the former Recommendations page; nothing is
+ * re-derived. The evidence itself is listed once, above it, by the finding.
+ */
+export function FindingRecommendation({ finding, report, onOpenCompare }: { finding: Finding; report: AnalysisSnapshotReport; onOpenCompare?(): void }): JSX.Element {
+  const { text } = useLocale();
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const item: RecommendationItem = { kind: "product", finding, evaluation: report.rule_evaluations.find((candidate) => candidate.finding_id === finding.finding_id) ?? null };
+  const recommendation = recommendationOf(item);
+  const location = locationOf(item, report);
+  const steps = stepsOf(item, report, text);
+  const changes = recommendation.expected_changes;
+  const limitations = finding.recommendation.limitations.map((value) => localizedFindingText(finding.rule_id, "recommendation_limitation", value, text));
+  const expected = changes.length
+    ? [...changes.map((change) => `${changeLabel(change, location, true, text, changes)} ${change.direction === "decrease" ? "↓" : "↑"}`), `${text("result", "返回结果")} ${recommendation.result_effect === "unchanged" ? text("unchanged", "不变") : text("may change", "可能变化")}`].join(" · ")
+    : expectedDirectionOf(item, text);
+  async function copySteps(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(steps.map((step, index) => `${index + 1}. ${step.title}${step.detail ? `${text(": ", "：")}${step.detail}` : ""}`).join("\n"));
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+  }
+  return <section aria-label={text("Recommendation", "建议")} className="finding-recommendation">
+    <div className="finding-recommendation-head">
+      <h3>{text("Recommendation", "建议")}</h3>
+      <span className="finding-recommendation-source">{sourceLabel(item, text)}</span>
+      {limitations.length ? <InfoTip label={text(`${limitations.length} limitation(s)`, `局限 ${limitations.length}`)} side="left">{`${limitations.join(text("; ", "；"))}${text(".", "。")}`}</InfoTip> : null}
+    </div>
+    {steps.length ? <ol className="finding-recommendation-steps">{steps.map((step, index) => <li key={`${index}-${step.title}`}>
+      <span aria-hidden="true">{index + 1}</span>
+      <div><strong>{step.title}</strong>{step.detail ? <p>{step.detail}</p> : null}</div>
+    </li>)}</ol> : null}
+    <p className="finding-recommendation-expected"><span>{text("Expected", "预期")}</span> {expected}
+      <InfoTip label={text("About the expected direction", "关于预期方向")} side="left">{`${text("Direction only; no magnitude is promised.", "方向判断，不承诺幅度。")} ${text("Risk", "风险")} ${riskLevelLabel(item, text)}${riskNote(item, text) ? ` · ${riskNote(item, text)}` : ""}`}</InfoTip>
+    </p>
+    <details className="finding-recommendation-verify">
+      <summary>{text("Verification plan", "验证计划")}</summary>
+      <ol>
+        <li>{text("Capture a Profile of the changed query with “Runtime Top · run once” in the SQL workspace", "在 SQL 工作区以「运行时 Top · 执行一次」采集修改后的 Profile")}</li>
+        <li>{text("Set the current Profile as baseline and the changed one as candidate", "将当前 Profile 设为基线，修改后为候选")}</li>
+        <li>{changes.length
+          ? text(`In Compare, review ${changes.map((change) => reviewLabel(change, location, text, changes)).join(" and ")}; a metric whose baseline is 0 shows only its absolute change`, `在对比中复核 ${changes.map((change) => reviewLabel(change, location, text, changes)).join(" 与 ")}；基线为 0 的指标只看绝对变化`)
+          : text("In Compare, review the evidence metrics above; a metric whose baseline is 0 shows only its absolute change", "在对比中复核上方证据指标；基线为 0 的指标只看绝对变化")}</li>
+      </ol>
+    </details>
+    <div className="finding-recommendation-actions">
+      {onOpenCompare ? <button className="button secondary" onClick={onOpenCompare} type="button">{text("Compare before / after", "前后对比")}</button> : null}
+      <button className="button text" disabled={steps.length === 0} onClick={() => { void copySteps(); }} type="button">{text("Copy steps", "复制排查步骤")}</button>
+      <span aria-live="polite" className="recommendation-copy-status" role="status">{copyState === "copied" ? text("Steps copied", "已复制排查步骤") : copyState === "failed" ? text("Copy failed: clipboard unavailable", "复制失败：剪贴板不可用") : ""}</span>
+    </div>
+  </section>;
+}
+
+/** The Official Advisor guide on its own (task 65): shown under the findings, never mixed into product rules. */
+export function OfficialAdvisorGuides({ advisorResponse }: { advisorResponse: PlanAdvisorResponse }): JSX.Element {
+  return <AdvisorGuide advisorResponse={advisorResponse} />;
+}
 
 function RecommendationDetail({ item, onLocateNode, onOpenCompare, report }: {
   item: RecommendationItem; onLocateNode?(nodeId: string): void; onOpenCompare?(): void;

@@ -12,7 +12,7 @@ import { BOARDS, type BoardName } from "./boards";
 import "../styles.css";
 
 declare global {
-  interface Window { __visualReady?: boolean; __visualError?: string }
+  interface Window { __visualReady?: boolean; __visualError?: string; __visualMisses?: string[] }
 }
 
 const name = (new URLSearchParams(location.search).get("board") ?? "Connect") as BoardName;
@@ -25,6 +25,7 @@ async function run(): Promise<void> {
     const url = new URL(input instanceof Request ? input.url : String(input), location.href);
     if (!url.pathname.startsWith("/api/v1/")) return nativeFetch(input, init);
     const answer = board.respond(url.pathname.slice("/api/v1".length), init?.method ?? "GET", typeof init?.body === "string" ? init.body : null);
+    if (answer === undefined) (window.__visualMisses ??= []).push(`${init?.method ?? "GET"} ${url.pathname}`);
     if (answer === undefined) return new Response(JSON.stringify({ error: { code: "visual_fixture_missing", message_id: url.pathname } }), { status: 404 });
     return new Response(JSON.stringify(answer.body), { status: answer.status ?? 200, headers: { "Content-Type": "application/json" } });
   };

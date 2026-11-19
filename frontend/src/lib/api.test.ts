@@ -35,7 +35,8 @@ describe("DoctorApi", () => {
     await api.readAuditActiveAt(point, controller.signal);
     expect(request.mock.calls.map((call) => call[0])).toEqual(["/api/v1/capabilities", "/api/v1/connections/connection%2Fone/audit/overview", "/api/v1/connections/connection%2Fone/audit/active-at"]);
     expect(request.mock.calls[2][1].body).toBe(JSON.stringify(point));
-    expect(request.mock.calls[2][1].signal).toBe(controller.signal);
+    // Audit reads are session-bound: never aborted, so leaving a page keeps the connection.
+    expect(request.mock.calls[2][1].signal).toBeUndefined();
     expect(request.mock.calls[2][1].headers["X-Doctor-CSRF"]).toBe("nonce-from-capabilities");
     expect(request.mock.calls.some((call) => /profiles\/fetch|queries\/sql|runtime/.test(call[0]))).toBe(false);
   });
@@ -57,7 +58,7 @@ describe("DoctorApi", () => {
       "/api/v1/capabilities", "/api/v1/connections/connection%2Fone/audit/family-detail",
     ]);
     expect(request.mock.calls[1][1]).toMatchObject({
-      method: "POST", body: JSON.stringify(detail), signal: controller.signal,
+      method: "POST", body: JSON.stringify(detail), signal: undefined,
       headers: { "Content-Type": "application/json", "X-Doctor-CSRF": "nonce-from-capabilities" },
     });
   });
@@ -221,22 +222,66 @@ describe("DoctorApi", () => {
     expect(request.mock.calls[1][1].headers).toMatchObject({ "X-Doctor-CSRF": "nonce-from-capabilities", "Content-Type": "application/json" });
   });
 
-  it("releases a connection on unload with one keepalive CSRF DELETE and ignores its failure", async () => {
+  it("resumes a session with one credential-free GET and rejects another session's view", async () => {
     const request = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify(capabilities), { status: 200 }))
-      .mockRejectedValueOnce(new TypeError("page unloaded"));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ connection_id: "conn/1", state: "ready" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ connection_id: "other", state: "ready" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "connection_expired", stage: "connection", message_id: "connection_expired", recoverability: "restart" }), { status: 410 }));
     const api = new DoctorApi("/api/v1", request);
 
-    api.releaseConnectionOnUnload("conn/1");
-    expect(request).not.toHaveBeenCalled();
+    await expect(api.resumeConnection("conn/1")).resolves.toMatchObject({ connection_id: "conn/1" });
+    expect(request.mock.calls[0][0]).toBe("/api/v1/connections/conn%2F1");
+    expect(request.mock.calls[0][1].method).toBeUndefined();
+    expect(request.mock.calls[0][1].body).toBeUndefined();
+    await expect(api.resumeConnection("conn/1")).rejects.toBeTruthy();
+    await expect(api.resumeConnection("conn/1")).rejects.toMatchObject({ code: "connection_expired" });
+  });
 
-    await api.capabilities();
-    expect(() => api.releaseConnectionOnUnload("conn/1")).not.toThrow();
-    await Promise.resolve();
+  it("never aborts a session-bound Audit or load read, so leaving a page keeps the connection", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(capabilities), { status: 200 }))
+      .mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const api = new DoctorApi("/api/v1", request);
+    const controller = new AbortController();
+    controller.abort();
+    await api.readAuditPerformance({ connection_id: "c1" } as never, controller.signal).catch(() => undefined);
+    await api.readLoadOverview({ connection_id: "c1", kind: null, include_system: false }, controller.signal).catch(() => undefined);
+    await api.fetchConnectedProfile({ connection_id: "c1" } as never, controller.signal).catch(() => undefined);
+    const byPath = (suffix: string) => request.mock.calls.find((call) => String(call[0]).endsWith(suffix))?.[1];
+    expect(byPath("/audit/performance")?.signal).toBeUndefined();
+    expect(byPath("/loads/overview")?.signal).toBeUndefined();
+    // Other connection reads keep the caller's signal.
+    expect(byPath("/profiles/fetch")?.signal).toBe(controller.signal);
+  });
 
-    expect(request).toHaveBeenCalledTimes(2);
-    expect(request.mock.calls[1][0]).toBe("/api/v1/connections/conn%2F1");
-    expect(request.mock.calls[1][1]).toMatchObject({ method: "DELETE", keepalive: true, headers: { "X-Doctor-CSRF": "nonce-from-capabilities" } });
+  it("announces an expired StarRocks session once per failed request so the app can recover", async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal("window", { dispatchEvent });
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: "connection_expired", stage: "connection", message_id: "connection_expired", recoverability: "restart" }), { status: 410 }));
+    const api = new DoctorApi("/api/v1", request);
+    await expect(api.resumeConnection("gone")).rejects.toMatchObject({ code: "connection_expired" });
+    expect(dispatchEvent).toHaveBeenCalledOnce();
+    expect(dispatchEvent.mock.calls[0][0].type).toBe("doctor:connection-expired");
+  });
+
+  it("reads, opens and forgets the saved connection without ever sending a password (task 72)", async () => {
+    const saved = { state: "saved", unavailable_reason: null, host: "127.0.0.1", port: 9030, username: "root", tls_mode: "plaintext", background: "collecting" };
+    const request = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(saved), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(capabilities), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ connection_id: "c1", state: "ready" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const api = new DoctorApi("/api/v1", request);
+
+    await expect(api.savedConnection()).resolves.toMatchObject({ state: "saved", background: "collecting" });
+    expect(request.mock.calls[0][0]).toBe("/api/v1/saved-connection");
+    expect(request.mock.calls[0][1].method).toBeUndefined();
+    await expect(api.connectSaved()).resolves.toMatchObject({ connection_id: "c1" });
+    expect(request.mock.calls[2][0]).toBe("/api/v1/saved-connection/connect");
+    expect(request.mock.calls[2][1]).toMatchObject({ method: "POST", body: "{}", headers: { "X-Doctor-CSRF": "nonce-from-capabilities" } });
+    await api.forgetSavedConnection();
+    expect(request.mock.calls[3][0]).toBe("/api/v1/saved-connection");
+    expect(request.mock.calls[3][1]).toMatchObject({ method: "DELETE", headers: { "X-Doctor-CSRF": "nonce-from-capabilities" } });
   });
 
   it("keeps multipart content-type browser-managed while still sending CSRF", async () => {
@@ -367,7 +412,7 @@ describe("DoctorApi", () => {
 
     expect(request.mock.calls[1][0]).toBe("/api/v1/connections/conn_opaque_3514/audit/sql");
     expect(request.mock.calls[1][1].body).toBe(JSON.stringify(sql));
-    expect(request.mock.calls[1][1].signal).toBe(controller.signal);
+    expect(request.mock.calls[1][1].signal).toBeUndefined();
     expect(request.mock.calls.slice(1).map((call) => call[0]).join(" ")).not.toContain("SELECT");
     expect(request.mock.calls.slice(1).every((call) => call[1].headers["X-Doctor-CSRF"] === "nonce-from-capabilities")).toBe(true);
   });

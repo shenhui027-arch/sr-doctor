@@ -559,12 +559,13 @@ export function LoadHistoryPanel({ connectionId, includeSystem, generation, onOp
     {mode === "stats" && (options.length > 1 || kind !== null) && <KindSwitch kind={kind} onKind={(value) => { setKind(value); setJobId(null); }} options={options} text={text} />}
     {body ?? (current.error ? <MonitorReadError error={current.error} onRetry={current.refresh} text={text} title={loadFailureText(current.error, text)} />
       : <p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>)}
-    {mode === "stats" && <ul className="notify-notes boxed">
+    {/* Task 70: the reading notes fold away so the charts keep the screen. */}
+    {mode === "stats" && <details className="load-history-notes"><summary>{text("How these numbers are counted", "统计口径说明")}</summary><ul className="notify-notes boxed">
       <li>{text("Only finished loads (FINISHED / CANCELLED) are counted, by finish time to the second; running loads are on the Overview tab.", "只统计已结束的导入（FINISHED / CANCELLED），时间只到秒，按完成时间归入小时；进行中的导入在“概览”里看。")}</li>
       <li>{text("Counts are finished loads; a Routine Load job runs many tasks, and each finished task counts once. The Routine Load switch shows how many jobs had a snapshot.", "次数按已结束的导入计；一个 Routine Load 作业会运行很多个任务，每个结束的任务计一次。类型切换里的 Routine Load 显示有快照的作业数。")}</li>
       <li>{text("StarRocks keeps about 1000 records per kind for 3 days; when records were cleared before they were read, or a read hit its limit, the hour is marked partial. Nothing is interpolated.", "StarRocks 在 FE 内存里只保留最近 3 天、每类约 1000 条；采集时发现记录已被提前清理，或读到上限，就把这一小时标为“部分”，不插值。")}</li>
       <li>{text("A StarRocks version or history rule change starts a new segment that is not compared across. Only locally connected clusters are collected; remote clusters wait for the production read-only pilot (G1).", "StarRocks 版本或统计规则变化前后单独成段，不跨段比较。只采集本机连接的集群；远端集群要等生产只读试点（G1）通过。")}</li>
       <li>{text("Load alerts (Routine Load paused or ended, lag growing, failure or filter rate jumping against the baseline) are under Alerts › Loads.", "导入告警（Routine Load 暂停或结束、积压持续增长、失败率或过滤率相对基线突增）在“告警 › 导入”。")}</li>
-    </ul>}
+    </ul></details>}
   </div>;
 }

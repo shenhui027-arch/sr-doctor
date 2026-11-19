@@ -138,7 +138,8 @@ test("Candidate package uses a strict allowlist, hashes every payload file, and 
     assert.deepEqual(licenseReport.missing_license_expression, []);
     assert.deepEqual(licenseReport.missing_local_license_text, []);
     const npmSbom = JSON.parse(readFileSync(join(candidate.run_root, "candidate", "sbom", "npm-dependencies.json"), "utf8"));
-    assert.equal(npmSbom.packages.length, 30);
+    // v1.0-63 added motion and @radix-ui/react-tooltip (with their dependencies); every license is ready.
+    assert.equal(npmSbom.packages.length, 60);
     assert.equal(npmSbom.packages.every((pkg) => pkg.installed_package_json && pkg.license_expression && pkg.license_texts.length > 0), true);
 
     const expectedArchiveFiles = [...listed, "candidate-manifest.json"].map((path) => `candidate/${path}`).sort();

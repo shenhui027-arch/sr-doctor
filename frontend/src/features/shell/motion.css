@@ -1,0 +1,58 @@
+/* Task 70: shared motion (board 11). One ease-out curve, transform and opacity only, no overshoot,
+   no looping decoration. Nothing here moves when the system asks for reduced motion. */
+@keyframes ui-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes ui-slide { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+@keyframes ui-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ui-reveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+
+/* Segmented controls: one surface slides under the chosen option. */
+.has-indicator { position: relative; isolation: isolate; }
+.has-indicator > button { position: relative; z-index: 1; background: transparent !important; box-shadow: none !important; }
+.seg-indicator { position: absolute; top: 0; left: 0; z-index: 0; border-radius: 6px; background: var(--surface); box-shadow: var(--shadow-1); pointer-events: none; transition: transform 220ms var(--ease), width 220ms var(--ease), height 220ms var(--ease), opacity 150ms var(--ease); }
+
+/* A view that just appeared (a tab, a card group, a mode) rises in; display:none → shown restarts it. */
+.card-deck-root > .card-deck-group:not([hidden]),
+.compare-tab-body > :not([hidden]),
+.doctor-structure > :not([hidden]):not(.doctor-structure-tabs),
+.settings-body > .settings-section { animation: ui-rise 320ms var(--ease) both; }
+
+/* Detail panels slide in from the side they live on; a newly chosen finding cross-fades in. */
+.audit-family-aside, .audit-selection:not(.audit-selection-empty), .audit-similar-aside, .selected-query,
+.alert-side > .history-card:not(.history-details), .governance-detail, .running-profile-context { animation: ui-slide 360ms var(--ease) both; }
+.finding-inspector { animation: ui-fade 260ms var(--ease) both; }
+
+/* Rows arrive in a short stagger (first ten); later rows are already there. */
+:is(.audit-board-main-body, .query-table-wrap, .compare-tab-body, .card-deck-root, .workspace-alerts .history-card.wide) tbody tr:nth-child(-n+10),
+:is(.alert-list, .audit-family-members, .finding-group-list, .findings-list) > li:nth-child(-n+10) { animation: ui-rise 320ms var(--ease) both; }
+:is(.audit-board-main-body, .query-table-wrap, .compare-tab-body, .card-deck-root, .workspace-alerts .history-card.wide) tbody tr:nth-child(2),
+:is(.alert-list, .audit-family-members, .finding-group-list, .findings-list) > li:nth-child(2) { animation-delay: 30ms; }
+:is(.audit-board-main-body, .query-table-wrap, .compare-tab-body, .card-deck-root, .workspace-alerts .history-card.wide) tbody tr:nth-child(3),
+:is(.alert-list, .audit-family-members, .finding-group-list, .findings-list) > li:nth-child(3) { animation-delay: 60ms; }
+:is(.audit-board-main-body, .query-table-wrap, .compare-tab-body, .card-deck-root, .workspace-alerts .history-card.wide) tbody tr:nth-child(4),
+:is(.alert-list, .audit-family-members, .finding-group-list, .findings-list) > li:nth-child(4) { animation-delay: 90ms; }
+:is(.audit-board-main-body, .query-table-wrap, .compare-tab-body, .card-deck-root, .workspace-alerts .history-card.wide) tbody tr:nth-child(5),
+:is(.alert-list, .audit-family-members, .finding-group-list, .findings-list) > li:nth-child(5) { animation-delay: 120ms; }
+:is(.audit-board-main-body, .query-table-wrap, .compare-tab-body, .card-deck-root, .workspace-alerts .history-card.wide) tbody tr:nth-child(n+6):nth-child(-n+10),
+:is(.alert-list, .audit-family-members, .finding-group-list, .findings-list) > li:nth-child(n+6):nth-child(-n+10) { animation-delay: 150ms; }
+
+/* Summary figures and dashboard cells settle in once, left to right. */
+:is(.audit-performance-cards, .load-kpis, .doctor-summary-facts, .notify-kpis) > * { animation: ui-rise 360ms var(--ease) both; }
+:is(.audit-performance-cards, .load-kpis, .doctor-summary-facts, .notify-kpis) > :nth-child(2) { animation-delay: 40ms; }
+:is(.audit-performance-cards, .load-kpis, .doctor-summary-facts, .notify-kpis) > :nth-child(3) { animation-delay: 80ms; }
+:is(.audit-performance-cards, .load-kpis, .doctor-summary-facts, .notify-kpis) > :nth-child(4) { animation-delay: 120ms; }
+:is(.audit-performance-cards, .load-kpis, .doctor-summary-facts, .notify-kpis) > :nth-child(n+5) { animation-delay: 160ms; }
+.audit-dashboard > :is(.audit-dashboard-chart, .audit-dashboard-side, .audit-dashboard-cell) { animation: ui-rise 400ms var(--ease) 120ms both; }
+
+/* Charts draw in from the left the first time they appear. */
+:is(.audit-dashboard-chart, .card-deck-group, .load-history-chart, .trend-chart) svg:not(.ui-icon) { animation: ui-reveal 700ms var(--ease) 150ms both; }
+
+/* Clickable rows and cards answer the pointer with a surface step, never a jump. */
+:is(.audit-family-list, .audit-occurrence-table, .query-table, .history-table) tbody tr { transition: background-color 150ms var(--ease); }
+.alert-row, .finding-item, .audit-family-members button { transition: background-color 150ms var(--ease), border-color 150ms var(--ease); }
+
+@media (prefers-reduced-motion: reduce) {
+  .seg-indicator { transition: none; }
+  .card-deck-root > .card-deck-group, .compare-tab-body > *, .doctor-structure > *, .settings-body > .settings-section,
+  .audit-family-aside, .audit-selection, .audit-similar-aside, .selected-query, .alert-side > .history-card, .governance-detail, .running-profile-context, .finding-inspector,
+  tbody tr, li, :is(.audit-performance-cards, .load-kpis, .doctor-summary-facts, .notify-kpis) > *, .audit-dashboard > *, svg { animation: none !important; }
+}

@@ -755,6 +755,7 @@ fn write_only_connection_and_explain_inputs_never_echo() {
         database: None,
         audit_table: None,
         tls_mode: doctor_contracts::TlsMode::DockerLoopbackPlaintext,
+        save_credentials: Some(true),
     };
     let explain = ExplainRequest::UserSql {
         connection_id: "conn_opaque_3514".to_owned(),

@@ -1,6 +1,6 @@
 import type { AnalysisSnapshotReport, Finding, FindingMeasurement, MetricCell, PlanNodeSummary, RuleEvaluation } from "../../../../contracts/generated/doctor-contracts";
 import { durationNanosecondsText } from "../../lib/duration-display";
-import { useRef, useState, type JSX } from "react";
+import { useRef, useState, type JSX, type ReactNode } from "react";
 import { localizedEnum } from "../../i18n/enum-label";
 import { localizedFindingText, type FindingTextField } from "../../i18n/finding-text";
 import { measurementLabel, measurementThreshold } from "../../i18n/measurement-label";
@@ -8,7 +8,8 @@ import { metricLabel } from "../../i18n/metric-label";
 import { useLocale, type LocalizedText } from "../../i18n/locale";
 import { useSelection } from "../selection/selection-store";
 import { resolveSubjectLocation } from "../recommendations/recommendation-location";
-import { evidenceRowsForReferences } from "../recommendations/RecommendationsPanel";
+import { evidenceRowsForReferences, FindingRecommendation, recommendedFindings } from "../recommendations/RecommendationsPanel";
+import { EvidenceMeter, type EvidenceLevel } from "../shell/ui";
 import { physicalOperatorOf } from "../recommendations/recommendation-location";
 import "./findings.css";
 
@@ -64,7 +65,7 @@ export function selectedFinding(report: AnalysisSnapshotReport, findingId: strin
 }
 
 /** Left column: findings ordered as delivered, filterable by severity. Not a health score. */
-export function FindingsPanel({ report }: { report: AnalysisSnapshotReport }): JSX.Element {
+export function FindingsPanel({ report, children }: { report: AnalysisSnapshotReport; children?: ReactNode }): JSX.Element {
   const { text } = useLocale();
   const { findingId, selectFinding } = useSelection();
   const [severity, setSeverity] = useState<string | null>(null);
@@ -83,6 +84,9 @@ export function FindingsPanel({ report }: { report: AnalysisSnapshotReport }): J
         {severities.map((value) => <button aria-pressed={severity === value} key={value} onClick={() => setSeverity(value)} type="button">{localizedEnum(value, text)} {report.findings.filter((finding) => finding.severity === value).length}</button>)}
       </div> : null}
     </div>
+    {/* Review (task 69 card contract): the heading stays put; the list and what follows it
+        (the selected finding, evidence gaps, Official Advisor) are the card's one scrolling body. */}
+    <div className="findings-body">
     {report.findings.length === 0 ? <p className="findings-empty">{rulesEvaluated(report)
       ? text("No reportable issues were found in this Profile.", "当前 Profile 暂未发现可报告的问题。")
       : text("Rules were not evaluated for this Profile, so an empty list does not mean the query is healthy. The Profile notice above says what to capture instead.", "此 Profile 未评估诊断规则，列表为空不代表查询正常。应改为采集哪种 Profile，见上方的 Profile 提示。")}</p> : <ul className="finding-list">
@@ -93,6 +97,8 @@ export function FindingsPanel({ report }: { report: AnalysisSnapshotReport }): J
         </li>
         : group.findings.map(({ finding, context }) => <FindingCard active={active?.finding_id === finding.finding_id} context={context} finding={finding} key={finding.finding_id} onSelect={() => selectFinding(finding.finding_id, finding.subject_ref)} report={report} />))}
     </ul>}
+    {children}
+    </div>
   </section>;
 }
 
@@ -256,7 +262,12 @@ export function dimensionLabel(key: "summary" | "metrics" | "graph" | "provenanc
 }
 
 /** Right column (design board 02): the selected finding's statement, evidence, limits and direction. */
-export function FindingInspector({ onOpenRecommendations, report }: { onOpenRecommendations?(): void; report: AnalysisSnapshotReport }): JSX.Element {
+/** The signature meter's level for a backend completeness state; the meter never invents a level. */
+export function evidenceLevel(state: string): EvidenceLevel {
+  return state === "complete" ? "complete" : state === "partial" ? "partial" : "missing";
+}
+
+export function FindingInspector({ onOpenCompare, report }: { onOpenCompare?(): void; report: AnalysisSnapshotReport }): JSX.Element {
   const { text } = useLocale();
   const { findingId, showFindingNode, selectSourceRef } = useSelection();
   const technical = useRef<HTMLDetailsElement>(null);
@@ -282,7 +293,8 @@ export function FindingInspector({ onOpenRecommendations, report }: { onOpenReco
   const family = context.nodeId ? operatorFamily(report.graph_view.nodes.find((node) => node.node_id === context.nodeId)?.plan_node_type ?? null) : null;
   const rule = finding.rule_id.includes("@") ? finding.rule_id : `${finding.rule_id}@${finding.rule_version}`;
   const limitations = finding.limitations.map((value) => localizedFindingText(finding.rule_id, "limitation", value, text));
-  return <aside aria-label={text("Finding detail", "发现详情")} className="panel finding-inspector">
+  // Keyed by finding: a newly chosen finding cross-fades in (task 70).
+  return <aside aria-label={text("Finding detail", "发现详情")} className="panel finding-inspector" key={finding.finding_id}>
     <div className="inspector-head">
       <div className="inspector-tags"><span className={`severity-tag ${severityTone(finding.severity)}`}>{localizedEnum(finding.severity, text)}</span><span>{family ? `${family} · ` : ""}{text("Rule", "规则")} {rule}</span></div>
       <h2>{category}</h2>
@@ -290,7 +302,7 @@ export function FindingInspector({ onOpenRecommendations, report }: { onOpenReco
     </div>
     <dl className="inspector-facts">
       <div><dt>{text("Confidence", "置信度")}</dt><dd>{localizedEnum(finding.confidence, text)}</dd></div>
-      <div><dt>{text("Evidence completeness", "证据完整度")}</dt><dd className={`completeness-${finding.evidence_completeness}`}>{localizedEnum(finding.evidence_completeness, text)}</dd></div>
+      <div><dt>{text("Evidence completeness", "证据完整度")}</dt><dd className={`completeness-${finding.evidence_completeness}`}><EvidenceMeter detail={finding.evidence_completeness_reasons.map((reason) => localizedEnum(reason, text)).join(" · ") || undefined} label={`${text("Evidence", "证据")} ${localizedEnum(finding.evidence_completeness, text)}`} level={evidenceLevel(finding.evidence_completeness)} /> {localizedEnum(finding.evidence_completeness, text)}</dd></div>
       <div><dt>{text("Comparable dimension", "可比维度")}</dt><dd>{headline ? dimensionLabelOf(headline.measurement_id, text) : "—"}</dd></div>
     </dl>
     <div className="inspector-body">
@@ -321,11 +333,13 @@ export function FindingInspector({ onOpenRecommendations, report }: { onOpenReco
         <h3>{text("Limitations", "限制")}</h3>
         <p className="inspector-limitations">{limitations.length ? `${limitations.join(text("; ", "；"))}${text(".", "。")}` : text("None supplied by the report.", "报告未提供。")}</p>
       </section>
-      <section className="inspector-direction">
-        <h3>{text("Recommended direction", "建议方向")}</h3>
-        <p>{localizedFindingText(finding.rule_id, "expected_direction", finding.recommendation.expected_direction, text)}</p>
-        {onOpenRecommendations ? <button className="inspector-direction-link" onClick={onOpenRecommendations} type="button">{text("View investigation steps and verification plan", "查看排查步骤与验证计划")}<svg aria-hidden="true" fill="none" height="12" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" width="12"><path d="M5 12h14M13 6l6 6-6 6" /></svg></button> : null}
-      </section>
+      {/* Task 65: the recommendation lives with its finding; a low-confidence finding keeps only its direction. */}
+      {recommendedFindings(report).some((candidate) => candidate.finding_id === finding.finding_id)
+        ? <FindingRecommendation finding={finding} onOpenCompare={onOpenCompare} report={report} />
+        : <section className="inspector-direction">
+          <h3>{text("Recommended direction", "建议方向")}</h3>
+          <p>{localizedFindingText(finding.rule_id, "expected_direction", finding.recommendation.expected_direction, text)}</p>
+        </section>}
       <details className="technical-disclosure" ref={technical}><summary>{text("Evidence and rule details", "证据与规则详情")}</summary>
         <dl className="finding-facts">
           <div><dt>{text("Rule", "规则")}</dt><dd><code>{finding.rule_id}</code></dd></div>

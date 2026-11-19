@@ -110,6 +110,10 @@ pub(crate) struct HistoryRuntime {
     store: Option<Arc<HistoryStore>>,
     open_failure: Option<HistoryStoreUnavailableReason>,
     collectors: Mutex<BTreeMap<String, Arc<CollectorEntry>>>,
+    /// Task 72 review: every collection cycle holds this shared; clearing
+    /// history takes it exclusively, so no cycle that started before the clear
+    /// writes after it.
+    pub(crate) cycle_gate: std::sync::RwLock<()>,
 }
 
 pub(crate) fn unix_now() -> i64 {
@@ -147,6 +151,7 @@ impl HistoryRuntime {
             store,
             open_failure,
             collectors: Mutex::new(BTreeMap::new()),
+            cycle_gate: std::sync::RwLock::new(()),
         }
     }
 
@@ -167,6 +172,48 @@ impl HistoryRuntime {
 
     fn entry(&self, connection_id: &str) -> Option<Arc<CollectorEntry>> {
         self.collectors().get(connection_id).cloned()
+    }
+
+    /// The collector a page should see (task 72): its own, unless that one
+    /// waits behind the collector of the same cluster (the saved connection
+    /// collecting in the background); with no page session, whichever runs.
+    fn resolve(&self, connection_id: Option<&str>) -> Option<Arc<CollectorEntry>> {
+        let collectors = self.collectors();
+        let running = |entry: &&Arc<CollectorEntry>| {
+            !entry.stop.load(Ordering::SeqCst)
+                && !matches!(
+                    *entry.status.lock().unwrap_or_else(|p| p.into_inner()),
+                    CollectorStatus::Stopped(_)
+                )
+        };
+        let active = collectors.values().find(running).cloned();
+        match (
+            connection_id.and_then(|id| collectors.get(id).cloned()),
+            active,
+        ) {
+            (Some(own), Some(active))
+                if own.target == active.target
+                    && *own.status.lock().unwrap_or_else(|p| p.into_inner())
+                        == CollectorStatus::Stopped(
+                            CollectionStoppedReason::AnotherSessionCollecting,
+                        ) =>
+            {
+                Some(active)
+            }
+            (Some(own), _) => Some(own),
+            (None, active) => active,
+        }
+    }
+
+    /// Whether this session's collector is the one reading (task 72).
+    pub(crate) fn collector_running(&self, connection_id: &str) -> bool {
+        self.collectors().get(connection_id).is_some_and(|entry| {
+            !entry.stop.load(Ordering::SeqCst)
+                && !matches!(
+                    *entry.status.lock().unwrap_or_else(|p| p.into_inner()),
+                    CollectorStatus::Stopped(_)
+                )
+        })
     }
 
     pub(crate) fn stop(&self, connection_id: &str) {
@@ -241,8 +288,12 @@ pub(crate) fn start_collector(
         return;
     }
     let gated = remote && !runtime.config.allow_remote_collection;
-    // One bounded collector per process: a second session waits its turn.
-    let busy = runtime.collectors().values().any(|entry| {
+    // One bounded collector per process: a second session waits its turn. The
+    // check and the insert happen under one lock (task 72 review), so a page
+    // session and the saved connection's background session that connect at
+    // the same moment cannot both start a collector.
+    let mut collectors = runtime.collectors();
+    let busy = collectors.values().any(|entry| {
         !entry.stop.load(Ordering::SeqCst)
             && !matches!(
                 *entry.status.lock().unwrap_or_else(|p| p.into_inner()),
@@ -263,9 +314,8 @@ pub(crate) fn start_collector(
         stop: AtomicBool::new(false),
         wake: tokio::sync::Notify::new(),
     });
-    runtime
-        .collectors()
-        .insert(connection_id.to_owned(), Arc::clone(&entry));
+    collectors.insert(connection_id.to_owned(), Arc::clone(&entry));
+    drop(collectors);
     if !gated && !busy {
         tokio::spawn(collector_loop(
             state.clone(),
@@ -531,17 +581,35 @@ async fn collector_loop(state: ApiState, connection_id: String, entry: Arc<Colle
         );
         let now = unix_now();
         let (audit_due, loads_due) = (audit_clock.due(now), loads_clock.due(now));
+        // Collector reads never extend the session's idle lease (task 72 review):
+        // a page session lives as long as its page, the saved connection's
+        // background session as long as its supervisor keeps it.
+        let (history, stopping) = (Arc::clone(&state.history), Arc::clone(&entry));
         let outcome = tokio::task::spawn_blocking(move || {
-            run_cycle(
-                &sessions,
-                &store_for_cycle,
-                &config_for_cycle,
-                &id,
-                &target,
-                now,
-                audit_due,
-                loads_due,
-            )
+            let _cycle = history
+                .cycle_gate
+                .read()
+                .unwrap_or_else(|poison| poison.into_inner());
+            // A collector stopped while this cycle waited for the gate (e.g. by
+            // a clear) reads and writes nothing.
+            if stopping.stop.load(Ordering::SeqCst) {
+                return Ok(CycleOutcome::Read {
+                    audit: None,
+                    loads: None,
+                });
+            }
+            doctor_connector::without_lease(|| {
+                run_cycle(
+                    &sessions,
+                    &store_for_cycle,
+                    &config_for_cycle,
+                    &id,
+                    &target,
+                    now,
+                    audit_due,
+                    loads_due,
+                )
+            })
         })
         .await;
         let period = i64::from(config.period_seconds);
@@ -670,10 +738,7 @@ pub(super) async fn status(
     let runtime = &state.history;
     let now = unix_now();
     let config = &runtime.config;
-    let entry = request
-        .connection_id
-        .as_deref()
-        .and_then(|id| runtime.entry(id));
+    let entry = runtime.resolve(request.connection_id.as_deref());
     // Not connected: show the most recently collected target, so the
     // watermark and coverage stay visible between sessions.
     let target = match (&entry, runtime.store()) {
@@ -811,7 +876,11 @@ pub(super) async fn status(
         open_alerts,
         load_revision,
         limitations: [
-            "collection_runs_only_while_this_session_is_connected",
+            if state.saved.background() == doctor_contracts::SavedConnectionBackground::Collecting {
+                "collection_runs_in_the_background_with_the_saved_connection"
+            } else {
+                "collection_runs_only_while_this_session_is_connected"
+            },
             "rows_arriving_later_than_the_lag_are_not_read",
             "quantiles_are_log_histogram_approximations",
             "production_budget_pending_g1",
@@ -829,8 +898,10 @@ pub(super) async fn collection(
 ) -> Result<Response, ApiFailure> {
     let request: HistoryCollectionRequest = connector_json_request(&state, request).await?;
     let runtime = &state.history;
-    let (Some(store), Some(entry)) = (runtime.store(), runtime.entry(&request.connection_id))
-    else {
+    let (Some(store), Some(entry)) = (
+        runtime.store(),
+        runtime.resolve(request.connection_id.as_deref()),
+    ) else {
         return Err(ApiFailure::new(
             state.next_request_id(),
             StatusCode::CONFLICT,
@@ -875,7 +946,27 @@ pub(super) async fn clear(
             "change_input",
         ));
     };
-    store.clear().map_err(|_| internal_failure(&state))?;
+    // Clearing also forgets the saved connection (task 72 review). Under the
+    // exclusive cycle gate: no cycle is running, the supervisor is not between
+    // its check and registering a collector, and the background collector is
+    // stopped before the store is cleared, so nothing collected before the
+    // clear is written after it.
+    let (gate_state, store) = (state.clone(), Arc::clone(store));
+    tokio::task::spawn_blocking(move || {
+        let _gate = gate_state
+            .history
+            .cycle_gate
+            .write()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if let Some(id) = gate_state.saved.background_id() {
+            stop_collector(&gate_state, &id);
+        }
+        store.clear()
+    })
+    .await
+    .map_err(|_| internal_failure(&state))?
+    .map_err(|_| internal_failure(&state))?;
+    state.saved.changed();
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -998,6 +1089,41 @@ mod tests {
         assert_eq!(audit.next_run, 100 + 1800);
         audit.record(true, 2000, 300);
         assert_eq!((audit.failures, audit.next_run), (0, 2300));
+    }
+
+    #[test]
+    fn c1_a_page_waiting_behind_the_background_collector_sees_it() {
+        let runtime = HistoryRuntime::open(HistoryConfig::default());
+        let entry = |target: &str, status| {
+            Arc::new(CollectorEntry {
+                target: target.into(),
+                status: Mutex::new(status),
+                stop: AtomicBool::new(false),
+                wake: tokio::sync::Notify::new(),
+            })
+        };
+        let waiting = CollectorStatus::Stopped(CollectionStoppedReason::AnotherSessionCollecting);
+        runtime.collectors().insert(
+            "background".into(),
+            entry("127.0.0.1:9030", CollectorStatus::Running { next_run: 5 }),
+        );
+        runtime
+            .collectors()
+            .insert("page".into(), entry("127.0.0.1:9030", waiting.clone()));
+        runtime
+            .collectors()
+            .insert("other".into(), entry("10.0.0.5:9030", waiting.clone()));
+        let status = |id: Option<&str>| {
+            runtime
+                .resolve(id)
+                .map(|entry| entry.status.lock().unwrap().clone())
+        };
+        let running = Some(CollectorStatus::Running { next_run: 5 });
+        assert_eq!(status(Some("page")), running);
+        // Another cluster's page keeps its own state; no page sees whichever runs.
+        assert_eq!(status(Some("other")), Some(waiting));
+        assert_eq!(status(None), running);
+        assert_eq!(status(Some("unknown")), running);
     }
 
     fn config() -> HistoryConfig {

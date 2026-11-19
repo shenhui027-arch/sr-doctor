@@ -1,7 +1,7 @@
 // Stage D workspaces: they read the local API and pass the user's choices
 // back to it. Nothing here reaches StarRocks.
 import { useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import type { AlertView, GovernanceItem, HistoryStoreState, LoadAlertsMore } from "../../../../contracts/generated/doctor-contracts";
 import { useLocale, type LocalizedText } from "../../i18n/locale";
 import { doctorApi } from "../../lib/api";
@@ -10,7 +10,7 @@ import { type AlertTab, LoadAlertsPanel, type LoadHistoryTarget } from "./LoadAl
 import { GovernancePanel, type GovernanceCommand, type NoteDrafts } from "./GovernancePanel";
 import { failureId, useMonitorRead } from "./monitor-read";
 import { blockedStore, HistoryOffState, MonitorReadError, RefreshBar, TargetPicker } from "./MonitorStates";
-import { DeliveriesWorkspace, NotifyWorkspace } from "./NotifyWorkspace";
+import { InfoTip } from "../shell/ui";
 import "./history.css";
 
 type MonitorContext = {
@@ -36,7 +36,7 @@ export function loadViewAt(view: LoadView, target: string | null): LoadView {
   return view.target === target ? view : { target, tab: null, more: null };
 }
 
-export function AlertsWorkspace({ target, targets = [], onTarget, store, generation = "", onRetryStatus, onOpenQueries, onChanged, onOpenTrends, onOpenItem, initialCategory = "sql", onOpenLoadHistory }: MonitorContext & {
+export function AlertsWorkspace({ target, targets = [], onTarget, store, generation = "", onRetryStatus, onOpenQueries, onChanged, onOpenTrends, onOpenItem, initialCategory = "sql", onOpenLoadHistory, leading = null }: MonitorContext & {
   /** Collector progress; a change re-reads the list. */
   generation?: string;
   /** Refreshes the header badge after a change. */
@@ -46,6 +46,8 @@ export function AlertsWorkspace({ target, targets = [], onTarget, store, generat
   /** Task 59: which kind of alerts opens first. */
   initialCategory?: AlertCategory;
   onOpenLoadHistory?(target: LoadHistoryTarget): void;
+  /** Task 68: the page's view switch, drawn at the start of the category row so the page keeps two rows of switches. */
+  leading?: ReactNode;
 }): JSX.Element {
   const { text } = useLocale();
   const blocked = blockedStore(store, null);
@@ -72,13 +74,11 @@ export function AlertsWorkspace({ target, targets = [], onTarget, store, generat
     work().then((value) => after?.(value)).catch((cause: unknown) => setActionError(failureId(cause, "request_failed")))
       .finally(() => { setBusy(false); alerts.refresh(); loadAlerts.refresh(); onChanged(); });
   };
-  const [view, setView] = useState<AlertsView>("alerts");
   const off = blocked ?? blockedStore(undefined, alerts.data ? null : alerts.error);
-  if (off) return <HistoryOffState onOpenQueries={onOpenQueries} onRetry={() => { onRetryStatus(); alerts.refresh(); }} detail={store} store={off} text={text} />;
-  const sqlOpen = alerts.data ? Number(alerts.data.counts.open) : null;
-  const loadOpen = loadAlerts.data ? Number(loadAlerts.data.counts.open) : null;
-  const views = <AlertsViews onView={setView} open={sqlOpen === null && loadOpen === null ? null : String((sqlOpen ?? 0) + (loadOpen ?? 0))} text={text} view={view} />;
+  if (off) return <>{leading ? <div className="alert-category-row">{leading}</div> : null}<HistoryOffState onOpenQueries={onOpenQueries} onRetry={() => { onRetryStatus(); alerts.refresh(); }} detail={store} store={off} text={text} /></>;
+  // Task 67: notification channels and the delivery log live in Settings; this page is the alert list.
   const categories = <div className="alert-category-row">
+    {leading}
     <div aria-label={text("Alert category", "告警类别")} className="alert-category" role="radiogroup" onKeyDown={(event) => {
       if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
       event.preventDefault();
@@ -91,11 +91,10 @@ export function AlertsWorkspace({ target, targets = [], onTarget, store, generat
         <span className="tab-count">{item === "sql" ? (alerts.data?.counts.open ?? "—") : (loadAlerts.data?.counts.open ?? "—")}</span>
       </button>)}
     </div>
-    <span className="history-muted load-alert-key alert-category-note">{text("Numbers are new alerts (not yet acknowledged)", "数字为新告警条数（未确认）")}</span>
+    <InfoTip label={text("About the counts", "关于条数")}>{text("Numbers are new alerts (not yet acknowledged)", "数字为新告警条数（未确认）")}</InfoTip>
   </div>;
-  if (view === "alerts" && category === "load") {
+  if (category === "load") {
     return <>
-      {views}
       {categories}
       {actionError && <p className="capability-error" role="alert">{governanceActionText(actionError, text)}</p>}
       {loadAlerts.data ? <LoadAlertsPanel
@@ -116,11 +115,8 @@ export function AlertsWorkspace({ target, targets = [], onTarget, store, generat
       /> : loadAlerts.error ? <MonitorReadError error={loadAlerts.error} onRetry={loadAlerts.refresh} text={text} title={text("Load alerts could not be read.", "导入告警暂时无法读取。")} /> : <p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}
     </>;
   }
-  if (view === "channels") return <>{views}<NotifyWorkspace text={text} /></>;
-  if (view === "deliveries") return <>{views}<DeliveriesWorkspace text={text} /></>;
-  if (!alerts.data) return <>{views}{alerts.error ? <MonitorReadError error={alerts.error} onRetry={alerts.refresh} text={text} title={text("Alerts could not be read.", "告警暂时无法读取。")} /> : <p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}</>;
+  if (!alerts.data) return <>{leading ? <div className="alert-category-row">{leading}</div> : null}{alerts.error ? <MonitorReadError error={alerts.error} onRetry={alerts.refresh} text={text} title={text("Alerts could not be read.", "告警暂时无法读取。")} /> : <p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}</>;
   return <>
-    {views}
     {categories}
     {actionError && <p className="capability-error" role="alert">{governanceActionText(actionError, text)}</p>}
     <AlertsPanel
@@ -143,18 +139,6 @@ export function AlertsWorkspace({ target, targets = [], onTarget, store, generat
       </>}
     />
   </>;
-}
-
-type AlertsView = "alerts" | "channels" | "deliveries";
-
-/** The alert list, its outbound channels and their delivery log. */
-export function AlertsViews({ view, onView, open, text }: { view: AlertsView; onView(view: AlertsView): void; open: string | null; text: LocalizedText }): JSX.Element {
-  const tabs: [AlertsView, string][] = [["alerts", text("Alerts", "告警列表")], ["channels", text("Notification channels", "通知渠道")], ["deliveries", text("Delivery log", "投递记录")]];
-  return <div aria-label={text("Alert views", "告警视图")} className="history-tabs notify-views" role="tablist">
-    {tabs.map(([id, label]) => <button aria-selected={id === view} key={id} onClick={() => onView(id)} role="tab" type="button">
-      {label}{id === "alerts" && open !== null && <> <span className="tab-count">{open}</span></>}
-    </button>)}
-  </div>;
 }
 
 /** Why an alert or governance action was refused, in words; unknown codes keep the code. */

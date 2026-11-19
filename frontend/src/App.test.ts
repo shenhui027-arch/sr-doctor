@@ -231,8 +231,9 @@ describe("Running Doctor retained artifact admission", () => {
 });
 it("preserves connected evidence when opening Import Profile (source wiring guard)", async () => {
   const source = (await import("./App.tsx?raw")).default;
-  expect(source).toContain('const openImport = () => { setImporting(true); setWorkspace("Doctor"); };');
-  expect(source).toMatch(/<button className="button accent header-import" onClick=\{openImport\}[^\n]*\{text\("Import profile"/);
+  // Task 63: the import opens Doctor's diagnosis view; it still clears nothing connected.
+  expect(source).toContain('const openImport = () => { setImporting(true); openDoctor("diagnosis"); };');
+  expect(source).toMatch(/<button className="button secondary header-import" onClick=\{openImport\}[^\n]*\{text\("Import profile"/);
 });
 
 
@@ -240,7 +241,8 @@ it("keeps every query-picking mode in one switch and execution state owned by Ap
   expect(appSource).toContain("const queryModes: { id: QueryMode; label: string; available: boolean }[] = [");
   expect(appSource).toContain("sql={currentExecutionAttempt?.sqlSnapshot ?? sqlDraft.value}");
   expect(appSource).not.toContain("nativeExplainAnalyze");
-  expect(appSource).not.toContain('"Overview"');
+  // Task 63 brings back an Overview page (the approved boards); it is a page, not a query mode.
+  expect(appSource).not.toMatch(/\{ id: "overview"/);
 });
 
 
@@ -255,14 +257,31 @@ it("focuses the target heading only for an explicit view switch and returns Doct
   expect(appSource).toContain('const queryFocusRequested = useRef(false)');
   expect(appSource).toContain('if (!queryFocusRequested.current) return;');
   expect(appSource).toContain('onReturnToQueries: () => setWorkspace("Queries")');
-  expect(appSource).toContain('<div className="queries-shell" hidden={workspace !== "Queries"}>');
+  // Task 66: the Overview page shows the same (kept-mounted) audit instance on its overview surface.
+  expect(appSource).toContain('<div className="queries-shell" hidden={!(workspace === "Queries" || overviewAudit)}>');
 });
 
-it("releases only a ready connection session when the page is hidden for unload", () => {
-  expect(appSource).toContain('const readySessionId = connectionSession?.state === "ready" ? connectionSession.connection_id : null;');
-  expect(appSource).toContain("if (!readySessionId) return;");
-  expect(appSource).toContain('window.addEventListener("pagehide", release);');
-  expect(appSource).toContain('return () => window.removeEventListener("pagehide", release);');
+it("keeps the connection across a reload by remembering only the session ID as the page hides", () => {
+  // Task 71: no unload release; the ID is written on pagehide, cleared on pageshow and on load.
+  expect(appSource).not.toContain("releaseConnectionOnUnload");
+  expect(appSource).toContain('window.addEventListener("pagehide", remember);');
+  expect(appSource).toContain('window.addEventListener("pageshow", forgetResumableSession);');
+  expect(appSource).toContain("const [resumeId] = useState(readResumableSession);");
+  expect(appSource).toContain("doctorApi.resumeConnection(resumeId, controller.signal)");
+  // Task 72: without a live session, a saved connection connects on open.
+  expect(appSource).toContain("if (saved.state !== \"saved\") { otherwise(); return; }");
+  expect(appSource).toContain("if (isConnectionExpiredFailure(error)) void connectSaved(() => failed(error));");
+  // Follow-up: a visible page keeps its session alive, and any expiry is checked once and recovered.
+  expect(appSource).toContain("window.addEventListener(CONNECTION_EXPIRED_EVENT, check);");
+  expect(appSource).toContain("const timer = window.setInterval(check, 5 * 60_000);");
+  // Review: a manual connect or disconnect supersedes any automatic one still in flight.
+  expect(appSource).toContain("dispatch={dispatchUserConnection}");
+  expect(appSource).toContain("void doctorApi.closeConnection(session.connection_id).catch(() => undefined);");
+  // Unmount supersedes automatic connects; collection entries open the history settings.
+  expect(appSource).toContain("// Unmounting supersedes every automatic connect still in flight");
+  expect(appSource).toContain("<CollectionCapsule onOpen={() => openSettings(\"history\")}");
+  expect(appSource).toContain("if (reconnectingRef.current) return;");
+  expect(appSource).toContain("doctorApi.connectSaved().then(accept).catch(failed);");
 });
 
 describe("Official Advisor ownership", () => {
@@ -285,11 +304,18 @@ describe("Official Advisor ownership", () => {
     expect(currentAdvisorResponse(owned, { ...session, connection_id: "conn_other" })).toBeNull();
     expect(currentAdvisorResponse(owned, { ...session, capabilities: { ...session.capabilities, plan_advisor: "forbidden" } })).toBeNull();
   });
-  it("wires the owned guide into Recommendations without feeding product rules (source wiring guard)", () => {
-    expect(appSource).toContain("advisorResponse={currentAdvisorResponse(advisor, advisorSession)}");
+  it("wires the owned guide under the findings without feeding product rules (source wiring guard)", () => {
+    // Task 65: the guide renders on its own under Doctor's findings; Doctor gets the rendered block, never the response.
+    expect(appSource).toContain("const advisorGuide = currentAdvisorResponse(advisor, advisorSession);");
+    expect(appSource).toContain("findingsFooter={advisorGuide ? <OfficialAdvisorGuides advisorResponse={advisorGuide} /> : null}");
+    const doctorStart = appSource.indexOf("<DoctorWorkspace");
+    const doctorBlock = appSource.slice(doctorStart, appSource.indexOf("/>}", doctorStart));
+    expect(doctorBlock).not.toMatch(/^s+advisor/m);
     // Without an analysis the page keeps its start hint; Advisor is supplementary.
     expect(appSource).toContain('const advisorSession = connection.phase === "ready" && doctorReport ? connectionSession : null;');
-    expect(appSource).toContain('if (workspace !== "Recommendations" || !advisorTarget || advisorRequestedRef.current === advisorTarget) return;');
+    // Task 65: the guide is read only while Doctor shows an analysis.
+    expect(appSource).toContain('const recommendationsShown = workspace === "Doctor" && doctorMode === "diagnosis" && !importing;');
+    expect(appSource).toContain("if (!recommendationsShown || !advisorTarget || advisorRequestedRef.current === advisorTarget) return;");
     expect(appSource).toContain("doctorApi.readAdvisorGuides({ connection_id: advisorTarget }, controller.signal)");
     // Product findings stay report-owned; Advisor never reaches Doctor or Compare.
     expect(appSource.match(/advisorResponse=/g)).toHaveLength(1);

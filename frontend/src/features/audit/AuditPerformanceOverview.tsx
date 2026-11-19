@@ -25,6 +25,7 @@ import type { LocalizedText } from "../../i18n/locale";
 import { countText } from "../../lib/duration-display";
 import { LimitationNotes } from "../shell/LimitationNotes";
 import { auditClockText, metricText, positiveCount } from "./audit-display";
+import { AnimatedFigure } from "../shell/motion-enhance";
 import "./audit-performance.css";
 
 type Metric = "count" | "latency" | "scan" | "cpu" | "memory" | "pending";
@@ -58,6 +59,10 @@ export type AuditPerformanceOverviewProps = {
   filterableUser: boolean;
   /** The load card (task 52), drawn after the failure row. */
   loadCard?: ReactNode;
+  /** Task 66: the Overview page lays the same panels out as one screen, each scrolling on its own. */
+  dashboard?: boolean;
+  /** Task 66: a summary card drawn next to the load card on the Overview page (alerts). */
+  extraCard?: ReactNode;
   text: LocalizedText;
 };
 
@@ -96,6 +101,22 @@ export function AuditPerformanceView({ bucket, onBucket, response, ...props }: A
   }, [response]);
   const [selected, setSelected] = useState(lastFilled);
   useEffect(() => setSelected(lastFilled), [lastFilled]);
+  if (props.dashboard) return <div className="audit-dashboard">
+    <p className="audit-performance-read audit-dashboard-read" role="status">
+      <span className="mono">{auditClockText(String(response.scope.window.start_seconds * 1000))} – {auditClockText(String(response.scope.window.end_seconds * 1000))}</span>
+      <span>{text("One bounded aggregation read of the audit table · computed by the server", "审计表一次有界聚合读取 · 服务端计算")}</span>
+    </p>
+    <PerformanceCards concurrency={props.concurrency} response={response} text={text} />
+    {/* Task 70: the Overview scrolls as a page; every card takes the height of its content. */}
+    <div className="audit-dashboard-chart"><PerformanceChart bucket={bucket} onBucket={onBucket} onSelect={setSelected} response={response} selected={selected} text={text} /></div>
+    <div className="audit-dashboard-side"><BucketAside bucket={response.buckets[selected] ?? null} count={response.buckets.length} index={selected} onDrill={props.onDrill} onSelect={setSelected} text={text} /></div>
+    <div className="audit-dashboard-cell dash-hist"><LatencyHistogram response={response} text={text} /></div>
+    <div className="audit-dashboard-cell dash-fail"><FailureBreakdown response={response} text={text} /></div>
+    <div className="audit-dashboard-cell dash-summary">{props.extraCard}{props.loadCard}</div>
+    <div className="audit-dashboard-cell dash-families"><TopFamilies families={props.families} label={props.familySortLabel} onOpen={props.onOpenFamilies} text={text} /></div>
+    <div className="audit-dashboard-cell dash-composition"><WorkloadComposition filterableUser={props.filterableUser} onFilter={props.onFilter} response={response} text={text} /></div>
+    <div className="audit-dashboard-cell dash-coverage"><CoveragePanel coverage={props.coverage} response={response} text={text} /></div>
+  </div>;
   return <>
     <p className="audit-performance-read" role="status">
       <span className="mono">{auditClockText(String(response.scope.window.start_seconds * 1000))} – {auditClockText(String(response.scope.window.end_seconds * 1000))}</span>
@@ -176,7 +197,7 @@ function PerformanceCards({ concurrency, response, text }: { concurrency: AuditC
   return <section aria-label={text("Window summary", "窗口汇总")} className="audit-performance-cards">
     {cards.map((card) => <div className={`audit-performance-card${card.tone === "hot" && window.error_count !== "0" ? " hot" : ""}${card.compact ? " compact" : ""}`} key={card.label}>
       <div className="audit-performance-card-label">{card.label}</div>
-      <div className="audit-performance-card-value"><span title={card.value}>{card.value}</span>{card.unit ? <small>{card.unit}</small> : null}
+      <div className="audit-performance-card-value"><span title={card.value}><AnimatedFigure value={card.value} /></span>{card.unit ? <small>{card.unit}</small> : null}
         {card.line ? <svg aria-hidden="true" viewBox="0 0 96 28" preserveAspectRatio="none"><polyline points={card.line} /></svg> : null}</div>
       <div className="audit-performance-card-note" title={card.note}>{card.note}</div>
     </div>)}

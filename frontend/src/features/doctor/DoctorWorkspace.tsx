@@ -1,4 +1,4 @@
-import { useMemo, useState, type JSX, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type { AnalysisSnapshotReport, MetricCell } from "../../../../contracts/generated/doctor-contracts";
 import { localizedEnum } from "../../i18n/enum-label";
 import { useLocale, type LocalizedText } from "../../i18n/locale";
@@ -8,8 +8,9 @@ import { OfficialProfilePanel, type OfficialProfileContext } from "../execution/
 import { EvidenceGaps, FindingInspector, FindingsPanel, findingContext, selectedFinding } from "../findings/FindingsPanel";
 import { localizedFindingText } from "../../i18n/finding-text";
 import { ImportPanel } from "../import/ImportPanel";
-import { SelectionProvider } from "../selection/selection-store";
+import { SelectionProvider, useSelection } from "../selection/selection-store";
 import { DoctorDetails } from "./DoctorDetails";
+import { AnimatedFigure } from "../shell/motion-enhance";
 import "./doctor.css";
 
 export type DoctorWorkspaceProps = {
@@ -20,43 +21,69 @@ export type DoctorWorkspaceProps = {
   focusNodeId?: string | null;
   onReport(report: AnalysisSnapshotReport): void;
   onCancelImport?(): void;
-  onOpenRecommendations?(): void;
+  /** Opens the before/after comparison from a finding's recommendation. */
+  onOpenCompare?(): void;
+  /** Rendered under the findings by the app (the Official Advisor guide); never fed to product rules. */
+  findingsFooter?: ReactNode;
 };
 
-export function DoctorWorkspace({ report, importing = false, officialContext, focusNodeId = null, onReport, onCancelImport, onOpenRecommendations }: DoctorWorkspaceProps): JSX.Element {
+export function DoctorWorkspace({ report, importing = false, officialContext, focusNodeId = null, onReport, onCancelImport, onOpenCompare, findingsFooter = null }: DoctorWorkspaceProps): JSX.Element {
   const { text } = useLocale();
   if (!report || importing) return <SelectionProvider><div className="doctor-import">
     <ImportPanel onCancel={report ? onCancelImport : undefined} onReport={onReport} />
-    <p className="muted doctor-import-hint">{text("Or connect to a database and pick a query in Queries.", "也可以连接数据库，在“查询”页选择一条查询。")}</p>
+    {/* Review: when connected, the online path is an action, not a faint hint. */}
+    {officialContext?.session && officialContext.onReturnToQueries
+      ? <p className="doctor-import-hint doctor-import-connected">{text("No query selected yet.", "尚未选择查询。")} <button className="button secondary" onClick={officialContext.onReturnToQueries} type="button">{text("Pick one in Queries", "前往查询选择")}</button></p>
+      : <p className="muted doctor-import-hint">{text("Or connect to a database and pick a query in Queries.", "也可以连接数据库，在“查询”页选择一条查询。")}</p>}
   </div></SelectionProvider>;
-  return <DoctorReportView focusNodeId={focusNodeId} officialContext={officialContext} onOpenRecommendations={onOpenRecommendations} report={report} />;
+  return <DoctorReportView findingsFooter={findingsFooter} focusNodeId={focusNodeId} officialContext={officialContext} onOpenCompare={onOpenCompare} report={report} />;
 }
 
-function DoctorReportView({ report, officialContext, focusNodeId, onOpenRecommendations }: { report: AnalysisSnapshotReport; officialContext?: OfficialProfileContext; focusNodeId: string | null; onOpenRecommendations?(): void }): JSX.Element {
-  // The graph header hosts the official-reading trigger next to its view switch.
-  const [viewSlot, setViewSlot] = useState<HTMLSpanElement | null>(null);
+function DoctorReportView({ report, officialContext, focusNodeId, onOpenCompare, findingsFooter }: { report: AnalysisSnapshotReport; officialContext?: OfficialProfileContext; focusNodeId: string | null; onOpenCompare?(): void; findingsFooter: ReactNode }): JSX.Element {
+  const { text } = useLocale();
   const initialSelection = { sourceRef: null, subjectRef: null, findingId: null, nodeId: focusNodeId };
+  // Task 65 (board 5): one screen. Left, the execution structure and its details behind tabs;
+  // right, the findings with each one's evidence and recommendation. Each side scrolls on its own.
   return <SelectionProvider initialSelection={initialSelection} key={`${report.analysis_key}:${focusNodeId ?? ""}`}>
     <div className="doctor-layout">
       <DoctorSummary report={report} />
       <ProfileStateNotice report={report} />
-      {/* Three columns: what was found, where in the plan, and why (design: Doctor board). */}
-      {/* With no finding the inspector is a short note under the gaps, and the graph takes its column. */}
+      {/* Reading order stays summary → findings → structure → details; the grid shows the findings on the right. */}
       <div className="doctor-workbench">
-        <div className="doctor-findings-column">
-          <FindingsPanel report={report} />
-          <EvidenceGaps report={report} />
-          {report.findings.length === 0 ? <FindingInspector onOpenRecommendations={onOpenRecommendations} report={report} /> : null}
-        </div>
-        <div className="doctor-graph">
-          <DoctorGraph report={report} viewExtra={officialContext ? <span className="graph-view-slot" ref={setViewSlot} /> : null} />
-          {officialContext ? <OfficialProfilePanel context={officialContext} report={report} triggerSlot={viewSlot} /> : null}
-        </div>
-        {report.findings.length > 0 ? <FindingInspector onOpenRecommendations={onOpenRecommendations} report={report} /> : null}
+        <aside aria-label={text("Findings", "发现")} className="doctor-findings-column">
+          <FindingsPanel report={report}>
+            <FindingInspector onOpenCompare={onOpenCompare} report={report} />
+            <EvidenceGaps report={report} />
+            {findingsFooter}
+          </FindingsPanel>
+        </aside>
+        <DoctorStructure focusNodeId={focusNodeId} officialContext={officialContext} report={report} />
       </div>
-      <DoctorDetails focusNodeId={focusNodeId} report={report} />
     </div>
   </SelectionProvider>;
+}
+
+/** The execution structure and its tables share one card; evidence links and "show in graph" pick the tab. */
+function DoctorStructure({ report, officialContext, focusNodeId }: { report: AnalysisSnapshotReport; officialContext?: OfficialProfileContext; focusNodeId: string | null }): JSX.Element {
+  const { text } = useLocale();
+  const { sourceRef, revealCount } = useSelection();
+  const [tab, setTab] = useState<"graph" | "details">("graph");
+  // The graph header hosts the official-reading trigger next to its view switch.
+  const [viewSlot, setViewSlot] = useState<HTMLSpanElement | null>(null);
+  const firstReveal = useRef(revealCount);
+  useEffect(() => { if (sourceRef !== null) setTab("details"); }, [sourceRef]);
+  useEffect(() => { if (revealCount !== firstReveal.current) setTab("graph"); }, [revealCount]);
+  return <section aria-label={text("Execution structure", "执行结构")} className="doctor-structure">
+    <div aria-label={text("Structure views", "结构视图")} className="seg-tabs doctor-structure-tabs" role="tablist">
+      <button aria-selected={tab === "graph"} className={tab === "graph" ? "active" : ""} onClick={() => setTab("graph")} role="tab" type="button">{text("Execution graph", "结构图")}</button>
+      <button aria-selected={tab === "details"} className={tab === "details" ? "active" : ""} onClick={() => setTab("details")} role="tab" type="button">{text("Operators and source", "算子与原文")}</button>
+    </div>
+    <div className="doctor-graph" hidden={tab !== "graph"}>
+      <DoctorGraph report={report} viewExtra={officialContext ? <span className="graph-view-slot" ref={setViewSlot} /> : null} />
+      {officialContext ? <OfficialProfilePanel context={officialContext} report={report} triggerSlot={viewSlot} /> : null}
+    </div>
+    <div className="doctor-structure-details" hidden={tab !== "details"}><DoctorDetails focusNodeId={focusNodeId} report={report} /></div>
+  </section>;
 }
 
 /** The Doctor graph, told where each finding sits so a finding and its node point at each other. */
@@ -151,7 +178,7 @@ function DoctorSummary({ report }: { report: AnalysisSnapshotReport }): JSX.Elem
   return <section className="doctor-summary" aria-label={text("Query summary", "查询概要")}>
     <dl className="doctor-summary-facts">{facts.map(([label, fact, hint, note]) => <div key={label} title={hint ?? note}>
       <dt>{label}</dt>
-      <dd>{"value" in fact ? fact.value : <span className="metric-state-badge" data-state={fact.state}>{fact.state === "missing" ? text("Missing · not 0", "缺失 · 非 0") : localizedEnum(fact.state, text)}</span>}</dd>
+      <dd>{"value" in fact ? <AnimatedFigure value={fact.value} /> : <span className="metric-state-badge" data-state={fact.state}>{fact.state === "missing" ? text("Missing · not 0", "缺失 · 非 0") : localizedEnum(fact.state, text)}</span>}</dd>
       <dd className="doctor-summary-note">{"value" in fact || fact.state !== "missing" ? note : text("Not in the Profile", "Profile 未提供")}</dd>
     </div>)}</dl>
   </section>;

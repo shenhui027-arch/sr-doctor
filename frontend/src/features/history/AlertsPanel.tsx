@@ -8,6 +8,7 @@ import type { AlertState, AlertView, HistoryAlertsResponse, NotifyChannelKind } 
 import type { LocalizedText } from "../../i18n/locale";
 import { metricText } from "../audit/audit-display";
 import { clockText } from "./CollectionPanel";
+import { InfoTip } from "../shell/ui";
 import { NOTIFY_KINDS, kindName } from "./notify-text";
 
 type AlertTab = AlertState | "all";
@@ -20,8 +21,10 @@ export function alertStateText(state: AlertState, text: LocalizedText): string {
 export function alertTitle(alert: AlertView, text: LocalizedText): string {
   const change = alert.change;
   if (!change) return text("Median query time regression", "查询耗时中位数回归");
-  const relative = change.relative_percent === null ? text(" (baseline 0, no percentage)", "（基线为 0，百分比不定义）") : ` +${change.relative_percent}%`;
-  return text(`Median query time regression${relative}`, `查询耗时中位数回归${relative}`);
+  // The absolute change leads; the percentage is secondary and undefined for a 0 baseline.
+  const absolute = `${metricText(alert.baseline_median)} → ${metricText(alert.current_median)}`;
+  const relative = change.relative_percent === null ? text(" (baseline 0, no percentage)", "（基线为 0，百分比不定义）") : text(` (+${change.relative_percent}%)`, `（+${change.relative_percent}%）`);
+  return text(`Median query time ${absolute}${relative}`, `查询耗时中位数 ${absolute}${relative}`);
 }
 
 const level = (value: "high" | "medium" | "low", text: LocalizedText) => ({ high: text("high", "高"), medium: text("medium", "中"), low: text("low", "低") }[value]);
@@ -52,7 +55,7 @@ export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onRe
       <div aria-label={text("Alert states", "告警状态")} className="history-tabs" role="tablist">
         {TABS.map((item) => <button aria-selected={item === tab} key={item} onClick={() => setTab(item)} role="tab" type="button">{item === "all" ? text("All", "全部") : alertStateText(item, text)} <span className="tab-count">{counts[item]}</span></button>)}
       </div>
-      <span className="history-muted">{text("Only changes that can be judged raise an alert", "仅显示可判断的性能变化")}</span>
+      <InfoTip label={text("Which changes raise an alert", "哪些变化会告警")}>{text("Only changes that can be judged raise an alert: enough samples, the same StarRocks version and rule set on both sides.", "仅显示可判断的性能变化：样本足够，且前后 StarRocks 版本与规则集一致。")}</InfoTip>
       {toolbar && <span className="trend-toolbar">{toolbar}</span>}
     </div>
     {ruleChanged !== "0" && <p className="history-banner rule-changed-banner" role="status">
@@ -67,7 +70,7 @@ export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onRe
         {visible.length === 0 ? <p className="history-muted">{text("No alert in this state.", "这个状态下没有告警。")}</p> : <ul className="alert-list">
           {visible.map((alert) => <li key={alert.alert_id}>
             <button aria-pressed={alert.alert_id === selected?.alert_id} className={alert.alert_id === selected?.alert_id ? "alert-row selected" : "alert-row"} onClick={() => onSelect(alert.alert_id)} type="button">
-              <span className="history-muted mono">{clockText(alert.last_seen_seconds).slice(5, 16)}</span>
+              <span className="history-muted mono" title={text("Last seen", "最近触发")}>{text("Last", "最近")} {clockText(alert.last_seen_seconds).slice(5, 16)}</span>
               <strong>{alertTitle(alert, text)}{alert.rule_changed && <span className="rule-changed">{text("Rules changed", "规则已变更")}</span>}</strong>
               <span className={`alert-sev ${alert.severity}`}>{text("Severity", "严重度")} {level(alert.severity, text)}</span>
               <span className="history-muted">{text("Confidence", "置信度")} {level(alert.confidence, text)}</span>
@@ -79,7 +82,7 @@ export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onRe
       </section>
       <div className="alert-side">
         {selected && <section aria-labelledby="alert-detail" className="history-card">
-          <span className="history-muted mono">{text("Alert", "告警")} · {clockText(selected.first_seen_seconds).slice(5, 16)}</span>
+          <span className="history-muted mono">{text("First seen", "首次触发")} {clockText(selected.first_seen_seconds).slice(5, 16)} · {text("last seen", "最近触发")} {clockText(selected.last_seen_seconds).slice(5, 16)}</span>
           <h2 id="alert-detail">{alertTitle(selected, text)}</h2>
           <p className="trend-chips">
             <span className={`alert-sev ${selected.severity}`}>{text("Severity", "严重度")} {level(selected.severity, text)}</span>
@@ -90,7 +93,7 @@ export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onRe
           <h3 className="trend-subhead">{text("Evidence chain", "证据链")}</h3>
           <dl className="history-facts">
             <dt>{text("Template", "模板")}</dt><dd>{selected.template ?? "—"} · {selected.kind === "official_digest" ? text("official digest", "官方 digest") : text("unofficial fingerprint", "非官方指纹")}</dd>
-            <dt>{text("Hour (UTC)", "时间桶（UTC）")}</dt><dd>{clockText(selected.bucket_start_seconds).slice(5, 16)}–{clockText(selected.bucket_start_seconds + 3600).slice(11, 16)} · {metricText(selected.baseline_median)} → {metricText(selected.current_median)}</dd>
+            <dt>{text("Compared hour (UTC)", "比较时间桶（UTC）")}</dt><dd>{clockText(selected.bucket_start_seconds).slice(5, 16)}–{clockText(selected.bucket_start_seconds + 3600).slice(11, 16)} · {metricText(selected.baseline_median)} → {metricText(selected.current_median)}</dd>
             <dt>{text("Representative", "代表执行")}</dt><dd>{selected.exemplar_query_id ?? "—"}</dd>
             <dt>{text("Comparability", "可比性")}</dt><dd>StarRocks {selected.comparability.engine_version} · {selected.comparability.rule_version}{selected.rule_changed && text(" · rules changed since; not comparable", " · 规则已变更，无法比较")}</dd>
             {selected.muted_until_seconds !== null && <><dt>{text("Muted until", "静默至")}</dt><dd>{clockText(selected.muted_until_seconds)}</dd></>}
@@ -126,5 +129,5 @@ export function AlertsPanel({ alerts, busy, selectedId, onSelect, onAction, onRe
 function FragmentChannel({ channel, text }: { channel: HistoryAlertsResponse["channels"][number]; text: LocalizedText }): JSX.Element {
   const name = channel.name === "in_app" ? text("In app · nav badge and this list", "应用内 · 导航角标与本列表")
     : NOTIFY_KINDS.includes(channel.name as NotifyChannelKind) ? kindName(channel.name as NotifyChannelKind, text) : channel.name;
-  return <><dt>{name}</dt><dd>{channel.available ? text("Enabled", "已启用") : <span className="planned">{text("Off · set up under Notification channels", "未启用 · 在“通知渠道”里设置")}</span>}</dd></>;
+  return <><dt>{name}</dt><dd>{channel.available ? text("Enabled", "已启用") : <span className="planned">{text("Off · set up under Settings › Notifications", "未启用 · 在“设置 › 通知”里设置")}</span>}</dd></>;
 }

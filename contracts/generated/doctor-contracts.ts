@@ -316,7 +316,24 @@ export type CandidateProfileResponsibility = "user_external_rerun";
 export type CandidateProfileState = "awaiting_user_external_rerun" | "fetched_after_user_external_rerun";
 export type ConnectedGoldenEvidence = "synthetic_contract_only_not_docker_e2e";
 export type ConnectedSchemaVersion = "0.1";
-export type ConnectionCreateRequest = { host: string, port: number, username: string, password: string, catalog: string | null, database: string | null, audit_table: string | null, tls_mode: TlsMode, };
+export type ConnectionCreateRequest = { host: string, port: number, username: string, password: string, catalog: string | null, database: string | null, audit_table: string | null, tls_mode: TlsMode,
+/**
+ * Task 72 (design C1): the user ticked "save the password on this machine".
+ * The server seals it (AES-256-GCM, write-only) and keeps collecting with it.
+ */
+save_credentials?: boolean, };
+export type SavedConnectionView = { state: SavedConnectionState,
+/**
+ * Why saving is off; present only when `state` is `unavailable`.
+ */
+unavailable_reason: SavedConnectionUnavailableReason | null, host: string | null, port: number | null, username: string | null, tls_mode: TlsMode | null,
+/**
+ * The background collection that runs with the saved connection.
+ */
+background: SavedConnectionBackground, };
+export type SavedConnectionState = "none" | "saved" | "needs_reentry" | "unavailable";
+export type SavedConnectionUnavailableReason = "history_unavailable" | "key_unavailable" | "default_admin_password";
+export type SavedConnectionBackground = "off" | "connecting" | "collecting" | "standby" | "retrying" | "production_gate" | "unsupported_version";
 export type AccessSessionStatus = { required: boolean, authenticated: boolean,
 /**
  * The login is still the public default `admin` / `123456`, so the
@@ -1563,7 +1580,12 @@ export type HistoryStatusRequest = {
  */
 connection_id: string | null, };
 export type HistoryCollectionAction = "pause" | "resume";
-export type HistoryCollectionRequest = { connection_id: string, action: HistoryCollectionAction, };
+export type HistoryCollectionRequest = {
+/**
+ * The page session, or `None` when the page is not connected and the
+ * saved connection collects in the background (task 72).
+ */
+connection_id: string | null, action: HistoryCollectionAction, };
 export type HistoryStoreState = { "state": "available", retention_days: number, file_bytes: string | null, templates: string, buckets: string, } | { "state": "disabled" } | { "state": "unavailable",
 /**
  * Always emitted by current backends; TypeScript readers also accept

@@ -23,7 +23,7 @@ describe("ConnectionDialog failures", () => {
       "connection_expired", "authentication_failed", "permission_denied", "tls_failed",
       "connection_failed", "invalid_request", "tls_required", "capability_unavailable",
       "unsupported_version", "profile_unavailable", "statement_not_allowed", "explain_rejected",
-      "remote_timeout", "session_limit",
+      "remote_timeout", "session_limit", "saved_connection_unavailable",
     ];
     for (const code of codes) {
       expect(localizedConnectionMessage(code, en)).not.toBe(code);

@@ -58,8 +58,8 @@ describe("history off (audit V1-17)", () => {
 
 describe("clearing history (audit V1-16)", () => {
   it("names alerts, governance items and pinned snapshots in the confirmation", () => {
-    expect(workspaceSource).toContain("全部告警、治理项及其处理记录和钉住的基线快照，且无法恢复");
-    expect(workspaceSource).toContain("every alert, governance item with its record, and pinned baseline snapshot");
+    expect(workspaceSource).toContain("全部告警、治理项及其处理记录和钉住的基线快照，以及已保存的 StarRocks 连接（后台采集随之停止），且无法恢复");
+    expect(workspaceSource).toContain("every alert, governance item with its record, and pinned baseline snapshot, and the saved StarRocks connection");
   });
 });
 

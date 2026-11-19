@@ -94,7 +94,8 @@ export function localizedConnectionMessage(message: string | null | undefined, t
     statement_not_allowed: ["The statement is outside the read-only product boundary.", "该语句超出产品只读边界。"],
     explain_rejected: ["StarRocks rejected the Explain request.", "StarRocks 拒绝了计划检查请求。"],
     remote_timeout: ["The StarRocks request timed out.", "连接请求超时，请检查网络和服务状态。"],
-    session_limit: ["Too many open connections (3 at most). Disconnect one you no longer use, or wait a few minutes for idle ones to expire.", "同时打开的连接已达上限（最多 3 个）。请断开不用的连接，或等几分钟让空闲连接自动过期。"],
+    session_limit: ["Too many open connections (4 at most, one of them may be the background collection). Disconnect one you no longer use, or wait a few minutes for idle ones to expire.", "同时打开的连接已达上限（最多 4 个，其中可能有 1 个是后台采集）。请断开不用的连接，或等几分钟让空闲连接自动过期。"],
+    saved_connection_unavailable: ["The password cannot be saved on this server, or the saved one needs re-entry. See Settings › Connection.", "当前服务无法保存口令，或已保存的口令需要重新填写，详见 设置 › 连接。"],
     "Connection closed; credentials were removed from the server session.": ["Connection closed; credentials were removed from the server session.", "连接已关闭，凭据已从服务端会话移除。"],
     "Host, port, username, and password are required.": ["Host, port, username, and password are required.", "主机、端口、用户名和密码均为必填项。"],
     "Plaintext is available only for a loopback Docker lab.": ["Plaintext is available only for a loopback Docker lab.", "明文连接仅允许 Docker 回环实验环境。"],
@@ -121,5 +122,5 @@ const localizedConnectionCodes = new Set([
   "connection_expired", "connection_session_expired", "authentication_failed", "permission_denied",
   "tls_failed", "connection_failed", "invalid_request", "tls_required", "capability_unavailable",
   "unsupported_version", "profile_unavailable", "statement_not_allowed", "explain_rejected",
-  "remote_timeout", "session_limit",
+  "remote_timeout", "session_limit", "saved_connection_unavailable",
 ]);

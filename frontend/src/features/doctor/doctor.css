@@ -2,14 +2,15 @@
 .doctor-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 20px 28px; }
 .doctor-import { display: grid; gap: 8px; max-width: 880px; padding: 16px 20px; }
 .doctor-import-hint { margin: 0; }
+.doctor-import-connected { display: flex; align-items: center; gap: 12px; color: var(--text); font: 400 14px/20px var(--sans); }
 /* Flex like the design board: the graph takes the slack, the side columns keep their (fractional) share. */
 .doctor-workbench { display: flex; gap: 12px; align-items: stretch; }
 .doctor-findings-column { flex: 1 1 300px; max-width: 360px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .doctor-findings-column > .evidence-gaps { flex: 0 0 auto; }
 /* No finding: the inspector's empty note sits under the gaps at its content height. */
-.doctor-findings-column > .finding-inspector-empty { gap: 4px; padding: 12px 14px; }
-.doctor-findings-column > .finding-inspector-empty h2 { font-size: 13px; line-height: 20px; }
-.doctor-findings-column > .finding-inspector-empty p { font-size: 12px; line-height: 18px; }
+.doctor-findings-column .findings-body > .finding-inspector-empty { gap: 4px; padding: 12px 14px; }
+.doctor-findings-column .findings-body > .finding-inspector-empty h2 { font-size: 13px; line-height: 20px; }
+.doctor-findings-column .findings-body > .finding-inspector-empty p { font-size: 12px; line-height: 18px; }
 .doctor-graph { flex: 999 1 560px; display: grid; gap: 12px; min-width: 0; }
 .doctor-workbench > .finding-inspector { flex: 1 1 340px; max-width: 400px; min-width: 0; }
 
@@ -40,7 +41,7 @@
 
 /* Fail-closed Profile states (Level 2, running snapshot): what is not evaluated and what to capture next. */
 .profile-state-notice { display: grid; gap: 4px; padding: 12px 16px; color: var(--text); background: var(--warning-tint); border: 1px solid var(--warning); border-radius: 8px; }
-.profile-state-notice strong { font: 600 14px/20px var(--sans); }
+.profile-state-notice strong { font: 500 14px/20px var(--sans); }
 .profile-state-notice p { margin: 0; color: var(--text-2); font-size: 13px; line-height: 20px; }
 .profile-state-notice .profile-state-next { color: var(--text); font-weight: 500; }
 
@@ -52,7 +53,7 @@
 .doctor-details { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
 .doctor-details-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--border); }
 .doctor-details-tabs [role="tab"] { height: 40px; padding: 0 10px; color: var(--text-2); background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; font: 400 13px/19.5px var(--sans); cursor: pointer; }
-.doctor-details-tabs [role="tab"][aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.doctor-details-tabs [role="tab"][aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }
 .doctor-details-tabs [role="tab"] > span { margin-left: 4px; color: var(--muted); font: 500 13px/19.5px var(--mono); }
 .doctor-details-hint { align-self: center; margin-left: auto; color: var(--muted); font: 400 12px/18px var(--sans); }
 /* Operators and metrics scroll inside the card under a sticky header, so a long metric list never becomes a page of its own. */
@@ -87,3 +88,83 @@
 .doctor-provenance > div { padding: 10px 14px; background: var(--surface); }
 .doctor-provenance dt { color: var(--muted); font: 400 12px/18px var(--sans); }
 .doctor-provenance dd { margin: 2px 0 0; overflow-wrap: anywhere; color: var(--text); font: 400 12px/18px var(--mono); }
+
+/* Task 65 (board 5): the analysis is one screen. Summary on top; the execution structure (graph or
+   tables) on the left fills the rest; the findings column on the right scrolls on its own. */
+.workspace-doctor:has(> .doctor-layout) { overflow: hidden; }
+.doctor-layout { height: 100%; display: flex; flex-direction: column; gap: 16px; padding: 16px 24px 24px; }
+.doctor-layout > * { flex: 0 0 auto; }
+.doctor-workbench { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 420px; grid-template-rows: minmax(0, 1fr); gap: 16px; align-items: stretch; }
+.doctor-workbench > .doctor-findings-column { grid-column: 2; grid-row: 1; max-width: none; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 2px; scrollbar-width: thin; }
+.doctor-workbench > .doctor-findings-column > * { flex: 0 0 auto; }
+.doctor-structure { grid-column: 1; grid-row: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.doctor-structure-tabs { align-self: flex-start; flex: 0 0 auto; }
+.doctor-structure > .doctor-graph { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.doctor-structure > .doctor-graph[hidden], .doctor-structure-details[hidden] { display: none; }
+.doctor-structure > .doctor-graph > .execution-graph { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.doctor-structure .is-doctor .execution-graph-canvas { min-height: 0; }
+.doctor-structure-details { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.doctor-structure-details > .doctor-details { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-card); box-shadow: var(--shadow-1); }
+.doctor-structure-details .doctor-details-table-wrap { flex: 1 1 auto; max-height: none; min-height: 0; }
+.doctor-structure-details .source-panel { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.doctor-summary { box-shadow: var(--shadow-1); }
+.doctor-summary-facts > div { padding: 12px 16px; }
+.doctor-summary-facts dd { font: 500 20px/28px var(--sans); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.doctor-mode-bar + .workspace-doctor .doctor-import { padding: 24px; }
+
+/* The recommendation inside a finding's detail (task 65). */
+.finding-recommendation { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+.finding-recommendation-head { display: flex; align-items: center; gap: 8px; }
+.finding-recommendation-head h3 { margin: 0 !important; color: var(--text) !important; font: 500 13px/20px var(--sans) !important; }
+.finding-recommendation-source { color: var(--muted); font: 400 12px/16px var(--mono); }
+.finding-recommendation-head .ui-info { margin-left: auto; }
+.finding-recommendation-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.finding-recommendation-steps li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; }
+.finding-recommendation-steps li > span { color: var(--muted); font: 400 12px/20px var(--mono); }
+.finding-recommendation-steps strong { display: block; color: var(--text); font: 400 13px/20px var(--sans); }
+.finding-recommendation-steps p { margin: 0 !important; color: var(--text-2) !important; font: 400 12px/18px var(--sans); }
+.finding-recommendation-expected { margin: 0 !important; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; color: var(--text-2) !important; font: 400 12px/18px var(--mono); }
+.finding-recommendation-expected > span:first-child { color: var(--muted); font-family: var(--sans); }
+.finding-recommendation-verify summary { color: var(--text-2); font: 400 13px/20px var(--sans); cursor: pointer; }
+.finding-recommendation-verify ol { margin: 6px 0 0; padding-left: 18px; color: var(--text-2); font: 400 12px/18px var(--sans); }
+.finding-recommendation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* Task 69 card contract: the findings column is one card. "Findings · N" and its filter stay on top;
+   the list, the selected finding's detail, the evidence gaps and the Official Advisor are sections of
+   its one scrolling body. */
+.doctor-workbench > .doctor-findings-column { gap: 0; padding-right: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-1); }
+/* Review: the heading is outside the scrolling body, so it stays whatever is scrolled into view. */
+.doctor-findings-column > .findings-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 0; margin: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+.doctor-findings-column > .findings-panel > .findings-heading { flex: 0 0 auto; margin: 0; padding: 12px 16px 10px; background: var(--surface); border-bottom: 1px solid var(--border-soft); }
+.doctor-findings-column .findings-body { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-width: thin; display: flex; flex-direction: column; }
+.doctor-findings-column .findings-body > * { flex: 0 0 auto; }
+.findings-body > :is(.panel, .advisor-guide-panel) { margin: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+.findings-body > :is(.panel, .advisor-guide-panel, .evidence-gaps) { border-top: 1px solid var(--border) !important; }
+
+/* Task 70: the official ANALYZE PROFILE reading is a card in the structure column: its title,
+   query, return button and scope switch stay on top; the reading scrolls below. */
+.doctor-graph:has(> .official-profile-dialog) > .execution-graph { display: none; }
+.official-profile-dialog { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-1); animation: ui-rise 320ms var(--ease) both; }
+.official-profile-dialog > * { flex: 0 0 auto; }
+.official-profile-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 14px 16px 10px; }
+.official-profile-dialog > header .eyebrow { margin: 0; color: var(--muted); font: 400 12px/16px var(--sans); }
+.official-profile-dialog > header h3 { margin: 2px 0 0; color: var(--text); font: 500 16px/24px var(--sans); }
+.official-profile-query { margin: 2px 0 0; display: flex; gap: 8px; color: var(--muted); font: 400 12px/16px var(--sans); }
+.official-profile-query code { color: var(--text-2); font: 400 12px/16px var(--mono); }
+.official-profile-scope { margin: 0 16px; align-self: flex-start; }
+.official-profile-scope > button { height: 28px; padding: 0 10px; color: var(--text-2); background: transparent; border: 0; border-radius: 6px; font: 400 13px/20px var(--sans); }
+.official-profile-scope > button[aria-pressed="true"] { color: var(--text); font-weight: 500; }
+.official-profile-scope > button:disabled { color: var(--faint); }
+.official-profile-boundary { margin: 8px 16px 0; padding-bottom: 10px; color: var(--muted); font: 400 12px/16px var(--sans); border-bottom: 1px solid var(--border); }
+.official-profile-body { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-width: thin; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.official-profile-body > * { flex: 0 0 auto; margin: 0; }
+.official-profile-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; background: var(--page); border-radius: var(--radius-control); }
+.official-profile-action p, .official-profile-state { margin: 0; color: var(--text-2); font: 400 13px/20px var(--sans); }
+.official-profile-actions { display: flex; gap: 8px; }
+.official-profile-result { display: flex; flex-direction: column; gap: 10px; }
+.official-profile-result-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.official-profile-display-text { margin: 0; padding: 12px 14px; overflow-x: auto; color: var(--text); background: var(--page); border: 1px solid var(--border); border-radius: var(--radius-control); font: 400 12px/18px var(--mono); white-space: pre; }
+.official-profile-metadata { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; font: 400 12px/16px var(--sans); }
+.official-profile-metadata dt { color: var(--muted); }
+.official-profile-metadata dd { margin: 0; color: var(--text-2); font-family: var(--mono); overflow-wrap: anywhere; }
+.official-profile-raw-source summary, .official-profile-technical summary { color: var(--text-2); font: 400 13px/20px var(--sans); cursor: pointer; }

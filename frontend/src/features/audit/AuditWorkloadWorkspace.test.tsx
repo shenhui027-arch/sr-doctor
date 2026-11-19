@@ -568,18 +568,18 @@ describe("AuditWorkloadWorkspace", () => {
     expect(englishHtml).not.toContain('aria-pressed="true"');
   });
 
-  it("lands on the performance overview, and on repeated SQL when the API has no performance read", () => {
-    const overview = renderToStaticMarkup(<AuditWorkloadWorkspace onConnect={() => undefined} session={connection} />);
+  it("shows the performance overview on the Overview page, and repeated SQL on the query page", () => {
+    // Task 66: the overview is the Overview page's surface; the query page opens on its lists.
+    const overview = renderToStaticMarkup(<AuditWorkloadWorkspace onConnect={() => undefined} session={connection} surface="overview" />);
     expect(overview).toContain("Overview · audit performance");
-    expect(overview).toMatch(/aria-pressed="true"[^>]*>Overview</);
-    expect(overview).toMatch(/aria-pressed="false"[^>]*>Repeated SQL</);
+    expect(overview).not.toContain('aria-label="View"');
     // The old KPI strip gives way to the overview cards; no table renders behind it.
     expect(overview).not.toContain("audit-board-layout");
     const withoutPerformance = Object.assign(Object.create(Object.getPrototypeOf(doctorApi)) as typeof doctorApi, doctorApi, { readAuditPerformance: undefined });
     const html = renderToStaticMarkup(<AuditWorkloadWorkspace api={withoutPerformance} onConnect={() => undefined} session={connection} />);
     expect(html).toContain('class="audit-workload audit-workload-overview"');
     expect(html).not.toContain(">Overview<");
-    expect(html).toContain("Repeated SQL · frequency and cumulative cost");
+    expect(html).toContain('<h1 id="audit-board-title">Repeated SQL</h1>');
     expect(html).toMatch(/aria-pressed="true"[^>]*>Repeated SQL</);
     // No detail panel until a row is chosen: the list keeps the full width.
     expect(html).not.toContain("audit-selection");
@@ -686,8 +686,9 @@ it("guides investigation by existing server sorts and a one-step Profile diagnos
   expect(html).toContain('<option value="query_time_desc" selected="">单次耗时最高</option>');
   expect(html).toContain('<option value="execution_count_desc">执行最频繁</option>');
   expect(html).toContain("累计耗时最高");
-  expect(html).toContain("概览 · 审计性能");
-  expect(workspaceSource).toContain('text("Repeated SQL · frequency and cumulative cost", "同类 SQL · 频次与累计消耗")');
+  expect(html).not.toContain("概览 · 审计性能");
+  // Task 64: the list heading is the view name; ranking and filter notes stay in the subtitle.
+  expect(workspaceSource).toContain('families: text("Repeated SQL", "同类 SQL"),');
   expect(workspaceSource).toContain('text("Diagnose", "诊断")');
   expect(workspaceSource).toContain("onDiagnose={() => void fetchProfile(selected, true)}");
   expect(workspaceSource).toContain("if (openAfter) onOpenDoctor?.(result);");

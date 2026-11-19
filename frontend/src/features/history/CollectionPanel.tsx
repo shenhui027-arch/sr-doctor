@@ -123,7 +123,7 @@ export function CollectionPanel({ status, busy, onToggle, onClear, clearConfirm,
             <dt>{text("Hourly buckets", "小时桶")}</dt><dd>{store.buckets}</dd>
           </dl>
           <p className="history-muted">{text("Keeps: literal-free templates and fingerprints, hourly aggregates, collection watermarks.", "保存：脱敏模板与指纹、小时桶聚合、采集水位。")}</p>
-          <p className="history-muted">{text("Never keeps: SQL literals, Profile text, StarRocks credentials.", "不保存：原始 SQL 字面量、原始 Profile 文本、StarRocks 凭据。")}</p>
+          <p className="history-muted">{text("Never keeps: SQL literals, Profile text. StarRocks passwords are not kept unless you tick saving: then one connection's password is kept encrypted, and deleted when you forget it or clear history.", "不保存：原始 SQL 字面量、原始 Profile 文本。StarRocks 口令默认不保存；只有勾选保存时，才在服务端加密保存一个连接的口令，忘记连接或清空历史时删除。")}</p>
           <button className="button danger" disabled={busy} onClick={onClear} type="button">{text("Clear history…", "清空历史…")}</button>
           {clearConfirm}
         </> : <p className="history-muted">{store.state === "disabled" ? text("History is off in this setup (DOCTOR_HISTORY=off); nothing is collected.", "此运行方式未开启历史（DOCTOR_HISTORY=off），不会采集。") : text("The history file could not be opened; nothing is collected.", "无法打开历史文件，不会采集。")}</p>}

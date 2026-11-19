@@ -67,7 +67,10 @@ describe("narrow header status", () => {
 
 describe("SQL wiring guards", () => {
   it("Profile list SQL reads below the three columns, never over the query identity", () => {
-    expect(queries).toMatch(/<\/div>\n\s*\{\/\*[^\n]*\*\/\}\n\s*\{visibleSql !== null && <SqlText className="query-sql"/);
+    // Task 69: the SQL is the last part of the card's scrolling body, after the Profile evidence.
+    const body = queries.slice(queries.indexOf('<div className="selected-query-body">'), queries.indexOf('className="selected-query-actions"'));
+    expect(body.indexOf("<EvidenceFacts facts={profileFacts} />")).toBeGreaterThan(0);
+    expect(body.indexOf('{visibleSql !== null && <SqlText className="query-sql"')).toBeGreaterThan(body.indexOf("<EvidenceFacts facts={profileFacts} />"));
     expect(queriesCss).not.toMatch(/\.query-sql \{ position: absolute/);
   });
   it("superseding a Profile list request clears the SQL busy state", () => {

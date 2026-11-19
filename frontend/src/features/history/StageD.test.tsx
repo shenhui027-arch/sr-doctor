@@ -45,7 +45,7 @@ describe("alerts (design board D)", () => {
     expect(html).toContain(">Add to governance queue<");
     expect(html).not.toContain(">Reopen<");
     expect(html).toContain("<dt>Email · SMTP</dt><dd>Enabled</dd>");
-    expect(html.match(/Off · set up under Notification channels/g)).toHaveLength(2);
+    expect(html.match(/Off · set up under Settings › Notifications/g)).toHaveLength(2);
     expect(html).toContain("Too few samples or a version change raises no alert");
     // The rules sit behind a disclosure instead of filling the page.
     expect(html).toMatch(/<details class="history-card history-details"><summary>Alert rules and channels<\/summary>/);
@@ -69,8 +69,8 @@ describe("alerts (design board D)", () => {
   });
 
   it("never invents a percentage for a 0 baseline", () => {
-    expect(alertTitle(alerts.alerts[0], english)).toBe("Median query time regression +150.0%");
-    expect(alertTitle(alerts.alerts[1], english)).toBe("Median query time regression (baseline 0, no percentage)");
+    expect(alertTitle(alerts.alerts[0], english)).toBe("Median query time 100 ms → 250 ms (+150.0%)");
+    expect(alertTitle(alerts.alerts[1], english)).toBe("Median query time 0 ns → 250 ms (baseline 0, no percentage)");
   });
 });
 
@@ -128,7 +128,7 @@ describe("governance drafts and copy (audit V1-15, V1-18)", () => {
 
   it("localizes the channels that are off", () => {
     const html = renderToStaticMarkup(<AlertsPanel alerts={alerts} busy={false} onAction={noop} onResolveRuleChanged={noop} onAddToQueue={noop} onOpenItem={noop} onOpenTrends={noop} onSelect={noop} selectedId="1" text={chinese} />);
-    expect(html.match(/未启用 · 在“通知渠道”里设置/g)).toHaveLength(2);
+    expect(html.match(/未启用 · 在“设置 › 通知”里设置/g)).toHaveLength(2);
     expect(html).toContain("短信 · 阿里云");
     expect(html).not.toContain("Not available in this version");
   });

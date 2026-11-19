@@ -7,6 +7,7 @@ import type { JSX, KeyboardEvent } from "react";
 import type { LoadHourBucket, LoadKindFilter, LoadKindGroup, LoadOverviewResponse, RoutineLoadStateClass } from "../../../../contracts/generated/doctor-contracts";
 import type { LocalizedText } from "../../i18n/locale";
 import { BatchView, RoutineView, StreamView } from "./LoadTypeViews";
+import { AnimatedFigure } from "../shell/motion-enhance";
 import { ago, bytes, compact, count, feTime, groupText, hourRangeText, hourText, ms, phaseBinText, seconds, shareText } from "./load-text";
 
 export type OverviewFilters = { kind: LoadKindFilter | null; include_system: boolean };
@@ -73,7 +74,7 @@ export function KpiCards({ cards, label }: { cards: KpiCard[]; label: string }):
   return <section aria-label={label} className={`load-kpis${cards.length === 5 ? " five" : ""}`}>
     {cards.map((card) => <div className={`history-card${card.bad ? " load-card-bad" : ""}`} key={card.label}>
       <span className="history-muted">{card.label}</span>
-      <strong className={card.bad ? "bad" : undefined} title={card.value}>{card.value}{card.unit ? <small> {card.unit}</small> : null}</strong>
+      <strong className={card.bad ? "bad" : undefined} title={card.value}><AnimatedFigure value={card.value} />{card.unit ? <small> {card.unit}</small> : null}</strong>
       <span className="history-muted load-kpi-note" title={card.note}>{card.note}</span>
       {card.caveat && <span className="load-kpi-caveat">{card.caveat}</span>}
     </div>)}

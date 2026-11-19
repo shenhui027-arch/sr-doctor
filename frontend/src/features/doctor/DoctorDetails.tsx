@@ -44,7 +44,7 @@ export function DoctorDetails({ report, focusNodeId = null }: { report: Analysis
 
 function OperatorTable({ report, focusNodeId }: { report: AnalysisSnapshotReport; focusNodeId: string | null }): JSX.Element {
   const { text } = useLocale();
-  const { nodeId, findingId, selectNode } = useSelection();
+  const { nodeId, findingId, selectNode, revealNode } = useSelection();
   const summary = report.execution_summary;
   const nodes = new Map(report.graph_view.nodes.map((node) => [node.node_id, node] as const));
   // No per-node summary: say why (from the backend reasons) instead of a table of blanks.
@@ -78,7 +78,7 @@ function OperatorTable({ report, focusNodeId }: { report: AnalysisSnapshotReport
         const hot = row.hotspot === "most_consuming";
         const tone = hot ? "hot-most" : row.hotspot === "second_most_consuming" ? "hot-second" : "";
         return <tr className={[row.node_id === active ? "selected" : "", tone].filter(Boolean).join(" ")} key={row.node_id} onClick={() => selectNode(row.node_id)}>
-          <td><button className="plan-node-link" onClick={(event) => { event.stopPropagation(); selectNode(row.node_id); }} type="button"><small>{row.plan_node_id}</small> {node.display_name ?? node.plan_node_type ?? row.node_id}</button>{row.hotspot === "boundary" ? <em className="plan-node-hot">{hotspotLabel(row, text)}</em> : null}</td>
+          <td><button className="plan-node-link" onClick={(event) => { event.stopPropagation(); revealNode(row.node_id); }} type="button"><small>{row.plan_node_id}</small> {node.display_name ?? node.plan_node_type ?? row.node_id}</button>{row.hotspot === "boundary" ? <em className="plan-node-hot">{hotspotLabel(row, text)}</em> : null}</td>
           <td className="plan-node-fact" title={objectText(node, text)}>{objectText(node, text)}</td>
           <td className="num time">{row.total_time.display_text ?? missing}</td>
           <td className="share" title={hotspotLabel(row, text) ?? undefined}><span className="plan-node-share"><span className="share-bar" aria-hidden="true"><span style={{ width: `${maxShare > 0 ? (row.time_share_basis_points ?? 0) * 100 / maxShare : 0}%` }} /></span><b>{row.time_share_display ?? "—"}</b></span></td>
@@ -89,7 +89,7 @@ function OperatorTable({ report, focusNodeId }: { report: AnalysisSnapshotReport
         </tr>;
       })}
       {unmeasured.map((node) => <tr className="unmeasured" key={node.node_id} onClick={() => selectNode(node.node_id)}>
-        <td><button className="plan-node-link" onClick={(event) => { event.stopPropagation(); selectNode(node.node_id); }} type="button"><small>{node.plan_node_id ?? "—"}</small> {node.display_name ?? node.plan_node_type ?? node.node_id}</button></td>
+        <td><button className="plan-node-link" onClick={(event) => { event.stopPropagation(); revealNode(node.node_id); }} type="button"><small>{node.plan_node_id ?? "—"}</small> {node.display_name ?? node.plan_node_type ?? node.node_id}</button></td>
         <td className="plan-node-fact">{objectText(node, text)}</td>
         <td className="num">{missing}</td>
         <td className="share"><span className="plan-node-share"><span className="share-bar" aria-hidden="true"><span style={{ width: 0 }} /></span><b>—</b></span></td>

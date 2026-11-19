@@ -48,13 +48,13 @@ export function ImportPanel({ idPrefix = "import-profile", maxInputBytes = null,
     <section className="import-panel" aria-labelledby={`${idPrefix}-title`}>
       <div className="import-panel-heading">
         <h2 id={`${idPrefix}-title`}>{text("Import a Profile", "导入 Profile")}</h2>
-        <span className="chip">{text("Offline · no connection needed", "离线 · 无需连接")}</span>
+        <span className="chip">{text("Offline import supported", "支持离线导入")}</span>
       </div>
       <form aria-busy={state.status === "submitting"} className="import-panel-form" onSubmit={submit}>
         <ProfileInputFields dispatch={dispatch} idPrefix={idPrefix} label="Profile" maxInputBytes={maxInputBytes} showLegend={false} state={state} />
         {state.status === "error" && <p className="import-panel-error" role="alert">{state.error}</p>}
         <div className="import-panel-footer">
-          <span>{text("The Profile is analyzed in this local process only; it is not written to logs or telemetry.", "原文只在本机进程内分析，不写入日志或遥测。")}</span>
+          <span>{text("The Profile is sent to the server running SR Doctor and analyzed in its process; it is not written to logs or telemetry.", "原文发送到运行 SR Doctor 的服务端，在服务端进程内分析，不写入日志或遥测。")}</span>
           <div className="import-panel-actions">
             {onCancel && <button className="button secondary" onClick={onCancel} type="button">{text("Back to current analysis", "返回当前分析")}</button>}
             <button aria-describedby={`${idPrefix}-status`} className="button accent import-panel-submit" disabled={state.status === "submitting"} type="submit">

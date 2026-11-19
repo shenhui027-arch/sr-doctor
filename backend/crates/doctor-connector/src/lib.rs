@@ -73,7 +73,28 @@ pub use load_monitor::{
 pub const SUPPORTED_VERSION: &str = "3.5.14";
 pub const DEFAULT_AUDIT_TABLE: &str = "starrocks_audit_db__.starrocks_audit_tbl__";
 pub const DEFAULT_IDLE_TTL: Duration = Duration::from_secs(15 * 60);
-pub const MAX_SESSIONS: usize = 3;
+/// Page sessions plus, since task 72, the one background session of the saved connection.
+pub const MAX_SESSIONS: usize = 4;
+
+thread_local! {
+    static WITHOUT_LEASE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Task 72 review: runs `work` without extending any session's idle lease.
+/// Background collection reads run inside it, so a page session lives only as
+/// long as its page uses or keeps it alive; a closed tab's session expires even
+/// when its collector keeps reading. The scope is per thread and ends with
+/// `work` (also on panic).
+pub fn without_lease<T>(work: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            WITHOUT_LEASE.with(|flag| flag.set(self.0));
+        }
+    }
+    let _restore = Restore(WITHOUT_LEASE.with(|flag| flag.replace(true)));
+    work()
+}
 pub const MAX_QUERY_ROWS: u16 = 500;
 pub const MAX_QUERY_WINDOW: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 const MAX_PLAN_SQL_BYTES: usize = 100 * 1024;
@@ -1143,6 +1164,35 @@ impl SessionManager {
             .active
             .get(connection_id)
             .is_some_and(|session| now.saturating_sub(session.last_used) <= self.idle_ttl)
+    }
+
+    /// Task 71: a reloaded page re-attaches to its live session by ID instead of
+    /// asking for the password again. Returns the same view `connect` returned
+    /// (no credentials) and counts as use; an unknown or idle-expired ID is
+    /// removed and reported as expired. It runs no remote statement, so it
+    /// never waits behind an Audit operation.
+    pub fn resume(&self, connection_id: &str) -> Result<ConnectionSessionView, ConnectorError> {
+        let now = self.clock.now();
+        let mut sessions = self.lock_sessions();
+        let live = sessions
+            .active
+            .get(connection_id)
+            .is_some_and(|session| now.saturating_sub(session.last_used) <= self.idle_ttl);
+        let expired = || ConnectorError::new(ConnectorErrorCode::ConnectionExpired, "connection");
+        if !live {
+            // Like `expire`: a session an Audit operation still owns is left to that operation.
+            let idle = sessions
+                .active
+                .get(connection_id)
+                .is_some_and(|session| session.audit_operation.is_none());
+            if idle && let Some(mut session) = sessions.active.remove(connection_id) {
+                session.remote.close();
+            }
+            return Err(expired());
+        }
+        let session = sessions.active.get_mut(connection_id).ok_or_else(expired)?;
+        session.last_used = now;
+        Ok(session.view.clone())
     }
 
     /// Closing an unknown ID is intentionally idempotent and reveals no history.
@@ -2878,7 +2928,9 @@ impl SessionManager {
                     "detect",
                 ));
             }
-            session.last_used = now;
+            if !WITHOUT_LEASE.with(std::cell::Cell::get) {
+                session.last_used = now;
+            }
             (|| {
                 if let Some(control) = control {
                     control.acquire_session()?;
@@ -4312,10 +4364,9 @@ fn explain_statement(candidate_sql: &str, mode: &ExplainMode) -> Result<String, 
 }
 
 fn plan_only_select(sql: &str) -> bool {
-    if sql.as_bytes().windows(3).any(|window| window == b"/*!") {
+    let Some(tokens) = sql_tokens(sql) else {
         return false;
-    }
-    let tokens = sql_tokens(sql);
+    };
     let Some(first) = tokens.first() else {
         return false;
     };
@@ -4341,61 +4392,71 @@ fn plan_only_select(sql: &str) -> bool {
                 | "revoke"
                 | "use"
                 | "call"
+                | "into"
+                | "outfile"
         )
     })
 }
 
 /// Only lexical security classification: quoted/ordinary-comment text never becomes a statement keyword.
 /// MySQL executable comments are rejected before tokenization.
-fn sql_tokens(sql: &str) -> Vec<String> {
-    let bytes = sql.as_bytes();
+fn sql_tokens(sql: &str) -> Option<Vec<String>> {
+    if sql.as_bytes().windows(3).any(|window| window == b"/*!") {
+        return None;
+    }
+
+    // FE uppercases code points before lexing. These two non-ASCII characters
+    // can become ASCII keyword characters under that mapping.
+    let mut chars = sql
+        .chars()
+        .map(|ch| match ch {
+            '\u{0131}' => 'i',
+            '\u{017f}' => 's',
+            _ => ch.to_ascii_lowercase(),
+        })
+        .peekable();
+    let is_word_char =
+        |ch: char| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '$' | '\u{0080}'..='\u{ffff}');
     let mut tokens = Vec::new();
-    let mut index = 0;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'\'' | b'\"' | b'`' => {
-                let quote = bytes[index];
-                index += 1;
-                while index < bytes.len() {
-                    if bytes[index] == b'\\' {
-                        index += 2;
-                        continue;
-                    }
-                    index += 1;
-                    if bytes[index - 1] == quote {
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\'' | '"' | '`' => loop {
+                let next = chars.next()?;
+                if next == '\\' && ch != '`' {
+                    chars.next()?;
+                } else if next == ch && chars.next_if_eq(&ch).is_none() {
+                    break;
+                }
+            },
+            '-' if chars.next_if_eq(&'-').is_some() => {
+                for next in chars.by_ref() {
+                    if matches!(next, '\r' | '\n') {
                         break;
                     }
                 }
             }
-            b'-' if bytes.get(index + 1) == Some(&b'-') => {
-                index += 2;
-                while index < bytes.len() && bytes[index] != b'\n' {
-                    index += 1;
+            '/' if chars.next_if_eq(&'*').is_some() => {
+                if chars.peek() == Some(&'+') {
+                    return None;
+                }
+                loop {
+                    if chars.next()? == '*' && chars.next_if_eq(&'/').is_some() {
+                        break;
+                    }
                 }
             }
-            b'/' if bytes.get(index + 1) == Some(&b'*') => {
-                index += 2;
-                while index + 1 < bytes.len() && !(bytes[index] == b'*' && bytes[index + 1] == b'/')
-                {
-                    index += 1;
+            ';' | '#' => return None,
+            ch if is_word_char(ch) => {
+                let mut token = String::from(ch);
+                while let Some(next) = chars.next_if(|&next| is_word_char(next)) {
+                    token.push(next);
                 }
-                index = (index + 2).min(bytes.len());
+                tokens.push(token);
             }
-            b';' => return vec![";".into()],
-            byte if byte.is_ascii_alphabetic() || byte == b'_' => {
-                let start = index;
-                index += 1;
-                while index < bytes.len()
-                    && (bytes[index].is_ascii_alphanumeric() || bytes[index] == b'_')
-                {
-                    index += 1;
-                }
-                tokens.push(String::from_utf8_lossy(&bytes[start..index]).to_ascii_lowercase());
-            }
-            _ => index += 1,
+            _ => {}
         }
     }
-    tokens
+    Some(tokens)
 }
 
 /// The release behind `current_version()` ("3.4.10-965be75"), when the
@@ -5621,6 +5682,55 @@ mod tests {
             ]
         );
         assert_eq!(view.connection_id.len(), 48);
+    }
+
+    #[test]
+    fn background_reads_do_not_extend_the_idle_lease() {
+        let factory = Arc::new(FakeFactory::supported());
+        let clock = Arc::new(TestClock::default());
+        let manager = session_manager(Arc::clone(&factory), Arc::clone(&clock));
+        let view = manager.connect(request()).unwrap();
+        // The test clock is absolute; the idle TTL is 10 s.
+        clock.advance(8);
+        let _ = without_lease(|| {
+            manager.audit_collection_slice_controlled(&view.connection_id, 0, 300, None)
+        });
+        clock.advance(12);
+        assert!(!manager.is_active(&view.connection_id));
+        // Outside the scope the same read counts as use.
+        let other = manager.connect(request()).unwrap();
+        clock.advance(18);
+        let _ = manager.audit_collection_slice_controlled(&other.connection_id, 0, 300, None);
+        clock.advance(26);
+        assert!(manager.is_active(&other.connection_id));
+    }
+
+    #[test]
+    fn resume_returns_the_live_view_counts_as_use_and_expires_idle_ids() {
+        let factory = Arc::new(FakeFactory::supported());
+        let clock = Arc::new(TestClock::default());
+        let manager = session_manager(Arc::clone(&factory), Arc::clone(&clock));
+        let view = manager.connect(request()).unwrap();
+        let before = factory.operations.lock().unwrap().len();
+
+        // The test clock is absolute; the idle TTL is 10 s.
+        clock.advance(8);
+        assert_eq!(manager.resume(&view.connection_id).unwrap(), view);
+        // Resuming ran nothing remote and refreshed the idle clock.
+        assert_eq!(factory.operations.lock().unwrap().len(), before);
+        clock.advance(16);
+        assert!(manager.is_active(&view.connection_id));
+
+        assert_eq!(
+            manager.resume("unknown").unwrap_err().code,
+            ConnectorErrorCode::ConnectionExpired
+        );
+        clock.advance(27);
+        assert_eq!(
+            manager.resume(&view.connection_id).unwrap_err().code,
+            ConnectorErrorCode::ConnectionExpired
+        );
+        assert!(!manager.is_active(&view.connection_id));
     }
 
     #[test]
@@ -7917,6 +8027,34 @@ mod tests {
                 Operation::ExplainCosts,
             ]
         );
+    }
+
+    /// Review batch 1 (task 76): inputs that hid side effects or a second
+    /// statement from the old lexer, next to look-alikes that must still pass.
+    #[test]
+    fn candidate_sql_lexer_matches_fe_comment_quote_and_hint_rules() {
+        for sql in [
+            "SELECT * FROM t INTO OUTFILE 's3://bucket/x'",
+            "WITH c AS (SELECT 1) SELECT * FROM c INTO OUTFILE 'hdfs://x'",
+            "SELECT /*+ SET_VAR(query_timeout=86400) */ * FROM t",
+            "SELECT 1 -- note\r; DROP TABLE t",
+            "SELECT `a\\` FROM t; DROP TABLE t -- `",
+            "SELECT 1;",
+            "SELECT 1 # comment",
+            "SELECT 'unterminated",
+            "SELECT 1 /* unterminated",
+            "SELECT 1 \u{0131}nto outf\u{0131}le 'x'",
+        ] {
+            assert!(!plan_only_select(sql), "must reject: {sql:?}");
+        }
+        for sql in [
+            "SELECT 'a;b', \"c -- d\", 'it''s', 'e\\'f' FROM t",
+            "SELECT `odd``name` FROM t WHERE note = 'INTO OUTFILE'",
+            "WITH c AS (SELECT 1 AS x) SELECT x FROM c /* plain; comment */",
+            "SELECT 1 -- trailing note mentioning outfile",
+        ] {
+            assert!(plan_only_select(sql), "must allow: {sql:?}");
+        }
     }
 
     #[test]

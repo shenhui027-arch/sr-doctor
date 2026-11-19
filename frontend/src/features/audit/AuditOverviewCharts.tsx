@@ -27,8 +27,13 @@ export function auditSegmentAt(points: readonly AuditConcurrencyPoint[], at: str
 export function AuditDigestGuidance({ text }: { text: LocalizedText }): JSX.Element {
   return <article className="audit-family-chart audit-digest-guidance" role="note" aria-label={text("SQL digest unavailable", "官方 SQL digest 不可用")}>
     <h3>{text("Grouping by official digest is unavailable for this period", "当前时段无法按官方 digest 归组")}</h3>
-    <p>{text("None of these audit records carries a SQL digest, which usually means the FE config enable_sql_digest is off. A DBA can turn it on with:", "这些审计记录都没有官方 SQL digest，通常是 FE 配置 enable_sql_digest 未开启。可由 DBA 执行：")}</p>
-    <pre><code>ADMIN SET FRONTEND CONFIG ("enable_sql_digest" = "true");</code></pre>
-    <p>{text("Only queries recorded after that get an official digest; until then they are grouped below by unofficial fingerprint. This tool never changes cluster settings.", "开启后新记录的查询才有官方 digest；在此之前，下方按非官方指纹归组。本工具不会修改集群配置。")}</p>
+    <p>{text("Queries below are grouped by unofficial fingerprint instead.", "下方改按非官方指纹归组。")}</p>
+    {/* Review: the cluster setting is background, not the first thing to do. */}
+    <details>
+      <summary>{text("Why there is no official digest", "为什么没有官方 digest")}</summary>
+      <p>{text("None of these audit records carries a SQL digest, which usually means the FE config enable_sql_digest is off. A DBA can turn it on with:", "这些审计记录都没有官方 SQL digest，通常是 FE 配置 enable_sql_digest 未开启。可由 DBA 执行：")}</p>
+      <pre><code>ADMIN SET FRONTEND CONFIG ("enable_sql_digest" = "true");</code></pre>
+      <p>{text("Only queries recorded after that get an official digest. This tool never changes cluster settings.", "开启后新记录的查询才有官方 digest。本工具不会修改集群配置。")}</p>
+    </details>
   </article>;
 }

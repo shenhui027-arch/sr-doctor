@@ -14,6 +14,7 @@ mod history_trend;
 mod load_alerts;
 mod loads;
 mod notify;
+mod saved_connection;
 pub use history::{HistoryConfig, SlicePlan, plan_slices};
 pub use notify::NotifyKey;
 
@@ -97,6 +98,8 @@ const EXPORTS_PATH: &str = "/api/v1/exports";
 const CONNECTIONS_PATH: &str = "/api/v1/connections";
 const CONNECTIONS_PREFIX: &str = "/api/v1/connections/";
 const CONNECTION_ID_PATH: &str = "/api/v1/connections/{id}";
+const SAVED_CONNECTION_PATH: &str = "/api/v1/saved-connection";
+const SAVED_CONNECTION_CONNECT_PATH: &str = "/api/v1/saved-connection/connect";
 const CONNECTION_SEARCH_PATH: &str = "/api/v1/connections/{id}/queries/search";
 const CONNECTION_QUERY_SQL_PATH: &str = "/api/v1/connections/{id}/queries/sql";
 const CONNECTION_PROFILE_PATH: &str = "/api/v1/connections/{id}/profiles/fetch";
@@ -565,6 +568,7 @@ pub struct ApiState {
     sessions: Arc<SessionManager>,
     history: Arc<history::HistoryRuntime>,
     access: Option<Arc<access::AccessGate>>,
+    saved: Arc<saved_connection::SavedConnectionRuntime>,
 }
 
 impl ApiState {
@@ -651,6 +655,7 @@ impl ApiState {
             sessions,
             history,
             access,
+            saved: Arc::new(saved_connection::SavedConnectionRuntime::new()),
         })
     }
 
@@ -988,8 +993,20 @@ pub fn router(state: ApiState) -> Router {
         .route(EXPORTS_PATH, options(preflight).post(exports))
         .route(CONNECTIONS_PATH, options(preflight).post(create_connection))
         .route(
+            SAVED_CONNECTION_PATH,
+            options(delete_preflight)
+                .get(saved_connection::read)
+                .delete(saved_connection::forget),
+        )
+        .route(
+            SAVED_CONNECTION_CONNECT_PATH,
+            options(preflight).post(saved_connection::connect),
+        )
+        .route(
             CONNECTION_ID_PATH,
-            options(delete_preflight).delete(close_connection),
+            options(delete_preflight)
+                .get(resume_connection)
+                .delete(close_connection),
         )
         .route(
             CONNECTION_SEARCH_PATH,
@@ -1202,6 +1219,7 @@ pub async fn serve(state: ApiState) -> std::io::Result<()> {
     let listener = tokio::net::TcpListener::bind(state.bind_addr()).await?;
     tokio::spawn(notify::run_worker(state.clone()));
     tokio::spawn(history::retention_worker(state.clone()));
+    tokio::spawn(saved_connection::supervisor(state.clone()));
     let server = axum::serve(
         listener,
         router(state.clone()).into_make_service_with_connect_info::<SocketAddr>(),
@@ -1502,6 +1520,18 @@ async fn create_connection(
 ) -> Result<Json<PublicConnectionSessionView>, ApiFailure> {
     let request: ConnectionCreateRequest = connector_json_request(&state, request).await?;
     let (host, port) = (request.host.clone(), request.port);
+    // Task 72: a save the server would refuse is refused before connecting.
+    let save = request.save_credentials == Some(true);
+    if save {
+        saved_connection::ensure_can_save(&state, &request)?;
+    }
+    let saved_fields = save.then(|| {
+        (
+            request.username.clone(),
+            request.tls_mode.clone(),
+            request.password.clone(),
+        )
+    });
     // Remote means "not this machine", whatever the transport: a plaintext
     // connection to another host stays behind the G1 collection gate.
     let remote = !doctor_connector::is_literal_loopback(&host);
@@ -1510,6 +1540,26 @@ async fn create_connection(
     })
     .await?;
     history::start_collector(&state, &session.connection_id, &host, port, remote);
+    if let Some((username, tls, password)) = saved_fields
+        && let Err(failure) = saved_connection::save(&state, &host, port, &username, tls, &password)
+    {
+        // The user asked for both; a connection that could not be saved is not kept.
+        history::stop_collector(&state, &session.connection_id);
+        let sessions = Arc::clone(&state.sessions);
+        let id = session.connection_id.clone();
+        let _ = tokio::task::spawn_blocking(move || sessions.close(&id)).await;
+        return Err(failure);
+    }
+    Ok(Json(public_connection_view(session)))
+}
+
+/// Task 71: a reloaded page re-attaches to its live session; no credentials are
+/// sent or returned. An unknown or expired ID answers 410 `connection_expired`.
+async fn resume_connection(
+    State(state): State<ApiState>,
+    AxumPath(connection_id): AxumPath<String>,
+) -> Result<Json<PublicConnectionSessionView>, ApiFailure> {
+    let session = connector_call(&state, move |sessions| sessions.resume(&connection_id)).await?;
     Ok(Json(public_connection_view(session)))
 }
 
@@ -6950,6 +7000,23 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
         assert!(!response.status().is_success());
         assert_eq!(factory.profile_calls.load(Ordering::Relaxed), raw_calls);
 
+        // Task 71: a reloaded page re-attaches by ID; the view carries no credentials.
+        let response = app
+            .clone()
+            .oneshot(request(
+                Method::GET,
+                &format!("{CONNECTIONS_PATH}/{connection_id}"),
+                "127.0.0.1:8000",
+                SocketAddr::from(([127, 0, 0, 1], 41000)),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let resumed: serde_json::Value =
+            from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(resumed["connection_id"], connection_id.as_str());
+        assert!(resumed.get("password").is_none());
+
         let mut close = request(
             Method::DELETE,
             &format!("{CONNECTIONS_PATH}/{connection_id}"),
@@ -6962,6 +7029,7 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
         let response = app.clone().oneshot(close).await.unwrap();
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let response = app
+            .clone()
             .oneshot(json_request(
                 Method::POST,
                 &snapshot_path,
@@ -6973,6 +7041,16 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
             .unwrap();
         assert_eq!(response.status(), StatusCode::GONE);
         assert_eq!(factory.profile_calls.load(Ordering::Relaxed), raw_calls);
+        let response = app
+            .oneshot(request(
+                Method::GET,
+                &format!("{CONNECTIONS_PATH}/{connection_id}"),
+                "127.0.0.1:8000",
+                SocketAddr::from(([127, 0, 0, 1], 41000)),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::GONE);
     }
 
     #[tokio::test]
@@ -9868,7 +9946,8 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
         assert_eq!(status["store"]["templates"], "1");
         assert_eq!(status["budget"]["production_budget_measured"], false);
         let watermark = status["watermark_seconds"].as_u64().unwrap();
-        // One collector per process: a second session to the same target waits.
+        // One collector per process: a second session to the same target waits
+        // and (task 72) shows the collector that runs for its cluster.
         let second = connector_connection_id(app.clone()).await;
         let (_, waiting) = history_post(
             app.clone(),
@@ -9876,11 +9955,8 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
             serde_json::json!({ "connection_id": second }),
         )
         .await;
-        assert_eq!(waiting["collection"]["state"], "stopped");
-        assert_eq!(
-            waiting["collection"]["reason"],
-            "another_session_collecting"
-        );
+        assert_eq!(waiting["collection"]["state"], "running");
+        assert_eq!(waiting["target"], "127.0.0.1:9030");
         // Pause is persisted with the target and survives a restart.
         let (code, _) = history_post(
             app.clone(),
@@ -11203,5 +11279,362 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
         )
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    /// Task 72: accepts only one password, so a changed password can be simulated.
+    struct PasswordFactory {
+        expected: Arc<Mutex<String>>,
+        inner: ConnectorTestFactory,
+    }
+
+    impl RemoteFactory for PasswordFactory {
+        fn open(
+            &self,
+            options: doctor_connector::RemoteConnectOptions,
+        ) -> Result<Box<dyn Remote>, RemoteError> {
+            if options.password.as_bytes() != self.expected.lock().unwrap().as_bytes() {
+                return Err(RemoteError::Authentication);
+            }
+            self.inner.open(options)
+        }
+    }
+
+    async fn saved_request(app: Router, method: Method, path: &str) -> (StatusCode, String) {
+        let mut request = request(
+            method,
+            path,
+            "127.0.0.1:8000",
+            SocketAddr::from(([127, 0, 0, 1], 41000)),
+        );
+        request
+            .headers_mut()
+            .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        (status, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    fn saved_create_body(password: &str) -> serde_json::Value {
+        serde_json::json!({ "host": "127.0.0.1", "port": 9030, "username": "reader", "password": password,
+                            "catalog": null, "database": null, "audit_table": null, "tls_mode": "plaintext",
+                            "save_credentials": true })
+    }
+
+    #[tokio::test]
+    async fn c1_saved_connection_is_write_only_reconnects_and_stops_on_a_refused_password() {
+        let dir = std::env::temp_dir().join(format!("doctor-api-saved-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("history.sqlite");
+        let password = "c1-saved-password-7f3a";
+        let expected = Arc::new(Mutex::new(password.to_owned()));
+        let state = ApiState::with_connector_factory(
+            ApiConfig {
+                history: HistoryConfig {
+                    path: Some(path.clone()),
+                    ..HistoryConfig::default()
+                },
+                notify_key: Some(NotifyKey {
+                    key: doctor_notify::SecretKey::generate().unwrap(),
+                    source: doctor_contracts::NotifyKeySource::File,
+                }),
+                ..ApiConfig::default()
+            },
+            "fresh-nonce",
+            Arc::new(TestClock::default()),
+            Arc::new(PasswordFactory {
+                expected: Arc::clone(&expected),
+                inner: ConnectorTestFactory::connected(),
+            }),
+        )
+        .unwrap();
+        let app = router(state);
+        let (status, body) = saved_request(app.clone(), Method::GET, SAVED_CONNECTION_PATH).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains(r#""state":"none""#), "{body}");
+
+        // A connection saved on request: nothing echoes the password.
+        let (status, created) =
+            history_post(app.clone(), CONNECTIONS_PATH, saved_create_body(password)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(!created.to_string().contains(password));
+        let (status, body) = saved_request(app.clone(), Method::GET, SAVED_CONNECTION_PATH).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(
+            body.contains(r#""state":"saved""#) && body.contains(r#""username":"reader""#),
+            "{body}"
+        );
+        assert!(!body.contains(password));
+        for file in ["history.sqlite", "history.sqlite-wal"] {
+            if let Ok(bytes) = std::fs::read(dir.join(file)) {
+                assert!(
+                    !bytes
+                        .windows(password.len())
+                        .any(|window| window == password.as_bytes()),
+                    "{file}"
+                );
+            }
+        }
+
+        // The page opens a session with it.
+        let (status, opened) = history_post(
+            app.clone(),
+            SAVED_CONNECTION_CONNECT_PATH,
+            serde_json::json!({}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(
+            opened["connection_id"]
+                .as_str()
+                .is_some_and(|id| id != created["connection_id"])
+        );
+
+        // A changed password is tried once, marked for re-entry and never retried.
+        *expected.lock().unwrap() = "changed".into();
+        let (status, refused) = history_post(
+            app.clone(),
+            SAVED_CONNECTION_CONNECT_PATH,
+            serde_json::json!({}),
+        )
+        .await;
+        assert_eq!(
+            (status, refused["code"].as_str()),
+            (StatusCode::UNAUTHORIZED, Some("authentication_failed"))
+        );
+        let (_, body) = saved_request(app.clone(), Method::GET, SAVED_CONNECTION_PATH).await;
+        assert!(body.contains(r#""state":"needs_reentry""#), "{body}");
+        let (status, again) = history_post(
+            app.clone(),
+            SAVED_CONNECTION_CONNECT_PATH,
+            serde_json::json!({}),
+        )
+        .await;
+        assert_eq!(
+            (status, again["code"].as_str()),
+            (StatusCode::CONFLICT, Some("saved_connection_unavailable"))
+        );
+
+        // Forgetting removes it.
+        let (status, _) = saved_request(app.clone(), Method::DELETE, SAVED_CONNECTION_PATH).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, body) = saved_request(app, Method::GET, SAVED_CONNECTION_PATH).await;
+        assert!(
+            body.contains(r#""state":"none""#) && !body.contains("reader"),
+            "{body}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn c1_saving_is_refused_without_a_key_and_while_the_network_login_is_the_default() {
+        let dir = std::env::temp_dir().join(format!("doctor-api-saved-off-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("history.sqlite");
+        let factory = Arc::new(ConnectorTestFactory::connected());
+        let app = router(history_state(Arc::clone(&factory), &path));
+        let (status, refused) =
+            history_post(app.clone(), CONNECTIONS_PATH, saved_create_body("x")).await;
+        assert_eq!(
+            (status, refused["code"].as_str()),
+            (StatusCode::CONFLICT, Some("saved_connection_unavailable"))
+        );
+        let (_, body) = saved_request(app, Method::GET, SAVED_CONNECTION_PATH).await;
+        assert!(
+            body.contains(r#""unavailable_reason":"key_unavailable""#),
+            "{body}"
+        );
+
+        let network = ApiState::with_connector_factory(
+            ApiConfig {
+                bind_addr: SocketAddr::from(([0, 0, 0, 0], 8000)),
+                deployment_mode: DeploymentMode::Network,
+                access: Some(AccessConfig::default_admin(false)),
+                history: HistoryConfig {
+                    path: Some(path.clone()),
+                    ..HistoryConfig::default()
+                },
+                notify_key: Some(NotifyKey {
+                    key: doctor_notify::SecretKey::generate().unwrap(),
+                    source: doctor_contracts::NotifyKeySource::File,
+                }),
+                ..ApiConfig::default()
+            },
+            "fresh-nonce",
+            Arc::new(TestClock::default()),
+            factory,
+        )
+        .unwrap();
+        let view = saved_connection::view(&network).unwrap();
+        assert_eq!(
+            view.state,
+            doctor_contracts::SavedConnectionState::Unavailable
+        );
+        assert_eq!(
+            view.unavailable_reason,
+            Some(doctor_contracts::SavedConnectionUnavailableReason::DefaultAdminPassword)
+        );
+        // Review: a renamed account keeping the default password is refused too;
+        // a changed password lifts the refusal.
+        let network_with = |username: &str, password: &str| {
+            ApiState::with_connector_factory(
+                ApiConfig {
+                    bind_addr: SocketAddr::from(([0, 0, 0, 0], 8000)),
+                    deployment_mode: DeploymentMode::Network,
+                    access: Some(AccessConfig {
+                        username: username.into(),
+                        password: password.into(),
+                        secure_cookie: false,
+                    }),
+                    history: HistoryConfig {
+                        path: Some(path.clone()),
+                        ..HistoryConfig::default()
+                    },
+                    notify_key: Some(NotifyKey {
+                        key: doctor_notify::SecretKey::generate().unwrap(),
+                        source: doctor_contracts::NotifyKeySource::File,
+                    }),
+                    ..ApiConfig::default()
+                },
+                "fresh-nonce",
+                Arc::new(TestClock::default()),
+                Arc::new(ConnectorTestFactory::connected()),
+            )
+            .unwrap()
+        };
+        assert_eq!(
+            saved_connection::view(&network_with("ops", DEFAULT_ADMIN_PASSWORD))
+                .unwrap()
+                .unavailable_reason,
+            Some(doctor_contracts::SavedConnectionUnavailableReason::DefaultAdminPassword)
+        );
+        assert_eq!(
+            saved_connection::view(&network_with("admin", "a-changed-password"))
+                .unwrap()
+                .unavailable_reason,
+            None
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    async fn saved_background(app: &Router) -> String {
+        let (_, body) = saved_request(app.clone(), Method::GET, SAVED_CONNECTION_PATH).await;
+        let view: serde_json::Value = serde_json::from_str(&body).unwrap();
+        view["background"].as_str().unwrap().to_owned()
+    }
+
+    #[tokio::test]
+    async fn c1_supervisor_collects_in_the_background_and_stops_when_history_is_cleared() {
+        let dir = std::env::temp_dir().join(format!("doctor-api-saved-bg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let factory = Arc::new(ConnectorTestFactory::connected());
+        let closes = Arc::clone(&factory.closes);
+        let state = ApiState::with_connector_factory(
+            ApiConfig {
+                history: HistoryConfig {
+                    path: Some(dir.join("history.sqlite")),
+                    period_seconds: 3600,
+                    ..HistoryConfig::default()
+                },
+                notify_key: Some(NotifyKey {
+                    key: doctor_notify::SecretKey::generate().unwrap(),
+                    source: doctor_contracts::NotifyKeySource::File,
+                }),
+                ..ApiConfig::default()
+            },
+            "fresh-nonce",
+            Arc::new(TestClock::default()),
+            factory,
+        )
+        .unwrap();
+        let app = router(state.clone());
+        let (status, created) =
+            history_post(app.clone(), CONNECTIONS_PATH, saved_create_body("x")).await;
+        assert_eq!(status, StatusCode::OK);
+        // Without a page: the page session goes away, the supervisor takes over.
+        let (status, _) = saved_request(
+            app.clone(),
+            Method::DELETE,
+            &format!(
+                "{CONNECTIONS_PATH}/{}",
+                created["connection_id"].as_str().unwrap()
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        tokio::spawn(saved_connection::supervisor(state.clone()));
+        let mut background = String::new();
+        for _ in 0..100 {
+            background = saved_background(&app).await;
+            if background == "collecting" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(background, "collecting");
+        let closed_before = closes.load(Ordering::Relaxed);
+
+        // Clearing history forgets the saved connection: the background session closes.
+        let (status, _) =
+            history_post(app.clone(), "/api/v1/history/clear", serde_json::json!({})).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        for _ in 0..100 {
+            background = saved_background(&app).await;
+            if background == "off" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(background, "off");
+        assert!(closes.load(Ordering::Relaxed) > closed_before);
+        let (_, body) = saved_request(app, Method::GET, SAVED_CONNECTION_PATH).await;
+        assert!(body.contains(r#""state":"none""#), "{body}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn c1_clearing_history_waits_for_a_running_cycle_so_nothing_is_written_back() {
+        let dir =
+            std::env::temp_dir().join(format!("doctor-api-clear-gate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = history_state(
+            Arc::new(ConnectorTestFactory::connected()),
+            &dir.join("history.sqlite"),
+        );
+        let app = router(state.clone());
+        let store = Arc::clone(state.history.store().unwrap());
+        let run = doctor_history::RunRecord {
+            started_at: 10,
+            slice_start: 0,
+            slice_end: 300,
+            state: doctor_history::RunState::Complete,
+            reason: None,
+            rows_read: 1,
+            attributed: 1,
+            partial_statements: 0,
+            unavailable_statements: 0,
+            duration_ms: 1,
+        };
+        // A cycle that is reading when the clear arrives and writes its slice afterwards.
+        let (started, wait_started) = std::sync::mpsc::channel();
+        let (history, late) = (Arc::clone(&state.history), Arc::clone(&store));
+        let cycle = tokio::task::spawn_blocking(move || {
+            let _cycle = history.cycle_gate.read().unwrap();
+            started.send(()).unwrap();
+            std::thread::sleep(Duration::from_millis(300));
+            late.record_run("127.0.0.1:9030", &run, Some(300)).unwrap();
+        });
+        wait_started.recv().unwrap();
+        let (status, _) = history_post(app, "/api/v1/history/clear", serde_json::json!({})).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        cycle.await.unwrap();
+        // The clear ran after the cycle's write, so the history is empty.
+        assert!(store.targets().unwrap().is_empty());
+        assert!(
+            store
+                .runs("127.0.0.1:9030", 0, 1_000, 10)
+                .unwrap()
+                .is_empty()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

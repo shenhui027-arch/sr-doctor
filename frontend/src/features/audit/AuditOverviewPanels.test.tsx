@@ -101,7 +101,7 @@ describe("design board 01 panels", () => {
     const html = renderToStaticMarkup(<AuditFingerprintFamilyList error={null} loading={false} response={response} text={english} />);
     expect(html).toContain("Unofficial fingerprint");
     expect(html).toContain("SELECT id FROM t WHERE id IN (?)");
-    expect(html).toContain("Newest 4 of 9 executions read");
+    expect(html).toContain("Template grouping read the newest 4 of 9 candidate executions");
     expect(html).toContain("truncated 1");
     expect(html).toContain("16+ AND/OR terms 1");
     expect(html).toContain("Missing");

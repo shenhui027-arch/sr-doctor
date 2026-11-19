@@ -60,6 +60,7 @@ import type {
   Comparison,
   ConnectionCreateRequest,
   ConnectionSessionView,
+  SavedConnectionView,
   ConnectedProfileComparisonRequest,
   ConnectedProfileComparisonResponse,
   ConnectedQueryListRequest,
@@ -123,9 +124,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** Fired when a network deployment answers that the login session is missing or expired. */
 export const AUTH_REQUIRED_EVENT = "doctor:auth-required";
 
+/**
+ * Task 72: fired when any request answers that its StarRocks session is gone, so the app can
+ * check its own session and recover once instead of each page showing the error on its own.
+ */
+export const CONNECTION_EXPIRED_EVENT = "doctor:connection-expired";
+
 function asFailure(value: unknown): ApiFailure {
   if (isRecord(value) && value.code === "auth_required" && typeof window !== "undefined") {
     window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT));
+  }
+  if (isRecord(value) && value.code === "connection_expired" && typeof window !== "undefined") {
+    window.dispatchEvent(new Event(CONNECTION_EXPIRED_EVENT));
   }
   if (typeof value === "object" && value !== null && "code" in value && "stage" in value) {
     const candidate = value as Partial<ApiFailure>;
@@ -277,21 +287,41 @@ export class DoctorApi {
   }
 
   /**
-   * Best-effort close while the page unloads. A reload otherwise leaves the
-   * server session open until it expires, and the local session limit is small.
-   * `keepalive` lets the request outlive the page; failures are ignored.
+   * Task 71: re-attach a reloaded page to its live session. Sends and receives no
+   * credentials; an unknown or idle-expired ID fails as `connection_expired`.
    */
-  releaseConnectionOnUnload(connectionId: string): void {
-    if (!this.nonce) return;
-    try {
-      void this.request(`${this.base}/connections/${encodeURIComponent(connectionId)}`, {
-        method: "DELETE",
-        keepalive: true,
-        headers: { Accept: "application/json", "Content-Type": "application/json", "X-Doctor-CSRF": this.nonce },
-      }).catch(() => undefined);
-    } catch {
-      // Unload is best effort; the server still expires the session.
-    }
+  async resumeConnection(connectionId: string, signal?: AbortSignal): Promise<ConnectionSessionView> {
+    const response = await this.request(`${this.base}/connections/${encodeURIComponent(connectionId)}`, {
+      headers: { Accept: "application/json" },
+      signal,
+    });
+    const body = await responseJson(response);
+    if (!response.ok) throw asFailure(body);
+    if (!isRecord(body) || body.connection_id !== connectionId) throw asFailure(null);
+    return body as unknown as ConnectionSessionView;
+  }
+
+  /** Task 72: the connection saved on the server; never carries the password. */
+  async savedConnection(signal?: AbortSignal): Promise<SavedConnectionView> {
+    const response = await this.request(`${this.base}/saved-connection`, { headers: { Accept: "application/json" }, signal });
+    const body = await responseJson(response);
+    if (!response.ok) throw asFailure(body);
+    if (!isRecord(body) || typeof body.state !== "string") throw asFailure(null);
+    return body as unknown as SavedConnectionView;
+  }
+
+  /** Task 72: open a session with the saved connection (done when the page opens). */
+  async connectSaved(signal?: AbortSignal): Promise<ConnectionSessionView> {
+    return this.postJson<ConnectionSessionView>("/saved-connection/connect", {}, signal);
+  }
+
+  async forgetSavedConnection(): Promise<void> {
+    if (!this.nonce) await this.capabilities();
+    const response = await this.request(`${this.base}/saved-connection`, {
+      method: "DELETE",
+      headers: { Accept: "application/json", "Content-Type": "application/json", "X-Doctor-CSRF": this.nonce! },
+    });
+    if (!response.ok) throw asFailure(await responseJson(response));
   }
 
   async searchConnectedQueries(request: ConnectedQueryListRequest, signal?: AbortSignal): Promise<ConnectedQueryListResponse> {
@@ -637,7 +667,12 @@ export class DoctorApi {
   }
 
   private postConnection<T>(path: string, request: { connection_id: string }, signal?: AbortSignal): Promise<T> {
-    return this.postJson<T>(`/connections/${encodeURIComponent(request.connection_id)}/${path}`, request, signal);
+    // Audit and load reads run as the session's one Audit operation; the server cancels a dropped
+    // request by closing that session's remote connection, which ends the whole session. Leaving a
+    // page or switching a tab must not cost the connection, so these requests are never aborted:
+    // they finish, and callers ignore a late answer through their own `signal.aborted` check.
+    const sessionBound = path.startsWith("audit/") || path.startsWith("loads/");
+    return this.postJson<T>(`/connections/${encodeURIComponent(request.connection_id)}/${path}`, request, sessionBound ? undefined : signal);
   }
 
   private postConnectionExecution<T>(path: string, request: { connection_id: string }, signal: AbortSignal | undefined, guard: (value: unknown) => T): Promise<T> {

@@ -22,6 +22,7 @@ import { compactQueryId } from "../../lib/query-id";
 import { ExpandableSqlLine, SqlText, SqlToggleButton } from "../shell/SqlText";
 import { auditSegmentAt } from "./AuditOverviewCharts";
 import { auditClockText, metricRawText, metricText, metricTone } from "./audit-display";
+import { InfoTip } from "../shell/ui";
 import "./audit-overview-panels.css";
 
 const SAMPLE_POINTS = 30;
@@ -175,11 +176,13 @@ const unavailableReasonLabels: Record<ProductSqlFingerprintUnavailableReason, [s
  * separate list from exact families, labelled from the server's authority
  * fact; the template, counters and metrics are rendered exactly as received.
  */
-export function AuditFingerprintFamilyList({ response, error, loading, text }: {
+export function AuditFingerprintFamilyList({ response, error, loading, text, onShowExecutions }: {
   response: AuditFingerprintFamilyResponse | null;
   error: string | null;
   loading: boolean;
   text: LocalizedText;
+  /** Switches the board to the window's individual executions. */
+  onShowExecutions?(): void;
 }): JSX.Element {
   const coverage = response?.coverage;
   const unofficial = response?.authority === "product_unofficial";
@@ -194,14 +197,14 @@ export function AuditFingerprintFamilyList({ response, error, loading, text }: {
       : coverage && response && <>
         <p className="audit-fingerprint-coverage">
           {coverage.source.state === "partial"
-            ? text(`Newest ${coverage.read_event_count} of ${coverage.eligible_event_count} executions read`, `读取了 ${coverage.eligible_event_count} 次中最近的 ${coverage.read_event_count} 次执行`)
-            : text(`All ${coverage.read_event_count} executions read`, `已读取全部 ${coverage.read_event_count} 次执行`)}
+            ? text(`Template grouping read the newest ${coverage.read_event_count} of ${coverage.eligible_event_count} candidate executions`, `模板归组读取了 ${coverage.eligible_event_count} 次候选中最近的 ${coverage.read_event_count} 次执行`)
+            : text(`Template grouping read ${coverage.read_event_count} candidate executions`, `本次模板归组读取了 ${coverage.read_event_count} 次候选执行`)}
           {" · "}{text(`${coverage.fingerprinted_event_count} grouped into ${coverage.family_count} templates`, `${coverage.fingerprinted_event_count} 次归入 ${coverage.family_count} 个模板`)}
           {coverage.partial_event_count !== "0" && <>{" · "}<span title={text("The statement is longer than the read prefix; it is neither grouped nor ranked", "语句超出读取前缀，不参与归组与排序")}>{text(`truncated ${coverage.partial_event_count}`, `截断 ${coverage.partial_event_count}`)}</span></>}
           {excluded && <>{" · "}<span>{text("not grouped", "未归组")}: {excluded}</span></>}
         </p>
         {response.rows.length === 0
-          ? <p className="audit-empty">{text("No statement could be grouped.", "没有可归组的语句。")}</p>
+          ? <p className="audit-empty">{text("No execution in this window can be grouped by template.", "当前窗口没有可按模板归组的执行。")}{onShowExecutions && <> <button className="link-button" onClick={onShowExecutions} type="button">{text("See individual executions", "查看单次执行")}</button></>}</p>
           : <div className="audit-family-list-wrap"><table aria-label={text("Unofficial fingerprint groups", "非官方指纹分组")} className="audit-family-list">
             <thead><tr>
               <th scope="col">{text("Template (literals as ?)", "模板（字面量为 ?）")}</th>
@@ -290,11 +293,13 @@ export function AuditFamilyAside({ family, members, memberSql = null, memberSqlE
         <span>{text("Selected query family · digest", "已选查询族 · digest")} <code>{exact?.native_digest.slice(0, 12) ?? "—"}</code></span>
         <button aria-label={text("Close details", "关闭详情")} onClick={onClose} type="button"><svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" width="16"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
       </div>
+    </div>
+    {/* Task 69: one scrolling body between the fixed title and the fixed actions. */}
+    <div className="audit-family-aside-body">
       {sample.state === "text" && sample.value.trim() !== ""
         ? <SqlText copyLabel={sample.truncated ? text("Copy returned prefix", "复制已返回片段") : text("Copy SQL", "复制 SQL")} label={text("SQL of the most recent member, as audited", "最近一次成员的审计原文")} note={sample.truncated ? text("Most recent member · sample truncated (prefix only); a member's full SQL is below", "最近一次成员 · 样本已截断（只返回前缀），完整 SQL 可在下方成员中查看") : text("Most recent member, as audited", "最近一次成员的审计原文")} value={sample.value} />
         : <p className="audit-family-aside-empty">{sample.state === "text" ? text("Audited stmt is empty.", "审计 stmt 为空字符串。") : sample.state === "sql_null" ? text("Audited stmt is NULL.", "审计 stmt 为空。") : text("No SQL sample for this family.", "该查询族没有 SQL 示例。")}</p>}
       <div className="audit-family-aside-context"><span>{text("Database", "数据库")} {exact?.context.database ?? "—"}</span><span>Catalog {exact?.context.catalog ?? "—"}</span></div>
-    </div>
     <div className="audit-family-members-head">
       <h2>{text("Member executions · by duration", "成员执行 · 按耗时")}</h2>
       {members
@@ -315,9 +320,12 @@ export function AuditFamilyAside({ family, members, memberSql = null, memberSqlE
         </button>
       </li>;
     })}</ul>
+      {memberSqlError && <p className="audit-family-aside-error" role="alert">{memberSqlError}</p>}
+      {memberSql !== null && <SqlText copyLabel={text("Copy SQL", "复制 SQL")} id="audit-family-member-sql" label={text("Selected member SQL", "所选成员 SQL")} value={memberSql} />}
+    </div>
     <div className="audit-family-aside-foot">
-      <p>{text("Reads existing Profiles only; SQL is never rerun. A Profile may have expired.", "只读取既有 Profile，不会重新执行 SQL。Profile 缓存可能已过期。")}</p>
       <div className="audit-family-aside-actions">
+        <InfoTip label={text("About fetching", "关于拉取")} side="top">{text("Reads existing Profiles only; SQL is never rerun. A Profile may have expired.", "只读取既有 Profile，不会重新执行 SQL。Profile 缓存可能已过期。")}</InfoTip>
         <button className="button accent primary" disabled={!canDiagnose || profileLoading} onClick={onDiagnose} type="button">{profileLoading ? text("Fetching Profile…", "正在拉取 Profile…") : text("Fetch Profile and diagnose", "拉取 Profile 并诊断")}<svg aria-hidden="true" fill="none" height="14" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" width="14"><path d="M5 12h14M13 6l6 6-6 6" /></svg></button>
         {baseline === "comparable" && onCompareWithBaseline
           ? <button className="button secondary" disabled={!canDiagnose || profileLoading} onClick={onCompareWithBaseline} title={text("Compare the baseline with this execution; both are in this list", "将基线与这次执行对比；两者都在本列表中")} type="button">{text("Compare with baseline", "与基线对比")}</button>
@@ -327,8 +335,6 @@ export function AuditFamilyAside({ family, members, memberSql = null, memberSqlE
         <button className="button secondary" disabled={!canPlanCheck || !onPlanCheck} onClick={onPlanCheck} type="button">{text("Plan check", "计划检查")}</button>
         {onViewMemberSql && <SqlToggleButton controls="audit-family-member-sql" disabled={!selectedMemberKey} expanded={memberSql !== null} hideLabel={text("Hide member SQL", "收起成员 SQL")} loading={memberSqlLoading} onToggle={onViewMemberSql} showLabel={text("View member full SQL", "查看成员完整 SQL")} />}
       </div>
-      {memberSqlError && <p className="audit-family-aside-error" role="alert">{memberSqlError}</p>}
-      {memberSql !== null && <SqlText copyLabel={text("Copy SQL", "复制 SQL")} id="audit-family-member-sql" label={text("Selected member SQL", "所选成员 SQL")} value={memberSql} />}
     </div>
   </aside>;
 }

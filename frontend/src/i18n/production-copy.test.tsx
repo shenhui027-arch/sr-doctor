@@ -24,8 +24,8 @@ describe("production bilingual copy", () => {
   it("renders the memory-only import boundary in Chinese", () => {
     const html = renderToStaticMarkup(<LocaleProvider initialLocale="zh"><ImportPanel onReport={vi.fn()} /></LocaleProvider>);
 
-    expect(html).toContain("离线 · 无需连接");
-    expect(html).toContain("原文只在本机进程内分析，不写入日志或遥测。");
+    expect(html).toContain("支持离线导入");
+    expect(html).toContain("原文发送到运行 SR Doctor 的服务端，在服务端进程内分析，不写入日志或遥测。");
     expect(html).not.toContain("localStorage");
     expect(html).toContain('aria-busy="false"');
     expect(html).toContain('aria-describedby="import-profile-status"');

@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SavedConnectionView",
+  "description": "Task 72 (design C1): the one connection saved on this server. Never carries the password; only whether it is saved and can be used.",
+  "type": "object",
+  "required": [
+    "background",
+    "state"
+  ],
+  "properties": {
+    "background": {
+      "description": "The background collection that runs with the saved connection.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SavedConnectionBackground"
+        }
+      ]
+    },
+    "host": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "port": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint16",
+      "minimum": 0.0
+    },
+    "state": {
+      "$ref": "#/definitions/SavedConnectionState"
+    },
+    "tls_mode": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TlsMode"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "unavailable_reason": {
+      "description": "Why saving is off; present only when `state` is `unavailable`.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SavedConnectionUnavailableReason"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "username": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "SavedConnectionBackground": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "connecting"
+          ]
+        },
+        {
+          "description": "Nothing saved, or the saved password needs re-entry.",
+          "type": "string",
+          "enum": [
+            "off"
+          ]
+        },
+        {
+          "description": "The background connection is open and its collector is the one reading.",
+          "type": "string",
+          "enum": [
+            "collecting"
+          ]
+        },
+        {
+          "description": "Open, but a page session to the same cluster is collecting; it takes over when that session ends.",
+          "type": "string",
+          "enum": [
+            "standby"
+          ]
+        },
+        {
+          "description": "Connecting failed; retrying with backoff.",
+          "type": "string",
+          "enum": [
+            "retrying"
+          ]
+        },
+        {
+          "description": "A remote cluster: collection waits for the G1 pilot.",
+          "type": "string",
+          "enum": [
+            "production_gate"
+          ]
+        },
+        {
+          "description": "The saved cluster runs a StarRocks version this release does not support.",
+          "type": "string",
+          "enum": [
+            "unsupported_version"
+          ]
+        }
+      ]
+    },
+    "SavedConnectionState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "saved"
+          ]
+        },
+        {
+          "description": "Nothing saved; saving is possible.",
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        },
+        {
+          "description": "The password stopped working or can no longer be decrypted.",
+          "type": "string",
+          "enum": [
+            "needs_reentry"
+          ]
+        },
+        {
+          "description": "Saving is off; see `unavailable_reason`.",
+          "type": "string",
+          "enum": [
+            "unavailable"
+          ]
+        }
+      ]
+    },
+    "SavedConnectionUnavailableReason": {
+      "oneOf": [
+        {
+          "description": "The history store is off or could not be opened.",
+          "type": "string",
+          "enum": [
+            "history_unavailable"
+          ]
+        },
+        {
+          "description": "No master key (`DOCTOR_SECRET_KEY` or `secret.key`).",
+          "type": "string",
+          "enum": [
+            "key_unavailable"
+          ]
+        },
+        {
+          "description": "Network mode still uses the public default login password.",
+          "type": "string",
+          "enum": [
+            "default_admin_password"
+          ]
+        }
+      ]
+    },
+    "TlsMode": {
+      "description": "`plaintext` reaches any host the user names (unencrypted, explicit choice); `docker_loopback_plaintext` is the literal-loopback test fixture mode.",
+      "type": "string",
+      "enum": [
+        "verify_full",
+        "docker_loopback_plaintext",
+        "plaintext"
+      ]
+    }
+  }
+}

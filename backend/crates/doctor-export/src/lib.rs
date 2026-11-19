@@ -190,8 +190,9 @@ fn redact_value(mut value: Value) -> Value {
             }
         }
         Value::Object(fields) => {
-            // SQL excerpts are request-local UI material, not portable exports.
+            // SQL locations and graph facts can contain request-local SQL excerpts.
             fields.remove("sql_location");
+            fields.remove("sql_facts");
             for (name, field) in fields.iter_mut() {
                 match name.as_str() {
                     "filename" | "display_name" => *field = Value::Null,
@@ -394,5 +395,24 @@ mod sql_location_export_tests {
         assert!(!redacted.to_string().contains("secret_sql"));
         assert!(!redacted.to_string().contains("sql_location"));
         assert_eq!(redacted["graph_view"]["nodes"][0]["node_id"], "n");
+    }
+
+    /// Review batch 1 (task 76): Profile predicates carry business literals.
+    #[test]
+    fn graph_sql_facts_are_removed_from_analysis_and_both_comparison_sides() {
+        let node = serde_json::json!({"node_id":"n","sql_facts":[
+            {"kind":"predicate","value":"phone = '13800000000'","source_refs":[]},
+            {"kind":"join_condition","value":"a.card = 'secret_card'","source_refs":[]}
+        ]});
+        let value = serde_json::json!({
+            "graph_view":{"nodes":[node.clone()]},
+            "baseline":{"graph_view":{"nodes":[node.clone()]}},
+            "candidate":{"graph_view":{"nodes":[node]}}
+        });
+        let redacted = super::redact_value(value).to_string();
+        for leaked in ["sql_facts", "13800000000", "secret_card"] {
+            assert!(!redacted.contains(leaked), "export still contains {leaked}");
+        }
+        assert!(redacted.contains("\"node_id\":\"n\""));
     }
 }

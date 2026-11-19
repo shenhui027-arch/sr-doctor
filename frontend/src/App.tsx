@@ -1,23 +1,30 @@
-import { Fragment, lazy, Suspense, useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { JSX } from "react";
 import type { AnalysisSnapshotReport, Comparison, ConnectedProfileComparisonResponse, ConnectedQueryRef, ConnectionSessionView, ExplainMode, ExplainRequest, ExplainSnapshot, InputOrigin, PlanAdvisorResponse, ProfileFetchResponse, RunningProfileSnapshotResponse } from "../../contracts/generated/doctor-contracts";
-import { ConnectionDialog } from "./features/connection/ConnectionDialog";
-import { connectionReducer, initialConnectionState } from "./features/connection/connection-state";
+import { ConnectionDialog, connectionFailureMessage, isConnectionExpiredFailure } from "./features/connection/ConnectionDialog";
+import { forgetResumableSession, readResumableSession, rememberResumableSession } from "./features/connection/connection-memory";
+import { connectionReducer, initialConnectionState, type ConnectionAction } from "./features/connection/connection-state";
 import { DoctorWorkspace } from "./features/doctor/DoctorWorkspace";
 import { ReportExportButton } from "./features/export/ReportExportButton";
 import { ContextBar } from "./features/shell/ContextBar";
 import { HeaderStatusText } from "./features/shell/HeaderStatusText";
 import { FirstRunPage } from "./features/start/FirstRunPage";
 import { runningSnapshotMatchesBinding } from "./features/execution/running-official-binding";
-import { RecommendationsPanel, recommendedFindings } from "./features/recommendations/RecommendationsPanel";
+import { OfficialAdvisorGuides } from "./features/recommendations/RecommendationsPanel";
 import { QueriesWorkspace } from "./features/queries/QueriesWorkspace";
 import { QueryCapabilityChips } from "./features/queries/QueryCapabilityChips";
 import { SqlAnalysisWorkspace, type SqlAnalysisWorkspaceStage } from "./features/plan/SqlAnalysisWorkspace";
 import { advanceSqlExecutionAttempt, attemptForConnection, canDispatchSqlExecution, createSqlExecutionAttempt, emptySqlWorkspaceDraft, type SqlExecutionAttempt, type SqlWorkspaceDraft } from "./app-sql-workspace-state";
 import { useLocale, type LocalizedText } from "./i18n/locale";
-import { doctorApi } from "./lib/api";
+import { CONNECTION_EXPIRED_EVENT, doctorApi } from "./lib/api";
 import { CollectionCapsule, monitorGeneration, useHistoryStatus, type MonitoringTab } from "./features/history/history-status";
 import type { LoadFocus } from "./features/loads/LoadWorkspace";
+import { motion } from "motion/react";
+import { AppMotion, LAYOUT_SPRING, useEntrance } from "./features/shell/motion";
+import { useSegmentIndicators } from "./features/shell/motion-enhance";
+import { Icon, Tip, TooltipProvider } from "./features/shell/ui";
+import { SettingsWorkspace, type SettingsSection } from "./features/settings/SettingsWorkspace";
+import { AlertsSummaryCard } from "./features/overview/AlertsSummaryCard";
 
 // Connected audit UI is not needed for offline Profile diagnosis.
 const AuditWorkloadWorkspace = lazy(() => import("./features/audit/AuditWorkloadWorkspace").then((module) => ({ default: module.AuditWorkloadWorkspace })));
@@ -31,15 +38,18 @@ const GovernanceWorkspace = lazy(() => import("./features/history/MonitoringWork
 const LoadWorkspace = lazy(() => import("./features/loads/LoadWorkspace").then((module) => ({ default: module.LoadWorkspace })));
 const RunningProfileEntry = lazy(() => import("./features/queries/RunningProfileEntry").then((module) => ({ default: module.RunningProfileEntry })));
 
-const workspaces = ["Queries", "Doctor", "Recommendations", "Compare"] as const;
-/** v1.0 monitoring views sit after the numbered flow, unnumbered. */
-const monitoringWorkspaces = ["Trends", "Alerts", "Governance", "Loads"] as const;
-export type Workspace = (typeof workspaces)[number] | (typeof monitoringWorkspaces)[number];
+/** Task 63 (approved boards): five peer pages; Settings opens from the gear. */
+const workspaces = ["Overview", "Queries", "Doctor", "Alerts", "Loads"] as const;
+export type Workspace = (typeof workspaces)[number] | "Settings";
+/** Doctor holds the analysis (each finding with its recommendation, task 65) and the before/after comparison. */
+export type DoctorMode = "diagnosis" | "compare";
+/** Alerts holds the alert list and the governance queue that follows from it. */
+export type AlertsView = "alerts" | "governance";
 /** One switch for every way to pick a query; nothing else lives in the header. */
 export type QueryMode = "audit" | "profiles" | "running" | "sql";
 
 export type ExplainOwner = { connectionId: string; generation: number };
-type OwnedExplain<T> = { owner: ExplainOwner; value: T; mode: ExplainMode };
+type OwnedExplain<T> = { owner: ExplainOwner; value: T; mode: ExplainMode; kind?: ExecutionKind };
 export type DoctorEvidence = { kind: "profile_fetch"; value: ProfileFetchResponse } | { kind: "running_snapshot"; value: RunningProfileSnapshotResponse };
 
 /** Retained artifact admission only; this never grants a new remote read. */
@@ -145,6 +155,14 @@ export function focusQueryWorkspaceHeading(container: HTMLElement | null): void 
 export function App(): JSX.Element {
   const { locale, setLocale, text } = useLocale();
   const [workspace, setWorkspace] = useState<Workspace>("Queries");
+  const [doctorMode, setDoctorMode] = useState<DoctorMode>("diagnosis");
+  const [alertsView, setAlertsView] = useState<AlertsView>("alerts");
+  /** Overview: the audit performance dashboard, or the 30-day template trends from the history store. */
+  const [overviewTab, setOverviewTab] = useState<"performance" | "trends">("performance");
+  const openDoctor = (mode: DoctorMode) => { setDoctorMode(mode); setWorkspace("Doctor"); };
+  const contentRef = useRef<HTMLElement>(null);
+  useSegmentIndicators();
+  useEntrance(contentRef, workspace === "Doctor" ? `Doctor:${doctorMode}` : workspace === "Alerts" ? `Alerts:${alertsView}` : workspace);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [queryMode, setQueryMode] = useState<QueryMode | null>(null);
   const queryViewRef = useRef<HTMLDivElement>(null);
@@ -179,13 +197,75 @@ export function App(): JSX.Element {
   const explainRequestGeneration = useRef(0);
   const connectionSession = connection.phase === "connecting" ? null : connection.session;
   const readySessionId = connectionSession?.state === "ready" ? connectionSession.connection_id : null;
+  // Task 71: a reload keeps the connection. The tab remembers only the session's opaque ID as it is
+  // hidden and re-attaches on load; the password stays in the server session, which still ends on
+  // disconnect or after its idle time. The ID is cleared while the page is live, so a duplicated
+  // tab never shares this tab's session.
+  const liveSessionId = connectionSession?.connection_id ?? null;
   useEffect(() => {
-    if (!readySessionId) return;
-    // A reload or closed tab would otherwise hold one of the few local sessions until it expires.
-    const release = () => doctorApi.releaseConnectionOnUnload(readySessionId);
-    window.addEventListener("pagehide", release);
-    return () => window.removeEventListener("pagehide", release);
-  }, [readySessionId]);
+    if (!liveSessionId) return;
+    const remember = () => rememberResumableSession(liveSessionId);
+    window.addEventListener("pagehide", remember);
+    window.addEventListener("pageshow", forgetResumableSession);
+    return () => {
+      window.removeEventListener("pagehide", remember);
+      window.removeEventListener("pageshow", forgetResumableSession);
+    };
+  }, [liveSessionId]);
+  // Task 72 review: every automatic connect (re-attach, connect on open, expiry recovery) belongs to
+  // the connection operation current when it started. A manual connect or disconnect starts a new
+  // one, so a late automatic result is dropped, and a session it brought is closed, not left open.
+  const connectionOpRef = useRef(0);
+  const dispatchUserConnection = useCallback((action: ConnectionAction) => {
+    connectionOpRef.current += 1;
+    dispatchConnection(action);
+  }, []);
+  const autoDispatch = useCallback((op: number, action: ConnectionAction) => {
+    if (connectionOpRef.current === op) dispatchConnection(action);
+  }, []);
+  const autoAccept = useCallback((op: number, session: ConnectionSessionView) => {
+    if (connectionOpRef.current === op) { dispatchConnection({ type: "session", session }); return; }
+    void doctorApi.closeConnection(session.connection_id).catch(() => undefined);
+  }, []);
+  const [resumeId] = useState(readResumableSession);
+  useEffect(() => {
+    forgetResumableSession();
+    const controller = new AbortController();
+    const op = connectionOpRef.current;
+    const failed = (error: unknown) => {
+      if (controller.signal.aborted) return;
+      if (isConnectionExpiredFailure(error)) autoDispatch(op, { type: "expire", message: "connection_expired" });
+      else autoDispatch(op, { type: "fail", message: connectionFailureMessage(error, "Connection failed.") });
+    };
+    // A late success always goes through autoAccept: after this effect is cleaned up (unmount) it closes the session.
+    const accept = (session: ConnectionSessionView) => autoAccept(op, session);
+    // Task 72 (design C1): with a saved connection the page connects on open. Reading whether one
+    // is saved fails quietly; only a failed connect is shown. `otherwise` runs when none is saved.
+    const connectSaved = (otherwise: () => void) => doctorApi.savedConnection(controller.signal).then((saved) => {
+      if (controller.signal.aborted || connectionOpRef.current !== op) return;
+      if (saved.state !== "saved") { otherwise(); return; }
+      autoDispatch(op, { type: "connect" });
+      // Not aborted on unmount: this request creates a session, so its late answer must arrive
+      // to be closed by autoAccept (task 72 review).
+      doctorApi.connectSaved().then(accept).catch(failed);
+    }).catch(() => { if (!controller.signal.aborted) otherwise(); });
+    if (resumeId) {
+      autoDispatch(op, { type: "connect" });
+      // A session the server no longer has (restart, idle expiry) falls back to the saved connection.
+      doctorApi.resumeConnection(resumeId, controller.signal).then(accept).catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        if (isConnectionExpiredFailure(error)) void connectSaved(() => failed(error));
+        else failed(error);
+      });
+    } else {
+      void connectSaved(() => undefined);
+    }
+    return () => {
+      controller.abort();
+      // Unmounting supersedes every automatic connect still in flight (task 72 review).
+      connectionOpRef.current += 1;
+    };
+  }, [resumeId, autoAccept, autoDispatch]);
   const currentExplainOwner = connection.phase === "ready" && connectionSession ? { connectionId: connectionSession.connection_id, generation: explainRequestGeneration.current } : null;
   const ownsSnapshot = ownsCurrentExplainResult(explainSnapshot?.owner ?? null, currentExplainOwner);
   const ownsError = ownsCurrentExplainResult(explainError?.owner ?? null, currentExplainOwner);
@@ -195,6 +275,8 @@ export function App(): JSX.Element {
     ? EXECUTION_RESPONSE_UNKNOWN
     : ownsError ? explainError?.value ?? null : null;
   const currentExplainErrorMode = ownsError ? explainError?.mode ?? null : null;
+  // Task 68: a failed "execute once" is reported with the execution, not as a plan failure.
+  const currentExecutionError = ownsError && explainError?.kind === "runtime" ? explainError.value : null;
   const currentExecutionAttempt = attemptForConnection(executionAttempt, connectionSession?.connection_id ?? null);
   const sqlWorkspaceStage: SqlAnalysisWorkspaceStage = currentExecutionAttempt === null
     ? "draft"
@@ -212,8 +294,11 @@ export function App(): JSX.Element {
   useEffect(() => { setPickedTarget(null); }, [readySessionId]);
   const monitorTarget = pickedTarget ?? history.status?.target ?? null;
   const [knownTargets, setKnownTargets] = useState<string[]>([]);
-  const openTrends = (templateKey: string, target: string) => { if (target) setPickedTarget(target); setTrendFocus(templateKey); setMonitoringTab("trends"); setWorkspace("Trends"); };
-  const openGovernanceItem = (itemId: string) => { setGovernanceFocus(itemId); setWorkspace("Governance"); };
+  // Review: "collection and history" entries open that section, not the default one.
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("notify");
+  const openSettings = (section: SettingsSection) => { setSettingsSection(section); setWorkspace("Settings"); };
+  const openTrends = (templateKey: string, target: string) => { if (target) setPickedTarget(target); setTrendFocus(templateKey); setMonitoringTab("trends"); setOverviewTab("trends"); setWorkspace("Overview"); };
+  const openGovernanceItem = (itemId: string) => { setGovernanceFocus(itemId); setAlertsView("governance"); setWorkspace("Alerts"); };
   const openAlerts = Number(history.status?.open_alerts ?? "0");
   // Paused Routine Load jobs as the load workspace last read them; a new session starts unknown.
   const [pausedLoads, setPausedLoads] = useState<{ connectionId: string; count: number } | null>(null);
@@ -222,11 +307,14 @@ export function App(): JSX.Element {
   // Task 59: a load alert opens on the load category of the alerts workspace.
   const [alertCategory, setAlertCategory] = useState<"sql" | "load">("sql");
   // From a cluster's load history: the alerts open on that cluster.
-  const openLoadAlerts = (target: string | null) => { if (target) setPickedTarget(target); setAlertCategory("load"); setWorkspace("Alerts"); };
+  const openLoadAlerts = (target: string | null) => { if (target) setPickedTarget(target); setAlertCategory("load"); setAlertsView("alerts"); setWorkspace("Alerts"); };
   const pausedLoadCount = pausedLoads && pausedLoads.connectionId === readySessionId ? pausedLoads.count : 0;
   const connected = (connection.phase === "ready" || connection.phase === "unsupported") && connectionSession !== null;
   const auditReady = canShowAuditWorkload(connectionSession);
   const activeQueryMode: QueryMode = queryMode ?? (auditReady ? "audit" : "profiles");
+  // Task 66: the Overview page shows the query page's own audit instance on its overview surface,
+  // so the session keeps one list read (one discovery generation) for both pages.
+  const overviewAudit = workspace === "Overview" && overviewTab === "performance" && auditReady && connectionSession !== null;
 
   const switchQueryMode = (mode: QueryMode) => {
     queryFocusRequested.current = true;
@@ -262,17 +350,62 @@ export function App(): JSX.Element {
     }
   }, [connectedComparison, reportOrigin]);
 
+  // Task 72: a session the server no longer has. With a saved connection the page reconnects at
+  // once (one attempt however many pages noticed); otherwise it shows the session as expired.
+  const reconnectingRef = useRef(false);
   const expireConnection = useCallback((reason?: "remote_timeout") => {
     invalidateConnectedArtifacts(true);
     dispatchConnection({ type: "expire", message: reason ?? "connection_expired" });
-  }, [invalidateConnectedArtifacts]);
+    if (reconnectingRef.current) return;
+    reconnectingRef.current = true;
+    const op = connectionOpRef.current;
+    doctorApi.savedConnection()
+      .then((saved) => {
+        if (saved.state !== "saved" || connectionOpRef.current !== op) return;
+        autoDispatch(op, { type: "connect" });
+        return doctorApi.connectSaved()
+          .then((session) => autoAccept(op, session))
+          .catch((error: unknown) => autoDispatch(op, { type: "fail", message: connectionFailureMessage(error, "Connection failed.") }));
+      })
+      .catch(() => undefined)
+      .finally(() => { reconnectingRef.current = false; });
+  }, [invalidateConnectedArtifacts, autoAccept, autoDispatch]);
 
-  // One read-only guide read per ready session, only once Recommendations shows an analysis.
+  // Task 73: collector reads never extend a session's idle lease, so an open page keeps its own
+  // session alive (every 5 minutes, and when the tab is shown again); a closed tab's session expires.
+  // A request on any page that finds the session gone is checked here once, so the header and every
+  // page agree.
+  const checkingRef = useRef(false);
+  useEffect(() => {
+    if (!liveSessionId) return;
+    let live = true;
+    const check = () => {
+      if (checkingRef.current) return;
+      checkingRef.current = true;
+      doctorApi.resumeConnection(liveSessionId)
+        .catch((error: unknown) => { if (live && isConnectionExpiredFailure(error)) expireConnection(); })
+        .finally(() => { checkingRef.current = false; });
+    };
+    const visible = () => { if (document.visibilityState === "visible") check(); };
+    window.addEventListener(CONNECTION_EXPIRED_EVENT, check);
+    document.addEventListener("visibilitychange", visible);
+    const timer = window.setInterval(check, 5 * 60_000);
+    return () => {
+      live = false;
+      window.removeEventListener(CONNECTION_EXPIRED_EVENT, check);
+      document.removeEventListener("visibilitychange", visible);
+      window.clearInterval(timer);
+    };
+  }, [liveSessionId, expireConnection]);
+
+  // One read-only guide read per ready session, only once Doctor shows an analysis (the guide sits under its findings).
   // Without a report the page keeps its start hint (open queries / import) instead of an Advisor-only view.
   const advisorSession = connection.phase === "ready" && doctorReport ? connectionSession : null;
   const advisorTarget = advisorReadTarget(advisorSession);
+  const recommendationsShown = workspace === "Doctor" && doctorMode === "diagnosis" && !importing;
+  const advisorGuide = currentAdvisorResponse(advisor, advisorSession);
   useEffect(() => {
-    if (workspace !== "Recommendations" || !advisorTarget || advisorRequestedRef.current === advisorTarget) return;
+    if (!recommendationsShown || !advisorTarget || advisorRequestedRef.current === advisorTarget) return;
     advisorRequestedRef.current = advisorTarget;
     const controller = new AbortController();
     let settled = false;
@@ -290,7 +423,7 @@ export function App(): JSX.Element {
       // A read abandoned before it settled may be retried on the next visit.
       if (!settled && advisorRequestedRef.current === advisorTarget) advisorRequestedRef.current = null;
     };
-  }, [advisorTarget, expireConnection, workspace]);
+  }, [advisorTarget, expireConnection, recommendationsShown]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -332,7 +465,7 @@ export function App(): JSX.Element {
     setComparison(null);
     setConnectedComparison(null);
     setFocusNodeId(null);
-    setWorkspace("Doctor");
+    openDoctor("diagnosis");
   };
 
   const requestExplain = useCallback(async (request: ExplainRequest): Promise<void> => {
@@ -407,7 +540,7 @@ export function App(): JSX.Element {
           // expiry): the draft gets its inline error and a later confirmation
           // must create a fresh attempt identity.
           setExecutionAttempt(null);
-          setExplainError({ owner, value: message, mode: attempt.planMode });
+          setExplainError({ owner, value: message, mode: attempt.planMode, kind: "runtime" });
         }
         if (message === "connection_expired" || message === "connection_session_expired") expireConnection();
       }
@@ -452,7 +585,7 @@ export function App(): JSX.Element {
   const acceptConnectedComparison = (nextComparison: ConnectedProfileComparisonResponse) => {
     setComparison(nextComparison.comparison);
     setConnectedComparison(nextComparison);
-    setWorkspace("Compare");
+    openDoctor("compare");
   };
   // Swapping a connected comparison asks the backend again with the two executions exchanged, in the same discovery generation.
   const swapConnectedComparison = () => {
@@ -473,7 +606,7 @@ export function App(): JSX.Element {
   const doctorBaseline = doctorEvidence?.kind === "profile_fetch" && currentDoctorQuery && doctorReport
     ? { connectionId: currentDoctorQuery.connection_id, query: currentDoctorQuery, report: doctorReport }
     : null;
-  const openImport = () => { setImporting(true); setWorkspace("Doctor"); };
+  const openImport = () => { setImporting(true); openDoctor("diagnosis"); };
   const closeConnectionDialog = useCallback(() => {
     setDialogOpen(false);
     window.requestAnimationFrame(() => connectionTriggerRef.current?.focus());
@@ -487,65 +620,90 @@ export function App(): JSX.Element {
 
   // The first-run page carries its own import card, so the header drops its import button (design board 05).
   const firstRun = workspace === "Queries" && !connectionSession;
+  // Both views open without an analysis: diagnosis offers the import, comparison the offline form.
+  const doctorModes: { id: DoctorMode; label: string; disabled: boolean }[] = [
+    { id: "diagnosis", label: text("Diagnosis", "诊断"), disabled: false },
+    { id: "compare", label: text("Compare", "对比"), disabled: false },
+  ];
+  const doctorModeSwitch = <div aria-label={text("Doctor view", "诊断视图")} className="seg-tabs doctor-modes" role="tablist">
+    {doctorModes.map((mode) => <button aria-selected={doctorMode === mode.id} className={doctorMode === mode.id ? "active" : ""} disabled={mode.disabled} key={mode.id} onClick={() => { if (mode.id === "diagnosis") setImporting(false); setDoctorMode(mode.id); }} role="tab" type="button">{mode.label}</button>)}
+  </div>;
+  const alertsViewSwitch = <div aria-label={text("Alert views", "告警视图")} className="seg-tabs alerts-views" role="tablist">
+    {(["alerts", "governance"] as AlertsView[]).map((item) => <button aria-selected={alertsView === item} className={alertsView === item ? "active" : ""} key={item} onClick={() => setAlertsView(item)} role="tab" type="button">{item === "alerts" ? text("Alerts", "告警") : text("Governance queue", "治理队列")}</button>)}
+  </div>;
+  const navCount = (item: Workspace): number | null => item === "Alerts" && openAlerts > 0 ? openAlerts : item === "Loads" && pausedLoadCount > 0 ? pausedLoadCount : null;
   return (
+    <AppMotion><TooltipProvider>
     <main className="app-shell">
       <header className="app-header">
         <div className="product-lockup">
-          <svg aria-hidden="true" fill="none" height="22" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="22"><path d="M3 17l5-6 4 3 5-7" /><circle cx="19.5" cy="5.5" r="1.8" /><path d="M3 21h18" /></svg>
-          <strong>SR Doctor</strong><span className="header-detail">{text("Profile diagnosis", "Profile 诊断")}</span>
+          <svg aria-hidden="true" height="18" viewBox="0 0 18 18" width="18"><rect fill="currentColor" height="18" rx="5" width="18" /><path d="M5 5.5h8M5 9h8M5 12.5h8" stroke="#fff" strokeLinecap="round" strokeWidth="1.6" /></svg>
+          <strong>SR Doctor</strong>
         </div>
-        {/* A numbered flow; step numbers and the count badge are CSS-generated so each button's text stays its name. */}
         <nav className="workspace-nav" aria-label={text("Workspaces", "工作区")}>
-          {workspaces.map((item, index) => <Fragment key={item}>
-            {index > 0 ? <svg aria-hidden="true" className="workspace-nav-sep" fill="none" height="14" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" width="14"><path d="M9 6l6 6-6 6" /></svg> : null}
-            <button aria-current={workspace === item && !firstRun ? "page" : undefined} data-count={item === "Recommendations" && doctorReport ? recommendedFindings(doctorReport).length : undefined} data-step={index + 1} disabled={firstRun && !doctorReport && (item === "Doctor" || item === "Recommendations")} onClick={() => { if (item === "Doctor") setImporting(false); setWorkspace(item); }} type="button">{workspaceLabel(item, text)}</button>
-          </Fragment>)}
-          <span aria-hidden="true" className="workspace-nav-divider" />
-          {monitoringWorkspaces.map((item) => <button aria-current={workspace === item ? "page" : undefined} className="monitoring" data-count={item === "Alerts" && openAlerts > 0 ? openAlerts : item === "Loads" && pausedLoadCount > 0 ? pausedLoadCount : undefined} key={item} onClick={() => { if (item === "Loads") setLoadFocus(null); setWorkspace(item); }} type="button">{workspaceLabel(item, text)}</button>)}
+          {workspaces.map((item) => {
+            const current = workspace === item;
+            const count = navCount(item);
+            return <button aria-current={current ? "page" : undefined} disabled={item === "Doctor" && firstRun && !doctorReport} key={item} onClick={() => { if (item === "Doctor") setImporting(false); if (item === "Loads") setLoadFocus(null); setWorkspace(item); }} type="button">
+              {current ? <motion.span aria-hidden="true" className="nav-indicator" layoutId="nav-indicator" transition={LAYOUT_SPRING} /> : null}
+              <span>{workspaceLabel(item, text)}</span>
+              {count !== null ? <span className="nav-count" aria-label={item === "Alerts" ? text(`${count} new alerts`, `${count} 条新告警`) : text(`${count} paused jobs`, `${count} 个作业已暂停`)}>{count}</span> : null}
+            </button>;
+          })}
         </nav>
         <div className="header-actions">
-          <CollectionCapsule onOpen={() => { setMonitoringTab("collection"); setWorkspace("Trends"); }} status={history.status} />
+          <CollectionCapsule onOpen={() => openSettings("history")} status={history.status} />
           <button aria-describedby="connection-pill-status" aria-expanded={dialogOpen} aria-haspopup="dialog" aria-label={connected ? text("Manage connection", "管理连接") : text("Connect", "连接")} className={`connection-pill ${connectionTone(connection)}`} onClick={() => setDialogOpen(true)} ref={connectionTriggerRef} title={localizedSessionStatus(connection, text)} type="button"><span id="connection-pill-status"><HeaderStatusText value={localizedSessionStatus(connection, text)} /></span></button>
-          <span className="locale-switch" aria-label={text("Language", "语言")} role="group">
-            <button aria-label={text("Switch to Chinese", "切换至中文")} aria-pressed={locale === "zh"} className={locale === "zh" ? "active" : ""} onClick={() => setLocale("zh")} type="button">中</button>
-            <button aria-label={text("Switch to English", "切换至英文")} aria-pressed={locale === "en"} className={locale === "en" ? "active" : ""} onClick={() => setLocale("en")} type="button">EN</button>
-          </span>
-          {firstRun ? null : <button className="button accent header-import" onClick={openImport} title={text("Import profile", "导入 Profile")} type="button"><svg aria-hidden="true" fill="none" height="14" stroke="currentColor" strokeLinecap="round" strokeWidth="2" viewBox="0 0 24 24" width="14"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg><span className="header-detail">{text("Import profile", "导入 Profile")}</span></button>}
+          {firstRun ? null : <button className="button secondary header-import" onClick={openImport} title={text("Import profile", "导入 Profile")} type="button"><Icon name="upload" /><span className="header-detail">{text("Import profile", "导入 Profile")}</span></button>}
+          <Tip content={text("Settings", "设置")} side="bottom">
+            <button aria-current={workspace === "Settings" ? "page" : undefined} aria-label={text("Settings", "设置")} className="icon-button" onClick={() => openSettings("notify")} type="button"><Icon name="settings" size={18} /></button>
+          </Tip>
         </div>
       </header>
-      {doctorReport && workspace === "Recommendations" ? <ContextBar compact onOpenDoctor={() => setWorkspace("Doctor")} report={doctorReport} /> : null}
-      {doctorReport && workspace === "Doctor" && !importing ? <ContextBar
+      {doctorReport && workspace === "Doctor" && doctorMode === "diagnosis" && !importing ? <ContextBar
         actions={<>
+          {doctorModeSwitch}
           <ReportExportButton label={text("Export report", "导出报告")} request={{ kind: "analysis", snapshot: doctorReport }} />
           {doctorBaseline
-            ? <button className="button secondary" onClick={() => { setCompareBaseline(doctorBaseline); setComparison(null); setConnectedComparison(null); setWorkspace("Compare"); }} type="button">{text("Set as baseline and compare", "设为基线并对比")}</button>
-            : <button className="button secondary" onClick={() => setWorkspace("Compare")} type="button">{text("Compare before / after", "前后对比")}</button>}
+            ? <button className="button secondary" onClick={() => { setCompareBaseline(doctorBaseline); setComparison(null); setConnectedComparison(null); setDoctorMode("compare"); }} type="button">{text("Set as baseline and compare", "设为基线并对比")}</button>
+            : null}
         </>}
         inputOrigin={doctorReportOrigin}
         observedAtUtc={currentDoctorQuery?.observed_at_utc ?? null}
         onReturnToQueries={() => setWorkspace("Queries")}
         report={doctorReport}
       /> : null}
-      <section className={`workspace-content workspace-${workspace.toLowerCase()}`}>
+      {workspace === "Doctor" && (doctorMode === "compare" || !doctorReport || importing) ? <div className="doctor-mode-bar">{doctorModeSwitch}</div> : null}
+      <section className={`workspace-content workspace-${workspace === "Doctor" && doctorMode !== "diagnosis" ? doctorMode : workspace.toLowerCase()}`} ref={contentRef}>
         <Suspense fallback={<p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}>
+        {workspace === "Overview" && <div className="overview-bar">
+          <div aria-label={text("Overview view", "总览视图")} className="seg-tabs" role="tablist">
+            <button aria-selected={overviewTab === "performance"} className={overviewTab === "performance" ? "active" : ""} onClick={() => setOverviewTab("performance")} role="tab" type="button">{text("Performance", "性能")}</button>
+            <button aria-selected={overviewTab === "trends"} className={overviewTab === "trends" ? "active" : ""} onClick={() => setOverviewTab("trends")} role="tab" type="button">{text("Template trends", "模板趋势")}</button>
+          </div>
+          {overviewTab === "performance" && !overviewAudit ? <span className="overview-bar-note">{connectionSession ? text("This connection has no audit table; the history store's trends are shown.", "当前连接没有审计表，显示历史库的趋势。") : text("Connect to see the audit performance overview; the history store's trends are shown.", "连接后显示审计性能概览；当前显示历史库的趋势。")}</span> : null}
+          {overviewTab === "performance" && !connectionSession ? <button className="button secondary" onClick={() => setDialogOpen(true)} type="button">{text("Connect", "连接")}</button> : null}
+        </div>}
         {/* Kept mounted: the query list, selection and filters survive a round trip to Doctor. */}
-        <div className="queries-shell" hidden={workspace !== "Queries"}>
-          {capabilityError && <p className="capability-error">{capabilityError === "local_api_unavailable" ? text("Local API is unavailable.", "本地 API 不可用。") : capabilityError}</p>}
+        <div className="queries-shell" hidden={!(workspace === "Queries" || overviewAudit)}>
+          {workspace === "Queries" && capabilityError && <p className="capability-error">{capabilityError === "local_api_unavailable" ? text("Local API is unavailable.", "本地 API 不可用。") : capabilityError}</p>}
           {/* No session: offer offline import and the read-only connection side by side. */}
-          {!connectionSession ? <FirstRunPage connection={connection} dispatch={dispatchConnection} maxInputBytes={maxInputBytes} onReport={acceptReport} onSessionEnded={invalidateConnectedArtifacts} onSessionExpired={expireConnection} /> : <>
+          {!connectionSession ? <FirstRunPage connection={connection} dispatch={dispatchUserConnection} maxInputBytes={maxInputBytes} onReport={acceptReport} onSessionEnded={invalidateConnectedArtifacts} onSessionExpired={expireConnection} /> : <>
           <AuditFallbackBanner session={connectionSession} workspace={workspace} />
-          <div className="queries-toolbar">
-            <div className="query-modes segmented" role="tablist" aria-label={text("How to pick a query", "选择查询的方式")}>
-              {queryModes.filter((mode) => mode.available).map((mode) => <button aria-selected={activeQueryMode === mode.id} className={activeQueryMode === mode.id ? "active" : ""} key={mode.id} onClick={() => switchQueryMode(mode.id)} role="tab" type="button">{mode.label}</button>)}
+          <div className="queries-toolbar" hidden={workspace !== "Queries"}>
+            {/* Task 64: the three lists are one switch; the SQL workspace is the action at the end of the row. */}
+            <div className="query-modes seg-tabs" role="tablist" aria-label={text("How to pick a query", "选择查询的方式")}>
+              {queryModes.filter((mode) => mode.available && mode.id !== "sql").map((mode) => <button aria-selected={activeQueryMode === mode.id} className={activeQueryMode === mode.id ? "active" : ""} key={mode.id} onClick={() => switchQueryMode(mode.id)} role="tab" type="button">{mode.label}</button>)}
             </div>
             <QueryCapabilityChips session={connectionSession} />
+            <button aria-pressed={activeQueryMode === "sql"} className={`button ${activeQueryMode === "sql" ? "accent" : "secondary"} query-run-sql`} onClick={() => switchQueryMode("sql")} type="button"><Icon name="play" size={14} />{text("Run SQL", "运行 SQL")}</button>
           </div>
           {/* Its own boundary: loading one view keeps the mode tabs above it in place. */}
-          <div ref={queryViewRef}><Suspense fallback={<p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}>
-            {activeQueryMode === "audit" && <AuditWorkloadWorkspace baselineQueryId={compareBaseline?.connectionId === connectionSession?.connection_id ? compareBaseline?.query.query_id ?? null : null} onOpenCompare={acceptConnectedComparison} onOpenPlanCheck={(request) => { switchQueryMode("sql"); void requestExplain(request); }} onSetBaseline={setBaselineFromProfile} session={connectionSession} onConnect={() => setDialogOpen(true)} onDiscoveryChanged={invalidateConnectedArtifacts} onSessionExpired={expireConnection} onOpenDoctor={acceptConnectedReport} onOpenLoads={openLoads} />}
-            {activeQueryMode === "profiles" && <QueriesWorkspace onConnect={() => setDialogOpen(true)} onImportProfile={openImport} onDiscoveryChanged={invalidateConnectedArtifacts} onSessionExpired={expireConnection} onOpenPlanCheck={(request) => { switchQueryMode("sql"); void requestExplain(request); }} onOpenCompare={acceptConnectedComparison} onOpenDoctor={acceptConnectedReport} session={connected ? connectionSession : null} />}
-            {activeQueryMode === "running" && <RunningProfileEntry session={connectionSession} onDiscoveryChanged={invalidateConnectedArtifacts} onSessionExpired={expireConnection} onOpenDoctor={acceptRunningReport} />}
-            {activeQueryMode === "sql" && (connectionSession?.state === "ready" ? <SqlAnalysisWorkspace
+          <div className={`queries-view queries-view-${overviewAudit ? "audit" : activeQueryMode}`} ref={queryViewRef}><Suspense fallback={<p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}>
+            {(overviewAudit || activeQueryMode === "audit") && <AuditWorkloadWorkspace extraCard={<AlertsSummaryCard loadPaused={pausedLoads && pausedLoads.connectionId === readySessionId ? pausedLoads.count : null} onOpen={() => { setAlertsView("alerts"); setWorkspace("Alerts"); }} open={history.status?.open_alerts ?? null} />} onHandoff={() => { switchQueryMode("audit"); setWorkspace("Queries"); }} surface={workspace === "Overview" ? "overview" : "queries"} baselineQueryId={compareBaseline?.connectionId === connectionSession?.connection_id ? compareBaseline?.query.query_id ?? null : null} onOpenCompare={acceptConnectedComparison} onOpenPlanCheck={(request) => { switchQueryMode("sql"); void requestExplain(request); }} onSetBaseline={setBaselineFromProfile} session={connectionSession} onConnect={() => setDialogOpen(true)} onDiscoveryChanged={invalidateConnectedArtifacts} onSessionExpired={expireConnection} onOpenDoctor={acceptConnectedReport} onOpenLoads={openLoads} />}
+            {!overviewAudit && activeQueryMode === "profiles" && <QueriesWorkspace onConnect={() => setDialogOpen(true)} onImportProfile={openImport} onDiscoveryChanged={invalidateConnectedArtifacts} onSessionExpired={expireConnection} onOpenPlanCheck={(request) => { switchQueryMode("sql"); void requestExplain(request); }} onOpenCompare={acceptConnectedComparison} onOpenDoctor={acceptConnectedReport} session={connected ? connectionSession : null} />}
+            {!overviewAudit && activeQueryMode === "running" && <RunningProfileEntry session={connectionSession} onDiscoveryChanged={invalidateConnectedArtifacts} onSessionExpired={expireConnection} onOpenDoctor={acceptRunningReport} />}
+            {!overviewAudit && activeQueryMode === "sql" && (connectionSession?.state === "ready" ? <SqlAnalysisWorkspace
               connection={{ connectionId: connectionSession.connection_id, detectedVersion: connectionSession.detected_version?.value ?? null, tlsMode: connectionSession.tls_mode }}
               onBackToDraft={returnExecutionToDraft}
               onConfirmExecution={() => { if (currentExecutionAttempt) void dispatchExecutionAttempt(currentExecutionAttempt); }}
@@ -554,7 +712,8 @@ export function App(): JSX.Element {
               onSqlChange={(value) => setSqlDraft((draft) => ({ ...draft, connectionId: connectionSession.connection_id, value }))}
               onStopWaiting={stopWaitingForExecution}
               onViewPlan={(mode) => { if (sqlDraft.value.trim()) void requestExplain({ input_kind: "user_sql", connection_id: connectionSession.connection_id, mode, candidate_sql: sqlDraft.value }); }}
-              planError={currentExplainError}
+              planError={currentExecutionError === null ? currentExplainError : null}
+              executionError={currentExecutionError}
               planMode={currentExecutionAttempt?.planMode ?? sqlDraft.planMode}
               planRequesting={ownsCurrentExplainResult(explaining, currentExplainOwner)}
               planResultMode={currentExplainErrorMode ?? currentExplainSnapshotMode}
@@ -565,7 +724,7 @@ export function App(): JSX.Element {
           </Suspense></div>
           </>}
         </div>
-        {workspace === "Doctor" && <DoctorWorkspace
+        {workspace === "Doctor" && doctorMode === "diagnosis" && <DoctorWorkspace
           focusNodeId={focusNodeId}
           importing={importing}
           officialContext={{
@@ -577,19 +736,12 @@ export function App(): JSX.Element {
             onReconnect: () => setDialogOpen(true),
           }}
           onCancelImport={() => setImporting(false)}
-          onOpenRecommendations={() => setWorkspace("Recommendations")}
+          onOpenCompare={() => { if (doctorBaseline) { setCompareBaseline(doctorBaseline); setComparison(null); setConnectedComparison(null); } setDoctorMode("compare"); }}
           onReport={acceptReport}
           report={doctorReport}
+          findingsFooter={advisorGuide ? <OfficialAdvisorGuides advisorResponse={advisorGuide} /> : null}
         />}
-        {workspace === "Recommendations" && <RecommendationsPanel
-          advisorResponse={currentAdvisorResponse(advisor, advisorSession)}
-          onLocateNode={(nodeId) => { if (!doctorReport?.graph_view.nodes.some((node) => node.node_id === nodeId)) return; setFocusNodeId(nodeId); setImporting(false); setWorkspace("Doctor"); }}
-          onImportProfile={openImport}
-          onOpenCompare={() => setWorkspace("Compare")}
-          onOpenQueries={() => setWorkspace("Queries")}
-          report={doctorReport}
-        />}
-        {workspace === "Compare" && <>
+        {workspace === "Doctor" && doctorMode === "compare" && <>
           {!comparison && compareBaseline && <PendingComparison baseline={compareBaseline} onClear={() => setCompareBaseline(null)} onPickCandidate={() => { switchQueryMode("audit"); setWorkspace("Queries"); }} />}
           {!comparison && !compareBaseline && <OfflineCompareForm connected={connected} onComparison={(next) => { setComparison(next); setConnectedComparison(null); }} />}
           {swapError && <p className="compare-swap-error" role="alert">{swapError}</p>}
@@ -602,14 +754,25 @@ export function App(): JSX.Element {
             onSwap={connectedComparison && connectedComparison.baseline.query.connection_id === connectionSession?.connection_id ? swapConnectedComparison : undefined}
           />
         </>}
-        {workspace === "Trends" && <HistoryWorkspace connectionId={readySessionId} focusTemplate={trendFocus} history={history} onOpenDoctor={acceptConnectedReport} onOpenItem={openGovernanceItem} onOpenQueries={() => setWorkspace("Queries")} onSessionExpired={expireConnection} onTab={setMonitoringTab} onTarget={setPickedTarget} onTargets={setKnownTargets} tab={monitoringTab} target={monitorTarget} />}
-        {workspace === "Alerts" && <AlertsWorkspace generation={monitorGeneration(history.status)} initialCategory={alertCategory} key={alertCategory} onChanged={history.refresh} onOpenItem={openGovernanceItem} onOpenLoadHistory={(focus) => openLoads({ view: "history", ...focus })} onOpenQueries={() => setWorkspace("Queries")} onOpenTrends={openTrends} onRetryStatus={history.refresh} store={history.status?.store} target={monitorTarget} targets={knownTargets} onTarget={setPickedTarget} />}
+        {workspace === "Overview" && !overviewAudit && <HistoryWorkspace connectionId={readySessionId} focusTemplate={trendFocus} history={history} onOpenDoctor={acceptConnectedReport} onOpenItem={openGovernanceItem} onOpenQueries={() => setWorkspace("Queries")} onSessionExpired={expireConnection} onTab={(tab) => { if (tab === "collection") openSettings("history"); else setMonitoringTab(tab); }} onTarget={setPickedTarget} onTargets={setKnownTargets} tab="trends" target={monitorTarget} />}
+        {workspace === "Settings" && <SettingsWorkspace
+          onSection={setSettingsSection}
+          section={settingsSection}
+          collection={<HistoryWorkspace connectionId={readySessionId} focusTemplate={null} history={history} onOpenDoctor={acceptConnectedReport} onOpenItem={openGovernanceItem} onOpenQueries={() => setWorkspace("Queries")} onSessionExpired={expireConnection} onTab={(tab) => { if (tab === "trends") { setOverviewTab("trends"); setWorkspace("Overview"); } }} onTarget={setPickedTarget} onTargets={setKnownTargets} tab="collection" target={monitorTarget} />}
+          connectionStatus={localizedSessionStatus(connection, text)}
+          locale={locale}
+          onLocale={setLocale}
+          onOpenConnection={() => setDialogOpen(true)}
+        />}
+        {workspace === "Alerts" && alertsView === "governance" && alertsViewSwitch}
+        {workspace === "Alerts" && alertsView === "alerts" && <AlertsWorkspace leading={alertsViewSwitch} generation={monitorGeneration(history.status)} initialCategory={alertCategory} key={alertCategory} onChanged={history.refresh} onOpenItem={openGovernanceItem} onOpenLoadHistory={(focus) => openLoads({ view: "history", ...focus })} onOpenQueries={() => setWorkspace("Queries")} onOpenTrends={openTrends} onRetryStatus={history.refresh} store={history.status?.store} target={monitorTarget} targets={knownTargets} onTarget={setPickedTarget} />}
         {workspace === "Loads" && <LoadWorkspace connectionId={readySessionId} focus={loadFocus} key={readySessionId ?? "none"} onOpenAlerts={openLoadAlerts} onOpenQueries={() => setWorkspace("Queries")} onPaused={(count) => { if (readySessionId) setPausedLoads({ connectionId: readySessionId, count }); }} />}
-        {workspace === "Governance" && <GovernanceWorkspace focusId={governanceFocus} onOpenQueries={() => setWorkspace("Queries")} onOpenTrends={openTrends} onRetryStatus={history.refresh} store={history.status?.store} target={monitorTarget} targets={knownTargets} onTarget={setPickedTarget} />}
+        {workspace === "Alerts" && alertsView === "governance" && <GovernanceWorkspace focusId={governanceFocus} onOpenQueries={() => setWorkspace("Queries")} onOpenTrends={openTrends} onRetryStatus={history.refresh} store={history.status?.store} target={monitorTarget} targets={knownTargets} onTarget={setPickedTarget} />}
         </Suspense>
       </section>
-      <ConnectionDialog dispatch={dispatchConnection} onClose={closeConnectionDialog} onSessionEnded={invalidateConnectedArtifacts} onSessionExpired={expireConnection} open={dialogOpen} state={connection} />
+      <ConnectionDialog dispatch={dispatchUserConnection} onClose={closeConnectionDialog} onSessionEnded={invalidateConnectedArtifacts} onSessionExpired={expireConnection} open={dialogOpen} state={connection} />
     </main>
+    </TooltipProvider></AppMotion>
   );
 }
 
@@ -644,14 +807,12 @@ export function AuditFallbackBanner({ session, workspace }: { session: Connectio
 
 function workspaceLabel(workspace: Workspace, text: LocalizedText): string {
   const labels: Record<Workspace, [string, string]> = {
+    Overview: ["Overview", "总览"],
     Queries: ["Queries", "查询"],
     Doctor: ["Doctor", "诊断"],
-    Recommendations: ["Recommendations", "优化建议"],
-    Compare: ["Compare", "对比"],
-    Trends: ["Trends", "趋势"],
     Alerts: ["Alerts", "告警"],
-    Governance: ["Governance", "治理"],
     Loads: ["Loads", "导入"],
+    Settings: ["Settings", "设置"],
   };
   return text(...labels[workspace]);
 }

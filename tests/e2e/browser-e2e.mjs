@@ -166,6 +166,9 @@ try {
         runtime: await routeTelemetry("/runtime-profile"),
         queries: await routeTelemetry("/queries"),
         audit_overview: await routeTelemetry("/audit/overview"),
+        // v1.0-66: the Overview page's own reads; a remote timeout there discards the session.
+        audit_performance: await routeTelemetry("/audit/performance"),
+        load_overview: await routeTelemetry("/loads/overview"),
       };
       await capture("failure-1440x1024", {
         redactSql: Boolean(runningProfileOptions),
@@ -214,33 +217,30 @@ function fixedComplexPlanSql() {
 }
 async function keyboardLocaleAndWorkspaceCoverage() {
   receipt.keyboard_trace = [];
-  const chinese = await tabUntil(
-    (active) => active?.ariaLabel === "Switch to Chinese",
-    "language switch",
-  );
+  // First run (v1.0-63 shell): only Doctor stays disabled until a Profile exists.
+  await waitFor(() => has(".workspace-queries .first-run"), "first-run page");
+  const disabledWorkspaces = await evaluate(`Array.from(document.querySelectorAll(".workspace-nav button")).filter((button) => button.disabled).map((button) => button.textContent.trim()).join("|")`);
+  // The first page follows the browser language (v1.0-63), so either label is accepted until the switch below.
+  assert(["Doctor", "诊断"].includes(disabledWorkspaces), `First run must disable exactly Doctor (disabled: ${disabledWorkspaces || "none"}).`);
+  // v1.0-63 (board 9): the language switch lives under Settings › Language, behind the header gear.
+  await tabUntil((active) => ["Settings", "设置"].includes(active?.ariaLabel), "settings gear");
   await key("Enter");
-  await waitFor(() => has('button[aria-label="切换至英文"][aria-pressed="false"]'), "Chinese locale");
-  receipt.assertions.push(`keyboard_tab_enter_locale:${chinese.ariaLabel}`);
-  await tabUntil(
-    (active) => active?.ariaLabel === "切换至英文",
-    "English language switch",
-  );
+  await waitFor(() => has(".settings-page"), "settings page");
+  await tabUntil((active) => ["Language", "语言"].includes(active?.text), "settings language section");
   await key("Enter");
-  await waitFor(
-    () => has('button[aria-label="Switch to Chinese"][aria-pressed="false"]'),
-    "English locale",
-  );
+  await tabUntil((active) => active?.text === "中文", "Chinese language switch");
+  await key("Enter");
+  await waitFor(() => evaluate(`document.querySelector(".locale-switch button[aria-pressed=\\"true\\"]")?.textContent.trim() === "中文" && document.querySelector(".settings-nav h1")?.textContent.trim() === "设置"`), "Chinese locale");
+  receipt.assertions.push("keyboard_tab_enter_locale:中文");
+  await tabUntil((active) => active?.text === "English", "English language switch");
+  await key("Enter");
+  await waitFor(() => evaluate(`document.querySelector(".locale-switch button[aria-pressed=\\"true\\"]")?.textContent.trim() === "English" && document.querySelector(".settings-nav h1")?.textContent.trim() === "Settings"`), "English locale");
   receipt.assertions.push("keyboard_tab_enter_locale:English");
-  // First run (design board 05): Doctor and Recommendations stay disabled until a
-  // Profile exists, so keyboard navigation reaches the next enabled workspace.
-  assert(
-    await evaluate(`Array.from(document.querySelectorAll(".workspace-nav button")).filter((button) => button.disabled).map((button) => button.textContent.trim()).join("|") === "Doctor|Recommendations"`),
-    "First run must disable exactly Doctor and Recommendations.",
-  );
-  await tabUntil((active) => active?.text === "Compare", "Compare workspace");
+  // Keyboard reaches a workspace from the header again (Loads works without a connection).
+  await tabUntil((active) => active?.text === "Loads", "Loads workspace");
   await key("Enter");
-  await waitFor(() => has(".workspace-compare"), "Compare workspace navigation");
-  receipt.assertions.push("keyboard_tab_enter_workspace:Compare_first_run_doctor_disabled");
+  await waitFor(() => has(".workspace-content.workspace-loads"), "Loads workspace navigation");
+  receipt.assertions.push("keyboard_tab_enter_workspace:Loads_first_run_doctor_disabled");
 }
 async function connectionDialogAccessibilityCoverage() {
   await clickButton("Connect");
@@ -318,7 +318,7 @@ async function offlineImportCoverage() {
   );
   receipt.offline_doctor = await assertDoctorGraph(projection, "Offline import");
   const summary = await evaluate(
-    `(() => { const facts = Array.from(document.querySelectorAll('.workspace-doctor .doctor-summary-facts > div')).map((item) => ({ label: item.querySelector('dt')?.textContent?.trim() ?? null, value: item.querySelector('dd')?.textContent?.trim() ?? null })); return { facts, actions: Array.from(document.querySelectorAll('.context-bar .context-actions button')).map((button) => button.textContent.trim()), recommendationsCount: document.querySelector('.workspace-nav button[data-step="3"]')?.getAttribute('data-count') ?? null }; })()`,
+    `(() => { const facts = Array.from(document.querySelectorAll('.workspace-doctor .doctor-summary-facts > div')).map((item) => ({ label: item.querySelector('dt')?.textContent?.trim() ?? null, value: item.querySelector('dd')?.textContent?.trim() ?? null })); return { facts, actions: Array.from(document.querySelectorAll('.context-bar .context-actions button')).map((button) => button.textContent.trim()), findingsCount: document.querySelector('.doctor-findings-column .findings-count')?.textContent?.trim() ?? null }; })()`,
   );
   const total = summary.facts.find((item) => item.label === "Total time");
   assert(
@@ -326,22 +326,20 @@ async function offlineImportCoverage() {
     "Doctor summary did not render the backend Profile total time.",
   );
   assert(
-    summary.actions.includes("Compare before / after") && /^\d+$/.test(summary.recommendationsCount ?? ""),
-    "Doctor context lost its Compare entry or the Recommendations count badge.",
+    // v1.0-65: Compare is a Doctor mode next to Diagnosis; recommendations sit in the findings, counted in their heading.
+    summary.actions.includes("Diagnosis") && summary.actions.includes("Compare") && /^\d+$/.test(summary.findingsCount ?? ""),
+    "Doctor context lost its Diagnosis/Compare modes or the findings count.",
   );
   receipt.offline_doctor.summary_facts = summary.facts.map((item) => item.label);
   receipt.assertions.push("offline_import_doctor_summary_graph_plan_node_table");
   if (complexProfile) await retainedComplexProfileCoverage(projection);
   await capture("offline-doctor-1440x1024");
-  for (const workspace of ["Recommendations", "Compare", "Doctor"]) {
-    await clickButton(workspace);
-    await waitFor(
-      () => has(`.workspace-${workspace.toLowerCase()}`),
-      `${workspace} workspace`,
-    );
-    if (workspace !== "Doctor") await capture(`offline-${workspace.toLowerCase()}-1440x1024`);
+  for (const [mode, workspace] of [["Compare", "compare"], ["Diagnosis", "doctor"]]) {
+    await clickButton(mode);
+    await waitFor(() => has(`.workspace-content.workspace-${workspace}`), `${mode} mode`);
+    if (workspace === "compare") await capture("offline-compare-1440x1024");
   }
-  receipt.assertions.push("offline_import_doctor_recommendations_compare");
+  receipt.assertions.push("offline_import_doctor_findings_compare");
 }
 async function retainedComplexProfileCoverage(projection) {
   const graph = projection.graph;
@@ -510,29 +508,33 @@ async function applyAuditFixtureWindowAfterOverview() {
   };
   return applied.audit_scope;
 }
-/** O1: the default Audit face is the server-aggregated performance overview. */
+/**
+ * O1: the server-aggregated performance overview. Since v1.0-66 it is the Overview page, shown by
+ * the same Audit instance as the Queries page (one discovery generation per session).
+ */
 async function auditPerformanceOverviewCoverage() {
   await waitFor(async () => {
     const routes = await routeTelemetry("/audit/performance");
     return routes.at(-1)?.method === "POST" && routes.at(-1)?.status === 200 &&
-      (await has(".audit-performance-chart svg rect.hit"));
+      (await has(".workspace-content.workspace-overview .audit-performance-chart svg rect.hit"));
   }, "Audit performance response");
   const coverage = (await projectionTelemetry(auditOverviewRoute)).at(-1)?.audit_coverage ?? null;
   receipt.audit_performance = await evaluate(
-    `(() => { const root = document.querySelector('.workspace-queries .audit-performance'); const cards = Array.from(root?.querySelectorAll('.audit-performance-card') ?? []); const executions = cards.find((card) => card.querySelector('.audit-performance-card-label')?.textContent === 'Executions'); return {
+    `(() => { const root = document.querySelector('.workspace-content.workspace-overview .audit-performance'); const cards = Array.from(root?.querySelectorAll('.audit-performance-card') ?? []); const executions = cards.find((card) => card.querySelector('.audit-performance-card-label')?.textContent === 'Executions'); return {
       card_count: cards.length,
-      executions: executions?.querySelector('.audit-performance-card-value > span')?.textContent?.replaceAll(',', '') ?? null,
+      // The figure counts up on entry (v1.0-69); its title carries the server value throughout.
+      executions: executions?.querySelector('.audit-performance-card-value > span')?.getAttribute('title')?.replaceAll(',', '') ?? null,
       bucket_count: root?.querySelectorAll('.audit-performance-chart svg rect.hit').length ?? 0,
       histogram_rows: root?.querySelectorAll('.audit-performance-histogram-row').length ?? 0,
       panels: ['audit-performance-histogram', 'audit-performance-errors', 'audit-performance-dimensions', 'audit-performance-top'].filter((id) => document.getElementById(id)).length,
-      overview_pressed: Array.from(document.querySelectorAll('.audit-view-switch button')).find((button) => button.textContent.trim() === 'Overview')?.getAttribute('aria-pressed') ?? null,
+      performance_tab_selected: Array.from(document.querySelectorAll('[role="tab"]')).find((tab) => tab.textContent.trim() === 'Performance')?.getAttribute('aria-selected') ?? null,
       sql_text_in_cards: cards.some((card) => /\\bSELECT\\b/i.test(card.textContent ?? '')),
     }; })()`,
   );
   assert(receipt.audit_performance.card_count === 6 &&
     receipt.audit_performance.executions === coverage?.retained_event_count &&
     receipt.audit_performance.bucket_count > 0 && receipt.audit_performance.histogram_rows === 8 &&
-    receipt.audit_performance.panels === 4 && receipt.audit_performance.overview_pressed === "true" &&
+    receipt.audit_performance.panels === 4 && receipt.audit_performance.performance_tab_selected === "true" &&
     !receipt.audit_performance.sql_text_in_cards,
     `Audit performance overview did not render its DTO facts: ${JSON.stringify(receipt.audit_performance)}`);
   receipt.assertions.push("audit_performance_overview_http200_same_cohort_cards_chart_panels");
@@ -556,23 +558,25 @@ async function auditWorkloadCoverage() {
   );
   receipt.audit_window_presets = auditWindowOptions;
   receipt.assertions.push("audit_six_window_presets");
+  // v1.0-66: Audit history lands on repeated SQL; the Overview page shows the performance dashboard.
   await waitFor(async () => {
     const routes = await routeTelemetry(auditOverviewRoute);
     return (
       routes.length > overviewRequestsBefore &&
       routes.at(-1)?.method === "POST" &&
       routes.at(-1)?.status === 200 &&
-      (await has(".audit-performance-cards"))
+      (await has(".workspace-queries .audit-kpi-grid"))
     );
-  }, "Audit Overview response and performance overview");
-  await auditPerformanceOverviewCoverage();
-  // The legacy board assertions below run on the repeated-SQL view; switching
-  // from the overview reuses the admitted read instead of issuing another.
+  }, "Audit Overview response and repeated SQL board");
+  // Both pages share one Audit instance: moving between them reuses the admitted read.
   const overviewRequestsAtSwitch = (await routeTelemetry(auditOverviewRoute)).length;
-  await clickButton("Repeated SQL");
-  await waitFor(() => has(".audit-kpi-grid"), "Repeated SQL view after the overview");
+  await clickButton("Overview");
+  await waitFor(() => has(".workspace-content.workspace-overview .audit-performance"), "Overview performance dashboard");
+  await auditPerformanceOverviewCoverage();
+  await clickButton("Queries");
+  await waitFor(() => has(".workspace-queries .audit-kpi-grid"), "Repeated SQL board after the Overview");
   assert((await routeTelemetry(auditOverviewRoute)).length === overviewRequestsAtSwitch,
-    "Leaving the performance overview re-read the Audit overview.");
+    "Moving between the Overview and Queries pages re-read the Audit overview.");
   const overviewProjection = (await projectionTelemetry(auditOverviewRoute)).at(-1);
   const overviewTop = overviewProjection?.audit_top;
   const overviewCoverage = overviewProjection?.audit_coverage;
@@ -1195,6 +1199,7 @@ async function officialProfileCoverage() {
       selection_control: viaTable ? "plan_node_table" : "graph_card",
     };
     try {
+      if (viaTable) await openDoctorStructureTab("Operators and source");
       await clickElement(
         viaTable ? tableLink : graphCard,
         "Current DTO plan node could not be selected.",
@@ -2300,7 +2305,7 @@ async function controlledRuntimeUnknownScenario(connectionId, scenario) {
       (await routeTelemetry("/runtime-profile")).length === runtimeBefore + 1,
       "Task49 disabled Runtime action produced a second POST.",
     );
-    await clickButton("Doctor");
+    await openDoctorMode("Diagnosis");
     await waitFor(
       () => has(".workspace-doctor"),
       `Task49 Doctor round trip for ${scenario}`,
@@ -2548,6 +2553,8 @@ async function connectedReadonlyCoverage() {
   await waitFor(() => has(".workspace-compare .compare-structure"), "connected comparison rendered");
   await evaluate("window.scrollTo(0, 0)");
   await capture("connected-compare-1440x1024");
+  // v1.0-65: the raw evidence sits under Compare's Provenance tab.
+  await clickButton("Provenance");
   await clickButton("Raw / Provenance");
   await waitFor(
     () => has(".compare-provenance-panel"),
@@ -2569,7 +2576,7 @@ async function connectedReadonlyCoverage() {
   await topologyAndRuntimeCoverage();
   // Keep the established final Compare screenshot and narrow-viewport evidence;
   // the dedicated screenshots above preserve both execution projections.
-  await clickButton("Compare");
+  await openDoctorMode("Compare");
   await waitFor(
     () => has(".workspace-compare"),
     "Compare workspace after Runtime Top",
@@ -2587,7 +2594,7 @@ async function sqlDraftRoundTripCoverage(mode, planMode) {
   const counts = await Promise.all(
     paths.map(async (path) => (await routeTelemetry(path)).length),
   );
-  await clickButton("Doctor");
+  await openDoctorMode("Diagnosis");
   await waitFor(
     () => has(".workspace-doctor"),
     "Doctor during SQL draft round trip",
@@ -2829,7 +2836,7 @@ async function topologyAndRuntimeCoverage() {
   );
   const rereadRequestsBefore = (await officialRequestLog()).length;
   const rereadResponsesBefore = (await officialResponseLog()).length;
-  await clickButton("Doctor");
+  await openDoctorMode("Diagnosis");
   await waitFor(
     () => has(".workspace-doctor .official-profile-open"),
     "Doctor official entry after Queries discovery refresh",
@@ -2978,6 +2985,7 @@ async function runtimeTopNavigationCoverage(projection) {
   const root = ".workspace-doctor .execution-graph";
   const hottest = projection.graph.hottest;
   const firstRow = ".workspace-doctor .plan-node-table tbody tr:first-child";
+  await openDoctorStructureTab("Operators and source");
   assert(
     hottest.display && (await textOf(firstRow)).includes(hottest.display),
     "Plan-node table did not rank the backend hottest node first.",
@@ -3002,7 +3010,7 @@ async function runtimeTopNavigationCoverage(projection) {
   receipt.assertions.push("runtime_top_table_row_node_selection_and_inspector");
 }
 async function narrowViewportEvidence() {
-  await clickButton("Compare");
+  await openDoctorMode("Compare");
   await waitFor(
     () => has(".workspace-compare"),
     "Compare workspace for narrow evidence",
@@ -3084,9 +3092,42 @@ async function doctorGraphDom(root = ".workspace-doctor .execution-graph") {
     `(() => {    const root = document.querySelector(${JSON.stringify(root)});    const canvas = root?.querySelector('.execution-graph-canvas');    const visible = (element) => { const rect = element.getBoundingClientRect(); return rect.width > 0 && rect.height > 0; };    const cards = Array.from(root?.querySelectorAll('.plan-card') ?? []);    return {      present: Boolean(root),      layout_state: canvas?.dataset.layoutState ?? null,      view: canvas?.dataset.view ?? null,      node_count: root?.querySelectorAll('.react-flow__node').length ?? 0,      card_count: cards.length,      visible_card_count: cards.filter(visible).length,      edge_count: root?.querySelectorAll('.react-flow__edge').length ?? 0,      fragment_frame_count: root?.querySelectorAll('.fragment-frame').length ?? 0,      fragment_frames_visible: Array.from(root?.querySelectorAll('.fragment-frame') ?? []).every(visible),      hot_most_count: root?.querySelectorAll('.plan-card.hot-most').length ?? 0,      hot_second_count: root?.querySelectorAll('.plan-card.hot-second').length ?? 0,      selected_node_ids: cards.filter((card) => card.classList.contains('selected')).map((card) => card.dataset.nodeId),      inspector_open: Boolean(root?.querySelector('.node-inspector')),      table_rows: document.querySelectorAll('.workspace-doctor .plan-node-table tbody tr:not(.unmeasured)').length,      table_all_rows: document.querySelectorAll('.workspace-doctor .plan-node-table tbody tr').length,      first_table_row_plan: document.querySelector('.workspace-doctor .plan-node-table tbody tr .plan-node-link small')?.textContent?.trim() ?? null,      first_table_row: document.querySelector('.workspace-doctor .plan-node-table tbody tr')?.textContent?.trim() ?? null,    };  })()`,
   );
 }
+/**
+ * v1.0-65: Diagnosis and Compare are two modes of the Doctor page, and the page keeps the last
+ * one used; open the page, then pick the mode.
+ */
+async function openDoctorMode(mode) {
+  await clickButton("Doctor");
+  await waitFor(() => has(".doctor-modes"), "Doctor mode switch");
+  await clickButton(mode);
+  await waitFor(() => has(mode === "Compare" ? ".workspace-content.workspace-compare" : ".workspace-content.workspace-doctor"), `Doctor ${mode} mode`);
+}
+/** v1.0-65: Doctor's structure card shows the graph or the operator tables behind two tabs. */
+async function openDoctorStructureTab(label) {
+  await clickElement(
+    `Array.from(document.querySelectorAll('.workspace-doctor [role="tab"]')).find((tab) => tab.textContent.trim() === ${JSON.stringify(label)})`,
+    `Doctor structure tab ${label} is unavailable.`,
+  );
+  await waitFor(
+    () => evaluate(`Array.from(document.querySelectorAll('.workspace-doctor [role="tab"]')).some((tab) => tab.textContent.trim() === ${JSON.stringify(label)} && tab.getAttribute('aria-selected') === 'true')`),
+    `Doctor structure tab ${label} selected`,
+  );
+}
 async function openQueryMode(label) {
   if (!(await has(".workspace-queries"))) await clickButton("Queries");
   await waitFor(() => has(".workspace-queries .query-modes"), "Queries mode switch");
+  // v1.0-64: the three lists are one tab switch; the SQL workspace is the "Run SQL" action beside it.
+  if (label === "SQL workspace") {
+    await clickElement(
+      `document.querySelector('.workspace-queries button.query-run-sql')`,
+      "Query mode SQL workspace is unavailable.",
+    );
+    await waitFor(
+      () => evaluate(`document.querySelector('.workspace-queries button.query-run-sql')?.getAttribute('aria-pressed') === 'true'`),
+      "Query mode SQL workspace selected",
+    );
+    return;
+  }
   await clickElement(
     `Array.from(document.querySelectorAll('.workspace-queries .query-modes [role="tab"]')).find((tab) => tab.textContent.trim() === ${JSON.stringify(label)})`,
     `Query mode ${label} is unavailable.`,

@@ -4,8 +4,9 @@ import type { AuditOccurrenceReadRequest, AuditOccurrenceResponse, ConnectedProf
 import { DEMO_CONNECTION_ID, DEMO_SESSION, mainMembers, mainOverview } from "./demo-session";
 import { CANDIDATE_QUERY_ID, demoComparison, membersWithCandidate } from "./demo-compare";
 import { doctorFetch } from "./demo-doctor";
+import { demoPerformance } from "./demo-performance";
 
-export type BoardName = "Connect" | "Main" | "Doctor" | "Recommendations" | "Compare";
+export type BoardName = "Connect" | "Main" | "Doctor" | "Recommendations" | "Compare" | "Overview";
 export type Answer = { status?: number; body: unknown };
 export type Board = {
   respond(path: string, method: string, body: string | null): Answer | undefined;
@@ -57,6 +58,8 @@ export function setValue(element: HTMLInputElement | HTMLTextAreaElement, value:
 async function connect(document: Document): Promise<void> {
   const form = await waitFor(document, ".first-run .connection-form") as HTMLFormElement;
   const inputs = form.querySelectorAll("input");
+  // The host starts empty since any host may be entered (2026-10-28); the Demo cluster answers for it.
+  setValue(inputs[0] as HTMLInputElement, "127.0.0.1");
   setValue(inputs[2] as HTMLInputElement, "analyst");
   setValue(inputs[3] as HTMLInputElement, "demo-password");
   await new Promise((done) => setTimeout(done, 50));
@@ -87,6 +90,9 @@ export const BOARDS: Record<BoardName, Board> = {
     }),
     drive: async (document) => {
       await connect(document);
+      // The audit view opens on its performance overview (task 45); the board shows repeated SQL.
+      await waitFor(document, ".audit-view-switch button:not(:disabled)");
+      Array.from(document.querySelectorAll<HTMLButtonElement>(".audit-view-switch button")).find((button) => button.textContent?.trim() === "同类 SQL")?.click();
       await waitFor(document, ".audit-family-list tbody tr");
       setValue(document.querySelector(".audit-filter-database") as HTMLInputElement, "demo");
       await new Promise((done) => setTimeout(done, 50));
@@ -95,6 +101,19 @@ export const BOARDS: Record<BoardName, Board> = {
       const row = await waitFor(document, ".audit-family-list tbody tr") as HTMLElement;
       row.click();
       await waitFor(document, ".audit-family-members li");
+    },
+  },
+  // 总览 (task 66): the audit performance dashboard of the Demo cluster, opened from the navigation.
+  Overview: {
+    respond: connected((path, body) => {
+      if (path === "audit/overview") return mainOverview((JSON.parse(body ?? "{}") as AuditOverviewReadRequest).request.scope);
+      if (path === "audit/performance") return demoPerformance((JSON.parse(body ?? "{}") as { scope: AuditOverviewReadRequest["request"]["scope"] }).scope);
+      return undefined;
+    }),
+    drive: async (document) => {
+      await connect(document);
+      Array.from(document.querySelectorAll<HTMLButtonElement>(".workspace-nav button")).find((button) => button.textContent?.trim() === "总览")?.click();
+      await waitFor(document, ".audit-dashboard");
     },
   },
   // 02 诊断 · 证据工作台: the slowest member of the Main family, pulled from the Demo cluster.
@@ -120,13 +139,12 @@ export const BOARDS: Record<BoardName, Board> = {
       await waitFor(document, ".workspace-doctor .react-flow__viewport[style*=\"scale(1)\"]:not([style*=\"translate(0px, 0px)\"])");
     },
   },
-  // 03 优化建议: the same pulled Profile, opened from the navigation; first recommendation selected.
+  // 03 优化建议: since task 65 the first finding's recommendation sits in its detail on the Doctor page.
   Recommendations: {
     respond: (path, method, body) => BOARDS.Doctor.respond(path, method, body),
     drive: async (document) => {
       await BOARDS.Doctor.drive(document);
-      (document.querySelector(".workspace-nav button[data-step=\"3\"]") as HTMLButtonElement).click();
-      await waitFor(document, ".workspace-recommendations .recommendation-card.selected");
+      (await waitFor(document, ".doctor-findings-column .finding-recommendation")).scrollIntoView({ block: "center" });
     },
   },
   // 04 对比: the board-02 member as baseline, compared with a later execution of the same query.

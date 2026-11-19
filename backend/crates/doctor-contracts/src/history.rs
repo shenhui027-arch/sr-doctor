@@ -23,7 +23,10 @@ pub enum HistoryCollectionAction {
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
 #[serde(deny_unknown_fields)]
 pub struct HistoryCollectionRequest {
-    pub connection_id: String,
+    /// The page session, or `None` when the page is not connected and the
+    /// saved connection collects in the background (task 72).
+    #[serde(default)]
+    pub connection_id: Option<String>,
     pub action: HistoryCollectionAction,
 }
 

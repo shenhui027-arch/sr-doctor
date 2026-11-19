@@ -17,6 +17,8 @@ import { RoutineLoadPanel } from "./RoutineLoadPanel";
 import { count, feTime, loadFailureText } from "./load-text";
 import "../history/history.css";
 import "../history/notify.css";
+import { InfoTip } from "../shell/ui";
+import { CardDeck } from "../shell/CardDeck";
 import "./loads.css";
 
 const REFRESH_MS = 30_000;
@@ -56,7 +58,7 @@ function LoadTypeSwitch({ counts, kind, onKind, text }: { counts: TypeCounts; ki
     {options.map((option) => <button aria-checked={option.kind === kind} aria-label={text(`${option.label} (${option.count})`, `${option.label}（${option.count}）`)} data-kind={option.kind ?? "all"} key={option.kind ?? "all"} onClick={() => onKind(option.kind)} role="radio" tabIndex={option.kind === kind ? 0 : -1} type="button">
       <span>{option.label}</span><span className="mono">{option.count}</span>
     </button>)}
-    <span className="history-muted">{text("Each type shows only its own measures; nothing is mixed.", "每类只显示自己有意义的指标，口径不混算")}</span>
+    <InfoTip label={text("About the load types", "关于导入类型")}>{text("Each type shows only its own measures; nothing is mixed.", "每类只显示自己有意义的指标，口径不混算")}</InfoTip>
   </div>;
 }
 
@@ -175,7 +177,7 @@ export function LoadWorkspace({ connectionId, focus, onPaused, onOpenQueries, on
           {item === "overview" ? text("Overview", "概览") : item === "routine" ? <>Routine Load{routineCount !== undefined && <> <span className="tab-count">{routineCount}</span></>}</> : item === "records" ? text("Load records", "导入记录") : text("History", "历史")}
         </button>)}
       </div>
-      <span className="history-muted">{note}</span>
+      <InfoTip label={text("Where these numbers come from", "数据来源")}>{note}</InfoTip>
       <span className="trend-toolbar">
         {view === "overview" && <label className="notify-check"><input checked={overviewFilters.include_system} onChange={(event) => setOverviewFilters({ ...overviewFilters, include_system: event.target.checked })} type="checkbox" /> {text("System loads", "含系统任务")}</label>}
         {view === "history" && <label className="notify-check"><input checked={historySystem} onChange={(event) => setHistorySystem(event.target.checked)} type="checkbox" /> {text("System loads", "含系统任务")}</label>}
@@ -184,6 +186,7 @@ export function LoadWorkspace({ connectionId, focus, onPaused, onOpenQueries, on
     </div>
     <div aria-labelledby={`load-tab-${view}`} className="load-panel" id="load-panel" ref={panel} role="tabpanel" tabIndex={-1}>
     {view === "overview" && typeCounts && typeCounts.connectionId === connectionId && <LoadTypeSwitch counts={typeCounts} kind={overviewFilters.kind} onKind={(kind) => setOverviewFilters({ ...overviewFilters, kind })} text={text} />}
+    <CardDeck resetKey={`${view}:${overviewFilters.kind ?? "all"}`}>
     {view === "overview" && (overview.data ? <LoadOverviewPanel kind={overviewFilters.kind} nowMs={nowMs} onOpenHour={(hour) => openRecords({ ...NO_RECORD_FILTERS, kind: overviewFilters.kind, include_system: overviewFilters.include_system, hour })} onOpenJob={(jobId) => { setRoutineJob(jobId); drill("routine"); }} onOpenTable={(table) => openRecords({ ...NO_RECORD_FILTERS, kind: overviewFilters.kind, include_system: overviewFilters.include_system, table })} overview={overview.data} text={text} />
       : overview.error ? <MonitorReadError error={overview.error} onRetry={overview.refresh} text={text} title={loadFailureText(overview.error, text)} />
         : <p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>)}
@@ -199,6 +202,7 @@ export function LoadWorkspace({ connectionId, focus, onPaused, onOpenQueries, on
       : records.error ? <MonitorReadError error={records.error} onRetry={records.refresh} text={text} title={loadFailureText(records.error, text)} />
         : <p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>)}
     {view === "history" && <LoadHistoryPanel connectionId={connectionId} focus={focus?.view === "history" ? focus : null} generation={String(tick)} includeSystem={historySystem} onOpenAlerts={onOpenAlerts} onOpenLog={setLog} text={text} />}
+    </CardDeck>
     </div>
     {log && log.connectionId === connectionId && <LoadErrorLogDialog connectionId={connectionId} onClose={() => setLog(null)} target={log} text={text} />}
   </div>;

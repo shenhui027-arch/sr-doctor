@@ -23,6 +23,8 @@ export type SqlAnalysisWorkspaceProps = {
   connection?: SqlAnalysisConnectionContext;
   planSnapshot?: ExplainSnapshot | null;
   planError?: string | null;
+  /** Task 68: why the last "execute once" failed; shown with the execution, not under the plan. */
+  executionError?: string | null;
   planResultMode?: SqlPlanMode | null;
   planRequesting?: boolean;
   onSqlChange(sql: string): void;
@@ -39,6 +41,13 @@ export function planFailureLabel(reason: string, text: (en: string, zh: string) 
   if (reason === "execution_response_unknown") return text("The last execution result is unknown. Check the database before submitting again.", "上一次执行结果未知，请先在数据库侧核查，再决定是否重新提交。");
   if (reason === "remote_timeout") return text("The plan request timed out. Check the connection and query scope.", "计划请求超时，请检查连接与查询范围。");
   return text("Plan request failed. Check the SQL and the connection.", "计划请求失败，请检查 SQL 与连接。");
+}
+
+export function executionFailureLabel(reason: string, text: (en: string, zh: string) => string): string {
+  if (reason === "connection_expired" || reason === "connection_session_expired") return text("The connection expired. Reconnect, then execute again.", "连接已过期，请重新连接后再执行。");
+  if (reason === "profile_unavailable") return text("The query ran, but its Profile could not be fetched. It may not be ready yet; try once more later.", "查询已执行，但没有取到这次执行的 Profile，可能还未生成。可稍后再试一次。");
+  if (reason === "remote_timeout") return text("The execution timed out. Narrow the query and try again.", "执行超时，请缩小查询范围后再试。");
+  return text("The execution was refused. Check the SQL and the connection.", "执行被拒绝，请检查 SQL 与连接。");
 }
 
 export function SqlAnalysisWorkspace(props: SqlAnalysisWorkspaceProps): JSX.Element {
@@ -84,6 +93,7 @@ export function SqlAnalysisWorkspace(props: SqlAnalysisWorkspaceProps): JSX.Elem
           <h2>{text("2 · Execute once and diagnose", "2 · 执行一次并诊断")}</h2>
           <p>{text("Runs the SQL once with profiling, then opens its Profile in Doctor.", "带 Profile 执行一次，然后在诊断页打开这次的 Profile。")}</p>
           <button className="button warning sql-analysis-confirm" data-sql-analysis-action="request-confirmation" disabled={!hasSql} onClick={props.onRequestConfirmation} type="button">{text("Review and execute…", "检查并执行…")}</button>
+          {props.executionError ? <p className="plan-check-error" data-sql-analysis-execution-result="error" role="status">{executionFailureLabel(props.executionError, text)} <code>{props.executionError}</code></p> : null}
         </section> : <section className="sql-analysis-locked panel" aria-live="polite">
           <h2>{props.stage === "pending" ? text("Executing · waiting for the Profile", "执行中 · 等待 Profile") : text("Execution result unknown", "执行结果未知")}</h2>
           <p>{props.stage === "pending" ? text("Stopping only stops this page from waiting; it does not cancel the database query.", "停止等待只停止页面等待，不会取消数据库查询。") : text("No confirmed result returned. Check the query in the database before submitting again.", "没有收到确认结果。重新提交前请先在数据库侧核查这次查询。")}</p>

@@ -246,13 +246,15 @@ export function OfficialProfilePanel({ context, report, triggerSlot = null }: { 
           <h3>{text("Official reading", "官方解读")}</h3>
           <p className="official-profile-query"><span>{text("Query ID", "查询 ID")}</span><code>{wholeBinding.query_id}</code></p>
         </div>
-        <button className="official-profile-return" onClick={close} ref={closeRef} type="button">{loading ? text("Cancel reading", "取消读取") : text("Return topology", "返回拓扑")}</button>
+        <button className="button secondary official-profile-return" onClick={close} ref={closeRef} type="button">{loading ? text("Cancel reading", "取消读取") : text("Return topology", "返回拓扑")}</button>
       </header>
-      <div className="official-profile-scope" aria-label={text("Official reading scope", "官方解读范围")}>
+      <div className="seg-tabs official-profile-scope" aria-label={text("Official reading scope", "官方解读范围")}>
         <button aria-pressed={scope === "whole_query"} disabled={scopeLocked} onClick={() => switchScope("whole_query")} type="button">{text("Entire Query", "整个 Query")}</button>
         <button aria-pressed={scope === "plan_node"} disabled={scopeLocked || !selectedBinding} onClick={() => switchScope("plan_node")} type="button">{selectedLabel}</button>
       </div>
       <p className="official-profile-boundary">{text("Reads existing Profile evidence. It does not execute SQL.", "读取既有 Profile 证据，不执行 SQL。")}</p>
+      {/* Task 70: the head above stays put; the reading below is the card's one scrolling body. */}
+      <div className="official-profile-body">
       {visible.status === "closed" ? <p className="official-profile-state" role="status">{text("Current Doctor evidence changed. Reopen this panel to read the current range.", "当前 Doctor 证据已变化。请重新打开面板读取当前范围。")}</p> : null}
       {visible.status === "unread" ? <section className="official-profile-action"><p>{text("No official text has been read for this range.", "尚未读取该范围的官方文本。")}</p><button className="button accent" onClick={() => { void reader.read(); }} type="button">{text("Read official analysis", "读取官方解读")}</button></section> : null}
       {visible.status === "loading" ? <section className="official-profile-action" aria-busy="true" role="status"><p>{text("Reading official analysis…", "正在读取官方解读…")}</p><button className="button accent" disabled type="button">{text("Reading…", "读取中…")}</button></section> : null}
@@ -260,6 +262,7 @@ export function OfficialProfilePanel({ context, report, triggerSlot = null }: { 
         <OfficialActions context={context} reader={reader} state={visible} text={text} />
         <OfficialProfileReadDetails state={visible} />
       </>}
+      </div>
     </section>}
   </>;
 }

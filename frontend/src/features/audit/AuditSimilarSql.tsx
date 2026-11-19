@@ -122,6 +122,8 @@ export function AuditSimilarAside({ cluster, dimensions, loading, splitCount, on
       <div><span className="audit-similar-label">{text("Selected cluster", "已选聚类")}</span><h2>{similarClusterName(cluster, text)}</h2></div>
       <button aria-label={text("Close details", "关闭详情")} className="audit-similar-close" onClick={onClose} type="button">×</button>
     </div>
+    {/* Task 69: one scrolling body between the fixed title and the fixed actions. */}
+    <div className="audit-similar-aside-body">
     <section className="audit-similar-why">
       <h3>{text("Why these are one cluster", "为什么归为一类")}</h3>
       <dl>
@@ -153,6 +155,7 @@ export function AuditSimilarAside({ cluster, dimensions, loading, splitCount, on
       </li>;
     })}</ul>
     {splitCount > 0 && <p className="audit-similar-split" role="status">{text(`${splitCount} template(s) split out (this view only).`, `已拆出 ${splitCount} 个模板为独立项（仅本视图）。`)} <button disabled={loading} onClick={onUndo} type="button">{text("Undo", "撤销")}</button></p>}
+    </div>
     <div className="audit-similar-actions">
       <div>
         <button className="button accent" disabled={loading || unchecked.size === 0 || keep < 1} onClick={() => onDetach([...unchecked])} type="button">{text("Split out unchecked templates", "拆出未勾选的模板")}</button>

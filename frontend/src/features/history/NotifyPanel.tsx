@@ -48,7 +48,6 @@ export function NotifyPanel({ overview, busy, tests, onOpen, onTest, onSaveSetti
     && (!needle || target.name.toLowerCase().includes(needle) || target.address_hint.toLowerCase().includes(needle)));
   const enabledCount = overview.targets.filter((target) => target.enabled).length;
   return <div className="history-page notify-page">
-    <p className="history-muted">{text("A channel is how to send (server, cloud account); a target is to whom (mailbox, group bot, phone). Each channel takes several targets.", "渠道 = 怎么发（服务器、平台凭据）；发送对象 = 发给谁（邮箱、群机器人、手机号），每个渠道可以有多个。")}</p>
     {!overview.remote_collection_allowed && <p className="history-banner" role="status">
       {text("Remote clusters are not collected until the G1 production read-only pilot passes (DOCTOR_COLLECTION_ALLOW_REMOTE is not set), so they raise no new alert and nothing is sent. Local and test clusters are not affected.", "远端集群在 G1 生产只读试点通过前不做后台采集（DOCTOR_COLLECTION_ALLOW_REMOTE 未设置），此时不会产生新告警，也不会发出任何通知。本机 / 测试集群不受影响。")}
     </p>}

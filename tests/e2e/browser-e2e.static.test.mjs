@@ -293,7 +293,9 @@ test("runtime duplicate-submit preparation checks UUID presence without persisti
 
 test("each screenshot redacts fresh identifiers and narrow Compare explicitly selects Compare", () => {
   assert.match(runnerSource, /async function capture\(name, \{ redactSql = false \} = \{\}\) \{[\s\S]*?await redactVisibleIdentifiersForEvidence\(\{ redactSql \}\);/);
-  assert.match(runnerSource, /async function narrowViewportEvidence\(\) \{\s+await clickButton\("Compare"\);/);
+  // v1.0-65: Compare is a Doctor mode, opened through the page and its mode switch.
+  assert.match(runnerSource, /async function narrowViewportEvidence\(\) \{\s+await openDoctorMode\("Compare"\);/);
+  assert.match(runnerSource, /async function openDoctorMode\(mode\) \{\s+await clickButton\("Doctor"\);[\s\S]*?await clickButton\(mode\);/);
 });
 
 test("family member navigation requires a fresh bounded discovery, not just a visible summary", () => {
@@ -420,7 +422,11 @@ test("every literal browser button label exists in current production UI sources
   const labels = new Set([...runnerSource.matchAll(/clickButton\("([^"\n]+)"\)/g)].map(match => match[1]));
   for (const label of labels) assert.ok(ui.includes(JSON.stringify(label)), `Button label absent from current production UI: ${label}`);
   const auditUi = readFileSync(resolve("frontend/src/features/audit/AuditWorkloadWorkspace.tsx"), "utf8");
-  assert.ok(auditUi.includes('onClick={() => { setOverviewShown(true); if (mode === "similar") chooseMode("families"); }} type="button">{text("Overview"'));
+  // v1.0-66: the performance overview is the Overview page, shown by the Queries page's own Audit instance.
+  const app = readFileSync(resolve("frontend/src/App.tsx"), "utf8");
+  assert.ok(app.includes('<div className="queries-shell" hidden={!(workspace === "Queries" || overviewAudit)}>'));
+  assert.ok(auditUi.includes('useEffect(() => {\n    setOverviewShown(surface === "overview");'));
+  assert.ok(runnerSource.includes('await clickButton("Overview");\n  await waitFor(() => has(".workspace-content.workspace-overview .audit-performance"), "Overview performance dashboard");'));
   for (const [mode, label] of [["occurrences", "Individual executions"], ["families", "Repeated SQL"]]) {
     assert.ok(auditUi.includes(`chooseMode("${mode}"); }} type="button">{text("${label}"`));
     assert.ok(runnerSource.includes(`clickButton("${label}")`));
@@ -502,10 +508,11 @@ test("fixed controlled B opens the real Overview disclosure and separately basel
   assertLayoutContains(runnerSource, "const originalWindowSeconds = auditWindowSecondsByPreset[originalWindowPreset]");
   assertLayoutContains(runnerSource, "receipt.audit_filters = { ...receipt.audit_filters, original_window_preset: originalWindowPreset");
   const workload = runnerSource.slice(runnerSource.indexOf("async function auditWorkloadCoverage"), runnerSource.indexOf("async function auditFamilyDoctorCoverage"));
-  // The first switch only leaves the performance overview and is asserted to
-  // issue no read; family discovery is the later click that counts a new read.
+  // v1.0-66: the dashboard is the Overview page on the same Audit instance. Visiting it and coming
+  // back is asserted to issue no read; family discovery is the later click that counts a new read.
+  assert.ok(workload.indexOf('await clickButton("Overview");') < workload.indexOf("await auditPerformanceOverviewCoverage();"));
   assert.ok(workload.indexOf("await auditPerformanceOverviewCoverage();") < workload.indexOf('clickButton("Repeated SQL")'));
-  assertLayoutContains(workload, "Leaving the performance overview re-read the Audit overview.");
+  assertLayoutContains(workload, "Moving between the Overview and Queries pages re-read the Audit overview.");
   const discovery = runnerSource.indexOf('clickButton("Repeated SQL")', runnerSource.indexOf("const familyRequestsBefore"));
   assert.ok(runnerSource.indexOf("await applyAuditFixtureWindowAfterOverview();") < discovery, "fixture window must apply before family discovery");
   // Every list discovery is an Overview read; the one exception is the selected
@@ -548,8 +555,9 @@ test("offline navigation uses the CDP runner and keeps Doctor-first coverage", (
   assert.match(offline, /\.workspace-doctor \.doctor-summary/);
   assert.match(offline, /assertDoctorGraph\(projection, "Offline import"\)/);
   assert.ok(offline.includes(".context-bar .context-actions button"));
-  assert.ok(offline.includes('summary.actions.includes("Compare before / after")'));
-  assert.doesNotMatch(runnerSource, /Profile overview|workspace-overview|doctor-grid-ready/);
+  assert.ok(offline.includes('summary.actions.includes("Diagnosis") && summary.actions.includes("Compare")'));
+  // `.workspace-overview` is the v1.0-66 Overview page (the Audit dashboard), not the retired Profile overview.
+  assert.doesNotMatch(runnerSource, /Profile overview|doctor-grid-ready/);
 });
 
 test("focused SQL browser project stays fixed-fixture only and reuses actual SQL coverage", () => {
@@ -588,7 +596,7 @@ test("Task49 Runtime unknown guard is opt-in, exact-session scoped, redacted, an
   assert.match(runtimeScenario, /stage === "unknown"/);
   assert.match(runtimeScenario, /returnedState\.execution_action_count === 0/);
   assert.match(runtimeScenario, /!document\.querySelector\('\[data-sql-analysis-action=request-confirmation\], \[data-sql-analysis-action=confirm-execution\]'\)/);
-  assert.match(runtimeScenario, /clickButton\("Doctor"\)/);
+  assert.match(runtimeScenario, /openDoctorMode\("Diagnosis"\)/);
   assert.match(runtimeScenario, /clickButton\("Queries"\)/);
   assert.match(runtimeScenario, /routes\.length === runtimeBefore \+ 1/);
   assert.match(runtimeScenario, /finally \{[\s\S]*?restoreRuntimeUnknownGuardMock\(\)/);
@@ -649,7 +657,7 @@ test("standard Runtime Top official lifecycle keeps its session identity across 
   assert.match(lifecycle, /routeTelemetry\(auditOverviewRoute\)/);
   assert.match(lifecycle, /official dialog unmounted before Queries discovery refresh/);
   assertLayoutContains(lifecycle, "sameOfficialProfileIdentitySummary(standardIdentity.identity, afterDiscoveryIdentity?.identity)");
-  assert.match(lifecycle, /clickButton\("Doctor"\)/);
+  assert.match(lifecycle, /openDoctorMode\("Diagnosis"\)/);
   assert.match(lifecycle, /assertOfficialIdentityEcho\(rereadRequest, rereadResponse\)/);
   assert.match(lifecycle, /clickSelector\("\.official-profile-return"\)/);
   assert.match(lifecycle, /official dialog closed before real session close/);
@@ -704,7 +712,7 @@ test("readonly discovers bounded retained Profiles before Audit self-observation
   assert.ok(source.indexOf('await clickButton("Compare selected Profiles")') < source.indexOf('await auditWorkloadCoverage()'));
   assert.equal((source.match(/await auditWorkloadCoverage\(\)/g) ?? []).length, 1);
   assert.ok(source.indexOf('await auditWorkloadCoverage()') < source.indexOf('await topologyAndRuntimeCoverage()'));
-  assert.ok(source.lastIndexOf('await clickButton("Compare")') > source.indexOf('await topologyAndRuntimeCoverage()'));
+  assert.ok(source.lastIndexOf('await openDoctorMode("Compare")') > source.indexOf('await topologyAndRuntimeCoverage()'));
   const product = readFileSync(resolve("frontend/src/features/queries/QueriesWorkspace.tsx"), "utf8");
   assert.match(product, /limit: 100/);
   assert.equal((source.match(/await clickButton\("Refresh"\)/g) ?? []).length, 1);
@@ -745,8 +753,10 @@ test("current user-facing connection and Audit copy preserves semantic and DTO c
   assert.ok(auditUi.includes(draft)); assert.ok(runnerSource.includes(draft));
   const appUi = readFileSync(resolve("frontend/src/App.tsx"), "utf8");
   assert.ok(doctorUi.includes('text("Total time"')); assert.ok(runnerSource.includes("Total time"));
-  assert.ok(appUi.includes('text("Compare before / after"')); assert.ok(runnerSource.includes("Compare before / after"));
-  assert.ok(appUi.includes("data-count={item === \"Recommendations\"")); assert.ok(runnerSource.includes("recommendationsCount"));
+  // v1.0-65: Compare is a Doctor mode beside Diagnosis; recommendations moved into the findings and their count.
+  assert.ok(appUi.includes('{ id: "compare", label: text("Compare", "对比"), disabled: false }')); assert.ok(runnerSource.includes('summary.actions.includes("Diagnosis") && summary.actions.includes("Compare")'));
+  const findingsUi = readFileSync(resolve("frontend/src/features/findings/FindingsPanel.tsx"), "utf8");
+  assert.ok(findingsUi.includes('<span className="findings-count">')); assert.ok(runnerSource.includes("findingsCount"));
   assert.ok(!runnerSource.includes('text.includes("Pending draft")'));
   assert.ok(runnerSource.includes('JSON.stringify(unapplied.audit_scope) ==='));
   assert.ok(runnerSource.includes('applied.audit_scope?.window_seconds === 2592000'));

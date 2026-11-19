@@ -77,6 +77,7 @@ export function CompareWorkspace({
 }: CompareWorkspaceProps): JSX.Element | null {
   const { text } = useLocale();
   const [showProvenance, setShowProvenance] = useState(false);
+  const [tab, setTab] = useState<"metrics" | "operators" | "structure" | "plan" | "provenance">("metrics");
   const baseline = comparison ? reportOf(comparison.baseline) : null;
   const candidate = comparison ? reportOf(comparison.candidate) : null;
   const cells = useMemo<CellMaps>(() => ({ baseline: cellsOf(baseline), candidate: cellsOf(candidate) }), [baseline, candidate]);
@@ -109,22 +110,29 @@ export function CompareWorkspace({
       <ComparabilityPanel comparison={comparison} connectedComparison={connectedComparison} />
     </section>
 
+    {/* Task 69: the comparison's tables share one card; its tabs are the fixed head, the chosen table
+        scrolls. Inactive tables stay mounted (hidden), so every fact remains in the document. */}
     <div className="compare-main">
-      <QueryMetricTable cells={cells} deltas={queryDeltas} />
+      <section aria-label={text("Comparison tables", "对比明细")} className="compare-tables">
+        <div aria-label={text("Comparison views", "对比视图")} className="seg-tabs compare-tabs" role="tablist">
+          {([["metrics", text("Metrics", "指标")], ...(operatorDeltas.length > 0 ? [["operators", text("Operators", "算子")]] : []), ["structure", text("Structure", "结构")], ...(planComparison ? [["plan", text("Plan Check", "计划检查")]] : []), ["provenance", text("Provenance", "溯源")]] as [typeof tab, string][]).map(([id, label]) => <button aria-selected={tab === id} className={tab === id ? "active" : ""} key={id} onClick={() => setTab(id)} role="tab" type="button">{label}</button>)}
+        </div>
+        <div className="compare-tab-body">
+          <div hidden={tab !== "metrics"}><QueryMetricTable cells={cells} deltas={queryDeltas} /></div>
+          {operatorDeltas.length > 0 && <div hidden={tab !== "operators"}><OperatorCounters cells={cells} deltas={operatorDeltas} reports={{ baseline, candidate }} rows={rows} /></div>}
+          <div hidden={tab !== "structure"}><StructureDiff baseline={baseline} candidate={candidate} comparison={comparison} /></div>
+          {planComparison && <div hidden={tab !== "plan"}><PlanCheck planComparison={planComparison} /></div>}
+          <section className="compare-evidence" aria-label={text("Comparison evidence", "对比证据")} hidden={tab !== "provenance"}>
+            <button aria-expanded={showProvenance} aria-pressed={showProvenance} className="button secondary" onClick={() => setShowProvenance((open) => !open)} type="button">{text("Raw / Provenance", "原始数据 / 溯源")}</button>
+            {showProvenance && <ProvenancePanel baseline={baseline} candidate={candidate} />}
+          </section>
+        </div>
+      </section>
       <div className="compare-side">
         <FindingChanges baseline={baseline} candidate={candidate} comparison={comparison} />
         <LimitationsCard comparison={comparison} connectedLimitations={connectedComparison?.limitations ?? []} />
       </div>
     </div>
-
-    {operatorDeltas.length > 0 && <OperatorCounters cells={cells} deltas={operatorDeltas} reports={{ baseline, candidate }} rows={rows} />}
-    <StructureDiff baseline={baseline} candidate={candidate} comparison={comparison} />
-    {planComparison && <PlanCheck planComparison={planComparison} />}
-
-    <section className="compare-evidence" aria-label={text("Comparison evidence", "对比证据")}>
-      <button aria-expanded={showProvenance} aria-pressed={showProvenance} className="button secondary" onClick={() => setShowProvenance((open) => !open)} type="button">{text("Raw / Provenance", "原始数据 / 溯源")}</button>
-      {showProvenance && <ProvenancePanel baseline={baseline} candidate={candidate} />}
-    </section>
   </section>;
 }
 

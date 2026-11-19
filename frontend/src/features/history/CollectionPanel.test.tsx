@@ -58,7 +58,7 @@ describe("collection and history panel (design board B)", () => {
     const html = render(status());
     expect(html).toContain("30 days, expired data deleted automatically");
     expect(html).toContain("2.4 MB");
-    expect(html).toContain("Never keeps: SQL literals, Profile text, StarRocks credentials.");
+    expect(html).toContain("Never keeps: SQL literals, Profile text. StarRocks passwords are not kept unless you tick saving");
     const off = render(status({ store: { state: "disabled" }, collection: { state: "stopped", reason: "history_disabled" } }));
     expect(off).toContain("History is off in this setup (DOCTOR_HISTORY=off); nothing is collected.");
     expect(off).not.toContain("Clear history");

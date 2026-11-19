@@ -898,6 +898,7 @@ fn main() {
     export_schema::<ErrorEnvelope>("ErrorEnvelope", check);
     export_schema::<InputOrigin>("InputOrigin", check);
     export_schema::<ConnectionCreateRequest>("ConnectionCreateRequest", check);
+    export_schema::<SavedConnectionView>("SavedConnectionView", check);
     export_schema::<AccessSessionStatus>("AccessSessionStatus", check);
     export_schema::<AccessLoginRequest>("AccessLoginRequest", check);
     export_schema::<ConnectionCapabilityReport>("ConnectionCapabilityReport", check);
@@ -1181,6 +1182,10 @@ fn main() {
     export_ts::<ConnectedGoldenEvidence>(&mut types);
     export_ts::<ConnectedSchemaVersion>(&mut types);
     export_ts::<ConnectionCreateRequest>(&mut types);
+    export_ts::<SavedConnectionView>(&mut types);
+    export_ts::<SavedConnectionState>(&mut types);
+    export_ts::<SavedConnectionUnavailableReason>(&mut types);
+    export_ts::<SavedConnectionBackground>(&mut types);
     export_ts::<AccessSessionStatus>(&mut types);
     export_ts::<AccessLoginRequest>(&mut types);
     export_ts::<ConnectionCapabilityReport>(&mut types);

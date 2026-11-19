@@ -442,8 +442,13 @@ function SelectedQuery({ baselineQuery, candidateQuery, canCompare, compareError
     fact(text("Candidate slot", "候选槽位"), candidateQuery ? compactQueryId(candidateQuery.query_id) : null, text("not selected", "未选择")),
   ];
   return <section className="selected-query" aria-labelledby="selected-query-title">
-    <div><h2 id="selected-query-title">{text("Selected query evidence", "已选查询证据")}</h2><EvidenceFacts facts={queryFacts} /></div>
+    {/* Task 69: a fixed title, one scrolling body (facts and SQL), the actions fixed at the bottom. */}
+    <header className="selected-query-head"><h2 id="selected-query-title">{text("Selected query evidence", "已选查询证据")}</h2></header>
+    <div className="selected-query-body">
+    <EvidenceFacts facts={queryFacts} />
     <div><h2>{text("Profile evidence", "Profile 证据")}</h2><EvidenceFacts facts={profileFacts} /></div>
+    {visibleSql !== null && <SqlText className="query-sql" copyLabel={text("Copy SQL", "复制 SQL")} id="selected-query-sql" label={text("Selected query SQL", "已选查询 SQL")} value={visibleSql} />}
+    </div>
     <div aria-busy={fetching || comparing || querySqlLoading} className="selected-query-actions">
       <SqlToggleButton controls="selected-query-sql" disabled={!ready || !query || query.discovery_generation === null} expanded={visibleSql !== null} loading={querySqlLoading} onToggle={onViewSql} />
       <button className="button accent" disabled={!ready || !fetchAvailable || fetching} onClick={onFetch} title={query ? profileAvailabilityLabel(query, text) : undefined} type="button">{fetching ? text("Fetching…", "拉取中…") : text("Fetch profile", "拉取 Profile")}</button>
@@ -465,8 +470,6 @@ function SelectedQuery({ baselineQuery, candidateQuery, canCompare, compareError
       <p className="connected-compare-boundary" role={compareError ? "alert" : undefined}>{compareError ? comparisonErrorLabel(compareError, text) : text("Candidate Profile must come from a user-side controlled rerun. The product sends only query references and does not execute SQL.", "候选 Profile 必须来自用户侧受控重跑。产品只发送查询引用，不执行 SQL。")}</p>
       {querySqlError && <p className="query-sql-error" role="alert">{querySqlError}</p>}
     </div>
-    {/* Below the three columns, so the query ID, digest and Profile evidence stay visible while reading. */}
-    {visibleSql !== null && <SqlText className="query-sql" copyLabel={text("Copy SQL", "复制 SQL")} id="selected-query-sql" label={text("Selected query SQL", "已选查询 SQL")} value={visibleSql} />}
   </section>;
 }
 

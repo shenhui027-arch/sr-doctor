@@ -2074,6 +2074,73 @@ pub struct ConnectionCreateRequest {
     pub database: Option<String>,
     pub audit_table: Option<String>,
     pub tls_mode: TlsMode,
+    /// Task 72 (design C1): the user ticked "save the password on this machine".
+    /// The server seals it (AES-256-GCM, write-only) and keeps collecting with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub save_credentials: Option<bool>,
+}
+
+/// Task 72 (design C1): the one connection saved on this server. Never carries
+/// the password; only whether it is saved and can be used.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[ts(rename_all = "snake_case")]
+pub struct SavedConnectionView {
+    pub state: SavedConnectionState,
+    /// Why saving is off; present only when `state` is `unavailable`.
+    pub unavailable_reason: Option<SavedConnectionUnavailableReason>,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub username: Option<String>,
+    pub tls_mode: Option<TlsMode>,
+    /// The background collection that runs with the saved connection.
+    pub background: SavedConnectionBackground,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum SavedConnectionState {
+    /// Nothing saved; saving is possible.
+    None,
+    Saved,
+    /// The password stopped working or can no longer be decrypted.
+    NeedsReentry,
+    /// Saving is off; see `unavailable_reason`.
+    Unavailable,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum SavedConnectionUnavailableReason {
+    /// The history store is off or could not be opened.
+    HistoryUnavailable,
+    /// No master key (`DOCTOR_SECRET_KEY` or `secret.key`).
+    KeyUnavailable,
+    /// Network mode still uses the public default login password.
+    DefaultAdminPassword,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum SavedConnectionBackground {
+    /// Nothing saved, or the saved password needs re-entry.
+    Off,
+    Connecting,
+    /// The background connection is open and its collector is the one reading.
+    Collecting,
+    /// Open, but a page session to the same cluster is collecting; it takes
+    /// over when that session ends.
+    Standby,
+    /// Connecting failed; retrying with backoff.
+    Retrying,
+    /// A remote cluster: collection waits for the G1 pilot.
+    ProductionGate,
+    /// The saved cluster runs a StarRocks version this release does not support.
+    UnsupportedVersion,
 }
 
 /// Whether this server asks for a login before the API answers.

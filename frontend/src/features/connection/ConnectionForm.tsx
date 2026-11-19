@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, FormEvent, JSX, RefObject } from "react";
-import type { ConnectionCreateRequest } from "../../../../contracts/generated/doctor-contracts";
+import type { ConnectionCreateRequest, SavedConnectionUnavailableReason, SavedConnectionView } from "../../../../contracts/generated/doctor-contracts";
 import { useLocale } from "../../i18n/locale";
 import { doctorApi, type DoctorApi } from "../../lib/api";
+import { InfoTip } from "../shell/ui";
 import { CapabilityList } from "./CapabilityList";
+import { readRememberedConnection, rememberConnection } from "./connection-memory";
 import { ConnectionStateView, connectionFailureMessage, isConnectionExpiredFailure } from "./ConnectionDialog";
 import "./connection-form.css";
 import { connectionDraftError, type ConnectionAction, type ConnectionDraft, type ConnectionState, type TlsMode } from "./connection-state";
@@ -40,8 +42,26 @@ export function ConnectionForm({ api = doctorApi, dispatch, hostInputRef, idPref
   submitLabel?: string;
 }): JSX.Element {
   const { text } = useLocale();
-  const [draft, setDraft] = useState(emptyDraft);
+  // Task 71: the last successful host, port, username and transport come back filled in (never the password).
+  const [draft, setDraft] = useState<ConnectionCreateRequest>(() => ({ ...emptyDraft, ...readRememberedConnection() }));
   const validationError = useMemo(() => connectionDraftError(draft), [draft]);
+  // Task 72 (design C1): the connection saved on the server, and whether to save this one.
+  const [saved, setSaved] = useState<SavedConnectionView | null>(null);
+  const [saveCredentials, setSaveCredentials] = useState(false);
+  const touchedRef = useRef(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    api.savedConnection(controller.signal).then((view) => {
+      if (controller.signal.aborted) return;
+      setSaved(view);
+      if (view.state !== "saved" && view.state !== "needs_reentry") return;
+      setSaveCredentials(true);
+      const { host, port, username, tls_mode: tlsMode } = view;
+      if (!touchedRef.current && host && port && username && tlsMode) setDraft((current) => ({ ...current, host, port, username, tls_mode: tlsMode }));
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, [api]);
+  const saveBlocked = saved === null || saved.state === "unavailable";
   const connectControllerRef = useRef<AbortController | null>(null);
   const doneButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -56,6 +76,7 @@ export function ConnectionForm({ api = doctorApi, dispatch, hostInputRef, idPref
   }, []);
 
   function update<K extends keyof ConnectionDraft>(key: K, value: ConnectionDraft[K]) {
+    touchedRef.current = true;
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
@@ -71,8 +92,11 @@ export function ConnectionForm({ api = doctorApi, dispatch, hostInputRef, idPref
     const controller = new AbortController();
     connectControllerRef.current = controller;
     try {
-      const session = await api.createConnection(draft, controller.signal);
+      const save = saveCredentials && !saveBlocked;
+      const session = await api.createConnection(save ? { ...draft, save_credentials: true } : draft, controller.signal);
       if (controller.signal.aborted) return;
+      rememberConnection(draft);
+      if (save) setSaved((current) => current && { ...current, state: "saved", host: draft.host.trim(), port: draft.port, username: draft.username.trim(), tls_mode: draft.tls_mode });
       dispatch({ type: "session", session });
     } catch (error) {
       if (!controller.signal.aborted) dispatch({ type: "fail", message: connectionFailureMessage(error, "Connection failed.") });
@@ -119,14 +143,31 @@ export function ConnectionForm({ api = doctorApi, dispatch, hostInputRef, idPref
           <span><strong>{label}</strong><small>{hint}</small></span>
         </label>)}
       </fieldset>
-      <p className="connection-note">{text("Credentials stay in this process's short-lived session only: never written to disk, returned to the page or logged, and deleted on disconnect or expiry.", "凭据只保存在本进程的短期会话中，不落盘、不返回页面、不写日志；断开或过期即删除。")}</p>
+      <div className="connection-save">
+        <label>
+          <input checked={saveCredentials && !saveBlocked} disabled={saveBlocked} onChange={(event) => setSaveCredentials(event.target.checked)} type="checkbox" />
+          <span>{text("Save the password encrypted on the SR Doctor server and keep collecting", "在 SR Doctor 服务端加密保存口令，持续采集")}</span>
+        </label>
+        <InfoTip label={text("About saving the password", "关于保存口令")}>{text("The password is sealed with AES-256-GCM in the history store of the server running SR Doctor (not in this browser): write-only, never returned to the page or logged. The page then connects on open, and anyone who can sign in to SR Doctor can use it to reach the cluster, so prefer a read-only account.", "口令用 AES-256-GCM 加密存进运行 SR Doctor 的服务端历史库（不在浏览器里），只写不读，不返回页面、不写日志。保存后页面打开时自动连接；能登录 SR Doctor 的人都能借它连接集群，建议使用只读账号。")}</InfoTip>
+      </div>
+      {saved?.state === "unavailable" && saved.unavailable_reason ? <p className="connection-save-note">{saveUnavailableText(saved.unavailable_reason, text)}</p> : null}
+      {saved?.state === "needs_reentry" ? <p className="connection-save-note warn">{text("The saved password no longer works; enter it again to save it.", "已保存的口令已失效，请重新输入后保存。")}</p> : null}
+      {saveCredentials && !saveBlocked ? <p className="connection-note">{text("Collection keeps running after this page is closed. Forget the saved connection under Settings › Connection.", "关闭网页后仍会采集；可在 设置 › 连接 里忘记已保存的连接。")}</p> : <p className="connection-note">{text("Credentials stay in this process's short-lived session only: never written to disk, returned to the page or logged, and deleted on disconnect or expiry. This browser remembers the host, port and username, never the password.", "凭据只保存在本进程的短期会话中，不落盘、不返回页面、不写日志；断开或过期即删除。本浏览器只记住主机、端口和用户名，不记口令。")}</p>}
       <div className="row actions connection-actions">
         {onDone && state.phase === "ready" && <button className="button accent" onClick={onDone} ref={doneButtonRef} type="button">{text("Done", "完成")}</button>}
-        {(state.phase === "ready" || state.phase === "unsupported") && <button className="button secondary" onClick={closeSession} type="button">{text("Disconnect", "断开连接")}</button>}
+        {(state.phase === "ready" || state.phase === "unsupported") && <button className="button secondary" onClick={closeSession} title={saved?.state === "saved" ? text("Background collection with the saved connection keeps running.", "已保存连接的后台采集会继续。") : undefined} type="button">{saved?.state === "saved" ? text("Disconnect this page", "断开本页连接") : text("Disconnect", "断开连接")}</button>}
         <button className={state.phase === "ready" ? "button secondary" : "button dark"} disabled={state.phase === "connecting"} type="submit">{state.phase === "connecting" ? text("Probing…", "探测中…") : submitLabel ?? text("Connect read-only", "只读连接")}</button>
       </div>
     </form>
     {showCapabilities && (state.phase === "closed" && !state.message) ? null : <ConnectionStateView state={state} />}
     {showCapabilities && <CapabilityList state={state} />}
   </>;
+}
+
+export function saveUnavailableText(reason: SavedConnectionUnavailableReason, text: (en: string, zh: string) => string): string {
+  switch (reason) {
+    case "history_unavailable": return text("Saving needs the history store, which is off.", "历史库未开启，无法保存口令。");
+    case "key_unavailable": return text("Saving needs a master key (DOCTOR_SECRET_KEY or secret.key).", "没有主密钥（DOCTOR_SECRET_KEY 或 secret.key），无法保存口令。");
+    case "default_admin_password": return text("This network deployment still uses the default login password; change DOCTOR_ADMIN_PASSWORD in .env before saving.", "网络模式仍在使用默认登录密码，先在 .env 修改 DOCTOR_ADMIN_PASSWORD 才能保存口令。");
+  }
 }

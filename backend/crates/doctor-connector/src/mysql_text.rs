@@ -75,6 +75,13 @@ pub struct MysqlTextRemote {
     audit_control: Option<Arc<crate::OperationControl>>,
 }
 
+struct ControlledSessionSettings {
+    enable_profile: bool,
+    pipeline_profile_level: i32,
+    query_timeout_seconds: i32,
+    sql_dialect: String,
+}
+
 enum WireStream {
     Plain(TcpStream),
     Tls(Box<StreamOwned<ClientConnection, TcpStream>>),
@@ -263,6 +270,71 @@ impl MysqlTextRemote {
             crate::AUDIT_QUERY_TIMEOUT_SECONDS
         ))?;
         self.query_nullable(statement)
+    }
+
+    fn read_controlled_session_settings(
+        &mut self,
+    ) -> Result<ControlledSessionSettings, RemoteError> {
+        // Nothing is changed yet, so a server error keeps its own class (a
+        // timeout stays a timeout). Under `sql_dialect=trino` with dialect
+        // downgrade off, FE cannot parse this query and the run fails closed.
+        let rows = self.query_nullable(
+            "SELECT @@session.enable_profile, @@session.pipeline_profile_level, @@session.query_timeout, @@session.sql_dialect",
+        )?;
+        let [row] = rows.as_slice() else {
+            return Err(RemoteError::Protocol);
+        };
+        let [
+            Some(enable_profile),
+            Some(pipeline_profile_level),
+            Some(query_timeout_seconds),
+            Some(sql_dialect),
+        ] = row.as_slice()
+        else {
+            return Err(RemoteError::Protocol);
+        };
+        let [first, rest @ ..] = sql_dialect.as_bytes() else {
+            return Err(RemoteError::Protocol);
+        };
+        if sql_dialect.len() > 32
+            || !first.is_ascii_alphabetic()
+            || !rest
+                .iter()
+                .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+        {
+            return Err(RemoteError::Protocol);
+        }
+        Ok(ControlledSessionSettings {
+            enable_profile: match enable_profile.as_str() {
+                "0" => false,
+                "1" => true,
+                _ => return Err(RemoteError::Protocol),
+            },
+            pipeline_profile_level: pipeline_profile_level
+                .parse()
+                .map_err(|_| RemoteError::Protocol)?,
+            query_timeout_seconds: query_timeout_seconds
+                .parse()
+                .map_err(|_| RemoteError::Protocol)?,
+            sql_dialect: sql_dialect.clone(),
+        })
+    }
+
+    fn restore_controlled_session_settings(
+        &mut self,
+        saved: &ControlledSessionSettings,
+    ) -> Result<(), RemoteError> {
+        self.query(&format!("SET enable_profile = {}", saved.enable_profile))?;
+        self.query(&format!(
+            "SET pipeline_profile_level = {}",
+            saved.pipeline_profile_level
+        ))?;
+        self.query(&format!(
+            "SET query_timeout = {}",
+            saved.query_timeout_seconds
+        ))?;
+        self.query(&format!("SET sql_dialect = '{}'", saved.sql_dialect))?;
+        Ok(())
     }
 
     fn query_profile_when_ready(&mut self, query_id: &str) -> Result<String, RemoteError> {
@@ -571,43 +643,60 @@ impl Remote for MysqlTextRemote {
             } => {
                 let statement =
                     explain_statement(&candidate_sql, &mode).map_err(|_| RemoteError::Protocol)?;
-                self.query(&format!(
-                    "SET query_timeout = {}",
-                    crate::ANALYZE_PROFILE_TIMEOUT_SECONDS
-                ))?;
-                let rows =
-                    self.query_nullable_with_policy(&statement, TextResultPolicy::ExplainCosts)?;
-                Ok(RemoteResponse::Explain(
-                    rows.into_iter()
-                        .map(|row| {
-                            let [Some(value)] = row.as_slice() else {
-                                return Err(RemoteError::Protocol);
-                            };
-                            Ok(value.clone())
-                        })
-                        .collect::<Result<Vec<_>, _>>()?,
-                ))
+                let saved = self.read_controlled_session_settings()?;
+                let result = (|| {
+                    self.query("SET sql_dialect = 'StarRocks'")?;
+                    self.query(&format!(
+                        "SET query_timeout = {}",
+                        crate::ANALYZE_PROFILE_TIMEOUT_SECONDS
+                    ))?;
+                    let rows = self
+                        .query_nullable_with_policy(&statement, TextResultPolicy::ExplainCosts)?;
+                    Ok(RemoteResponse::Explain(
+                        rows.into_iter()
+                            .map(|row| {
+                                let [Some(value)] = row.as_slice() else {
+                                    return Err(RemoteError::Protocol);
+                                };
+                                Ok(value.clone())
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
+                    ))
+                })();
+                if matches!(result, Err(error) if crate::remote_must_be_discarded(error)) {
+                    return result;
+                }
+                self.restore_controlled_session_settings(&saved)
+                    .map_err(|_| RemoteError::Protocol)?;
+                result
             }
             RemoteOperation::ProfiledSelect { candidate_sql } => {
-                // These are server-owned fixed statements. The user statement
-                // remains one validated SELECT/WITH and multi-statements are
-                // never advertised by the handshake.
-                self.query("SET enable_profile = true")?;
-                self.query("SET pipeline_profile_level = 1")?;
-                self.query(&format!(
-                    "SET query_timeout = {}",
-                    crate::AUDIT_QUERY_TIMEOUT_SECONDS
-                ))?;
-                self.query_user_statement_with_policy(
-                    &candidate_sql,
-                    TextResultPolicy::DiscardRows,
-                )?;
-                let query_id = exactly_one_scalar(self.query("SELECT last_query_id()")?)?;
-                if !is_uuid(&query_id) {
-                    return Err(RemoteError::Protocol);
+                let saved = self.read_controlled_session_settings()?;
+                let result = (|| {
+                    self.query("SET sql_dialect = 'StarRocks'")?;
+                    self.query("SET enable_profile = true")?;
+                    self.query("SET pipeline_profile_level = 1")?;
+                    self.query(&format!(
+                        "SET query_timeout = {}",
+                        crate::AUDIT_QUERY_TIMEOUT_SECONDS
+                    ))?;
+                    self.query_user_statement_with_policy(
+                        &candidate_sql,
+                        TextResultPolicy::DiscardRows,
+                    )?;
+                    let query_id = exactly_one_scalar(self.query("SELECT last_query_id()")?)?;
+                    if !is_uuid(&query_id) {
+                        return Err(RemoteError::Protocol);
+                    }
+                    let profile = self.query_profile_when_ready(&query_id)?;
+                    Ok(RemoteResponse::ProfiledQuery { query_id, profile })
+                })();
+                if matches!(result, Err(error) if crate::remote_must_be_discarded(error)) {
+                    return result;
                 }
-                let profile = self.query_profile_when_ready(&query_id)?;
-                Ok(RemoteResponse::ProfiledQuery { query_id, profile })
+                self.restore_controlled_session_settings(&saved)
+                    .map_err(|_| RemoteError::Protocol)?;
+                result
             }
         }
     }
@@ -1254,14 +1343,21 @@ mod tests {
             (ExplainMode::Costs, "EXPLAIN COSTS SELECT 1"),
         ] {
             let (mut remote, server) = loopback_remote(|mut stream| {
-                let timeout = read_com_query(&mut stream);
-                write_ok(&mut stream);
-                let explain = read_com_query(&mut stream);
+                let mut statements = vec![serve_session_snapshot(&mut stream)];
+                for _ in 0..2 {
+                    statements.push(read_com_query(&mut stream));
+                    write_ok(&mut stream);
+                }
+                statements.push(read_com_query(&mut stream));
                 stream
                     .write_all(&text_result(1, vec![vec![4, b'P', b'L', b'A', b'N']]))
                     .unwrap();
+                for _ in 0..4 {
+                    statements.push(read_com_query(&mut stream));
+                    write_ok(&mut stream);
+                }
                 stream.flush().unwrap();
-                vec![timeout, explain]
+                statements
             });
 
             let RemoteResponse::Explain(rows) = remote
@@ -1275,25 +1371,30 @@ mod tests {
             };
             assert_eq!(rows, vec!["PLAN"]);
             drop(remote);
-            assert_eq!(
-                server.join().unwrap(),
-                vec![
-                    doctor_statement("SET query_timeout = 10"),
-                    doctor_statement(expected_explain)
-                ]
-            );
+            let mut expected = vec![
+                doctor_statement(SESSION_SNAPSHOT_SQL),
+                doctor_statement("SET sql_dialect = 'StarRocks'"),
+                doctor_statement("SET query_timeout = 10"),
+                doctor_statement(expected_explain),
+            ];
+            expected.extend(restored_session_settings());
+            assert_eq!(server.join().unwrap(), expected);
         }
     }
 
     #[test]
-    fn explain_modes_do_not_send_explain_when_timeout_setup_connection_fails() {
+    fn explain_modes_do_not_send_explain_when_dialect_setup_connection_fails() {
         for mode in [
             ExplainMode::Logical,
             ExplainMode::Verbose,
             ExplainMode::Costs,
         ] {
-            let (mut remote, server) =
-                loopback_remote(|mut stream| vec![read_com_query(&mut stream)]);
+            let (mut remote, server) = loopback_remote(|mut stream| {
+                vec![
+                    serve_session_snapshot(&mut stream),
+                    read_com_query(&mut stream),
+                ]
+            });
 
             assert!(matches!(
                 remote.run(RemoteOperation::Explain {
@@ -1305,7 +1406,10 @@ mod tests {
             drop(remote);
             assert_eq!(
                 server.join().unwrap(),
-                vec![doctor_statement("SET query_timeout = 10")]
+                vec![
+                    doctor_statement(SESSION_SNAPSHOT_SQL),
+                    doctor_statement("SET sql_dialect = 'StarRocks'"),
+                ]
             );
         }
     }
@@ -1321,16 +1425,21 @@ mod tests {
                 stream
                     .set_read_timeout(Some(Duration::from_secs(2)))
                     .unwrap();
-                let timeout = read_com_query(&mut stream);
-                let mut denied = vec![0xff];
-                denied.extend_from_slice(&1227_u16.to_le_bytes());
-                denied.extend_from_slice(b"#42000denied");
-                stream.write_all(&packet(1, &denied)).unwrap();
+                let mut statements = vec![serve_session_snapshot(&mut stream)];
+                statements.push(read_com_query(&mut stream));
+                write_ok(&mut stream);
+                statements.push(read_com_query(&mut stream));
+                write_denied(&mut stream);
+                // The denied timeout is reusable: the snapshot is written back,
+                // and no EXPLAIN may follow.
+                for _ in 0..4 {
+                    statements.push(read_com_query(&mut stream));
+                    write_ok(&mut stream);
+                }
                 stream.flush().unwrap();
-                // Keep the server alive: any fallback command would be observable.
                 let mut next = [0];
                 assert_eq!(stream.read(&mut next).unwrap(), 0);
-                vec![timeout]
+                statements
             });
             assert!(matches!(
                 remote.run(RemoteOperation::Explain {
@@ -1340,19 +1449,185 @@ mod tests {
                 Err(RemoteError::PermissionDenied)
             ));
             drop(remote);
-            assert_eq!(
-                server.join().unwrap(),
-                vec![doctor_statement("SET query_timeout = 10")]
-            );
+            let mut expected = vec![
+                doctor_statement(SESSION_SNAPSHOT_SQL),
+                doctor_statement("SET sql_dialect = 'StarRocks'"),
+                doctor_statement("SET query_timeout = 10"),
+            ];
+            expected.extend(restored_session_settings());
+            assert_eq!(server.join().unwrap(), expected);
         }
+    }
+
+    const SESSION_SNAPSHOT_SQL: &str = "SELECT @@session.enable_profile, @@session.pipeline_profile_level, @@session.query_timeout, @@session.sql_dialect";
+
+    /// Answers the snapshot query with the values a controlled run must write
+    /// back: enable_profile off, level -1 (FE's int is signed), 300 s, and a
+    /// Trino default dialect, the case that would otherwise split statements
+    /// differently (task 76).
+    fn serve_session_snapshot(stream: &mut TcpStream) -> String {
+        let statement = read_com_query(stream);
+        let row = [
+            &[1, b'0'][..],
+            &[2, b'-', b'1'],
+            &[3, b'3', b'0', b'0'],
+            &[5, b't', b'r', b'i', b'n', b'o'],
+        ]
+        .concat();
+        stream.write_all(&text_result(4, vec![row])).unwrap();
+        statement
+    }
+
+    fn restored_session_settings() -> Vec<String> {
+        vec![
+            doctor_statement("SET enable_profile = false"),
+            doctor_statement("SET pipeline_profile_level = -1"),
+            doctor_statement("SET query_timeout = 300"),
+            doctor_statement("SET sql_dialect = 'trino'"),
+        ]
+    }
+
+    fn write_denied(stream: &mut TcpStream) {
+        let mut denied = vec![0xff];
+        denied.extend_from_slice(&1227_u16.to_le_bytes());
+        denied.extend_from_slice(b"#42000denied");
+        stream.write_all(&packet(1, &denied)).unwrap();
+    }
+
+    #[test]
+    fn profiled_select_restores_session_settings_after_a_reusable_failure() {
+        let (mut remote, server) = loopback_remote(|mut stream| {
+            let mut statements = vec![serve_session_snapshot(&mut stream)];
+            for _ in 0..4 {
+                statements.push(read_com_query(&mut stream));
+                write_ok(&mut stream);
+            }
+            statements.push(read_com_query(&mut stream));
+            write_denied(&mut stream);
+            for _ in 0..4 {
+                statements.push(read_com_query(&mut stream));
+                write_ok(&mut stream);
+            }
+            stream.flush().unwrap();
+            statements
+        });
+        assert!(matches!(
+            remote.run(RemoteOperation::ProfiledSelect {
+                candidate_sql: "SELECT 1".into(),
+            }),
+            Err(RemoteError::PermissionDenied)
+        ));
+        drop(remote);
+        let statements = server.join().unwrap();
+        assert_eq!(statements[5], "SELECT 1");
+        assert_eq!(statements[6..], restored_session_settings()[..]);
+    }
+
+    #[test]
+    fn controlled_run_fails_closed_when_the_snapshot_cannot_be_restored() {
+        let (mut remote, server) = loopback_remote(|mut stream| {
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut statements = vec![serve_session_snapshot(&mut stream)];
+            for _ in 0..4 {
+                statements.push(read_com_query(&mut stream));
+                write_ok(&mut stream);
+            }
+            statements.push(read_com_query(&mut stream));
+            write_denied(&mut stream);
+            // The first restore succeeds, the second fails: nothing may follow.
+            statements.push(read_com_query(&mut stream));
+            write_ok(&mut stream);
+            statements.push(read_com_query(&mut stream));
+            write_denied(&mut stream);
+            stream.flush().unwrap();
+            let mut next = [0];
+            assert_eq!(stream.read(&mut next).unwrap(), 0);
+            statements
+        });
+        // Protocol is a discard error (`remote_must_be_discarded`): the session
+        // manager closes this connection instead of reusing it.
+        let Err(error) = remote.run(RemoteOperation::ProfiledSelect {
+            candidate_sql: "SELECT 1".into(),
+        }) else {
+            panic!("a failed restore must not report success");
+        };
+        assert_eq!(error, RemoteError::Protocol);
+        assert!(crate::remote_must_be_discarded(error));
+        // The exact conversion SessionManager applies to a runtime execution
+        // error before deciding to drop the session (lib.rs, runtime_execute).
+        assert!(crate::session_must_be_discarded(
+            &error.connector("runtime_execute")
+        ));
+        drop(remote);
+        let statements = server.join().unwrap();
+        assert_eq!(statements[6..], restored_session_settings()[..2]);
+    }
+
+    #[test]
+    fn controlled_run_keeps_a_snapshot_permission_denial_and_sends_nothing_else() {
+        let (mut remote, server) = loopback_remote(|mut stream| {
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let statement = read_com_query(&mut stream);
+            write_denied(&mut stream);
+            stream.flush().unwrap();
+            let mut next = [0];
+            assert_eq!(stream.read(&mut next).unwrap(), 0);
+            vec![statement]
+        });
+        assert!(matches!(
+            remote.run(RemoteOperation::ProfiledSelect {
+                candidate_sql: "SELECT 1".into(),
+            }),
+            Err(RemoteError::PermissionDenied)
+        ));
+        drop(remote);
+        assert_eq!(
+            server.join().unwrap(),
+            vec![doctor_statement(SESSION_SNAPSHOT_SQL)]
+        );
+    }
+
+    #[test]
+    fn controlled_run_rejects_an_unquotable_dialect_before_any_set() {
+        let (mut remote, server) = loopback_remote(|mut stream| {
+            let statement = read_com_query(&mut stream);
+            let row = [
+                &[1, b'0'][..],
+                &[1, b'1'],
+                &[2, b'1', b'0'],
+                &[3, b'a', b'\'', b'b'],
+            ]
+            .concat();
+            stream.write_all(&text_result(4, vec![row])).unwrap();
+            stream.flush().unwrap();
+            // Stay connected until the client closes: any SET would show up.
+            let mut next = [0];
+            assert_eq!(stream.read(&mut next).unwrap(), 0);
+            vec![statement]
+        });
+        assert!(matches!(
+            remote.run(RemoteOperation::ProfiledSelect {
+                candidate_sql: "SELECT 1".into(),
+            }),
+            Err(RemoteError::Protocol)
+        ));
+        drop(remote);
+        assert_eq!(
+            server.join().unwrap(),
+            vec![doctor_statement(SESSION_SNAPSHOT_SQL)]
+        );
     }
 
     #[test]
     fn profiled_select_marks_fixed_statements_and_sends_user_sql_verbatim() {
         let query_id = "01234567-89ab-4abc-8def-0123456789ab";
         let (mut remote, server) = loopback_remote(move |mut stream| {
-            let mut statements = Vec::new();
-            for _ in 0..3 {
+            let mut statements = vec![serve_session_snapshot(&mut stream)];
+            for _ in 0..4 {
                 statements.push(read_com_query(&mut stream));
                 write_ok(&mut stream);
             }
@@ -1371,6 +1646,10 @@ mod tests {
                     vec![vec![7, b'P', b'r', b'o', b'f', b'i', b'l', b'e']],
                 ))
                 .unwrap();
+            for _ in 0..4 {
+                statements.push(read_com_query(&mut stream));
+                write_ok(&mut stream);
+            }
             stream.flush().unwrap();
             statements
         });
@@ -1384,17 +1663,18 @@ mod tests {
         };
         assert_eq!(profile, "Profile");
         drop(remote);
-        assert_eq!(
-            server.join().unwrap(),
-            vec![
-                doctor_statement("SET enable_profile = true"),
-                doctor_statement("SET pipeline_profile_level = 1"),
-                doctor_statement("SET query_timeout = 10"),
-                "SELECT 1".to_owned(),
-                doctor_statement("SELECT last_query_id()"),
-                doctor_statement(&format!("SELECT get_query_profile('{query_id}')")),
-            ]
-        );
+        let mut expected = vec![
+            doctor_statement(SESSION_SNAPSHOT_SQL),
+            doctor_statement("SET sql_dialect = 'StarRocks'"),
+            doctor_statement("SET enable_profile = true"),
+            doctor_statement("SET pipeline_profile_level = 1"),
+            doctor_statement("SET query_timeout = 10"),
+            "SELECT 1".to_owned(),
+            doctor_statement("SELECT last_query_id()"),
+            doctor_statement(&format!("SELECT get_query_profile('{query_id}')")),
+        ];
+        expected.extend(restored_session_settings());
+        assert_eq!(server.join().unwrap(), expected);
         assert!(doctor_statement("SET enable_profile = true").starts_with("/* sr-doctor */ SET"));
     }
 

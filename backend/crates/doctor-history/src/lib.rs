@@ -15,6 +15,7 @@ mod governance;
 mod load_alerts;
 mod loads;
 mod notify;
+mod saved_connection;
 pub use governance::{
     AlertFacts, AlertUpsert, ItemUpdate, StoreChange, StoredAlert, StoredEvent, StoredItem,
 };
@@ -30,8 +31,9 @@ pub use notify::{
     DeliveryAttempt, DeliveryFilter, NewDelivery, SecretUpdate, StoredChannel, StoredDelivery,
     StoredTarget, TargetWrite,
 };
+pub use saved_connection::StoredConnection;
 
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 8;
 // Privacy policy has its own revision, independent of fingerprint identity.
 const TEMPLATE_REDACTION_VERSION: &str = "literal-free-template.v2";
 
@@ -396,6 +398,9 @@ impl HistoryStore {
         }
         if version < 7 {
             tx.execute_batch(load_alerts::MIGRATION_7)?;
+        }
+        if version < 8 {
+            tx.execute_batch(saved_connection::MIGRATION_8)?;
         }
         if version < SCHEMA_VERSION {
             tx.execute(
@@ -846,12 +851,14 @@ impl HistoryStore {
     }
 
     /// Everything goes, watermarks, alerts, governance records, the
-    /// delivery log, load history and saved error log text included; notification channels and targets stay.
+    /// delivery log, load history, saved error log text and the saved
+    /// StarRocks connection (task 72) included; notification channels and targets stay.
     /// The next run starts fresh.
     pub fn clear(&self) -> Result<()> {
         let connection = self.lock();
         connection.execute_batch(loads::CLEAR_LOADS)?;
         connection.execute_batch(load_alerts::CLEAR_LOAD_ALERTS)?;
+        connection.execute_batch(saved_connection::CLEAR_SAVED_CONNECTION)?;
         connection.execute_batch(
             "DELETE FROM notify_deliveries; DELETE FROM governance_events; DELETE FROM governance_items; DELETE FROM alerts; DELETE FROM exemplars; DELETE FROM buckets; DELETE FROM runs; DELETE FROM templates; DELETE FROM targets;",
         )?;
