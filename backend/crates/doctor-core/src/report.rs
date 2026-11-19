@@ -39,22 +39,22 @@ impl From<Cancelled> for PublicReportError {
 /// The locally assembled receipt is fixed by the checked-in component manifest.
 /// The version-pack component deliberately carries its semantic manifest hash.
 pub(crate) const GRAPH_COMPONENT_ID: &str = "sr3514-graph-resolver-contract";
-pub(crate) const GRAPH_COMPONENT_VERSION: &str = "0.10.0";
+pub(crate) const GRAPH_COMPONENT_VERSION: &str = "0.10.1";
 pub(crate) const GRAPH_COMPONENT_HASH: &str =
-    "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5";
+    "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b";
 
 pub fn v01_analysis_receipt() -> AnalysisReceipt {
     AnalysisReceipt {
         components: vec![
             receipt(
                 "sr3514-runtime-profile-adapter",
-                "0.2.3",
-                "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb",
+                "0.2.4",
+                "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32",
             ),
             receipt(
                 "strict-metric-parser-contract",
-                "0.1.0",
-                "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a",
+                "0.1.1",
+                "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967",
             ),
             receipt(
                 "sr3514-metric-registry",

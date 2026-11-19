@@ -931,6 +931,13 @@ fn collapse_constant_in_lists(out: &mut Vec<Out>) {
 /// Only names right after FROM / JOIN / INTO / UPDATE are folded.
 fn fold_session_qualifiers(out: &mut Vec<Out>, catalog: Option<&str>, database: Option<&str>) {
     let Some(database) = database else { return };
+    // A CTE may shadow an unqualified table name at any nesting level.
+    if out
+        .iter()
+        .any(|token| matches!(token, Out::Kw(word) if word == "WITH"))
+    {
+        return;
+    }
     let ident =
         |item: Option<&Out>, name: &str| matches!(item, Some(Out::Ident(value)) if value == name);
     let mut index = 0;
@@ -1040,6 +1047,88 @@ mod tests {
 
     fn template(text: &str) -> Result<String, Unavailable> {
         normalize(text, Some("default_catalog"), Some("fp_oracle"))
+    }
+
+    #[test]
+    fn fingerprint_distinguishes_cte_from_qualified_table() {
+        let fingerprint = |statement: &str| {
+            let ProductSqlFingerprint::Exact {
+                fingerprint,
+                template,
+            } = product_sql_fingerprint(SqlFingerprintInput {
+                statement: Some(statement),
+                truncated: false,
+                catalog: Some("default_catalog"),
+                database: Some("db"),
+            })
+            else {
+                panic!("expected a fingerprint for {statement}");
+            };
+            (fingerprint, template)
+        };
+        let (cte, cte_template) = fingerprint("WITH t AS (SELECT 1 AS id) SELECT id FROM t");
+        let (table, table_template) = fingerprint("WITH t AS (SELECT 1 AS id) SELECT id FROM db.t");
+        let (catalog, catalog_template) =
+            fingerprint("WITH t AS (SELECT 1 AS id) SELECT id FROM default_catalog.db.t");
+        assert_eq!(cte_template, "WITH t AS (SELECT ? AS id) SELECT id FROM t");
+        assert_eq!(
+            table_template,
+            "WITH t AS (SELECT ? AS id) SELECT id FROM db.t"
+        );
+        assert_eq!(
+            catalog_template,
+            "WITH t AS (SELECT ? AS id) SELECT id FROM default_catalog.db.t"
+        );
+        assert_ne!(cte, table);
+        assert_ne!(cte, catalog);
+        assert_ne!(table, catalog);
+
+        let (nested, nested_template) =
+            fingerprint("SELECT id FROM (WITH t AS (SELECT 1 AS id) SELECT id FROM db.t) q");
+        let (unqualified, _) =
+            fingerprint("SELECT id FROM (WITH t AS (SELECT 1 AS id) SELECT id FROM t) q");
+        assert!(nested_template.contains("WITH t AS (SELECT ? AS id) SELECT id FROM db.t"));
+        assert_ne!(nested, unqualified);
+    }
+
+    #[test]
+    fn fingerprint_keeps_plain_session_qualifier_equivalence() {
+        let fingerprint = |statement: &str| {
+            product_sql_fingerprint(SqlFingerprintInput {
+                statement: Some(statement),
+                truncated: false,
+                catalog: Some("default_catalog"),
+                database: Some("db"),
+            })
+        };
+        let plain = fingerprint("SELECT id FROM t");
+        for qualified in [
+            "SELECT id FROM db.t",
+            "SELECT id FROM default_catalog.db.t",
+            "SELECT id FROM db.t /* WITH */",
+        ] {
+            assert_eq!(fingerprint(qualified), plain);
+        }
+        assert_eq!(
+            fingerprint("SELECT 'WITH' FROM db.t"),
+            fingerprint("SELECT 'WITH' FROM t")
+        );
+        assert_eq!(
+            fingerprint("SELECT `WITH` FROM db.t"),
+            fingerprint("SELECT `WITH` FROM t")
+        );
+        let ProductSqlFingerprint::Exact {
+            fingerprint,
+            template,
+        } = plain
+        else {
+            panic!("expected a fingerprint for the plain query");
+        };
+        let mut v3 = Sha256::new();
+        v3.update(b"sr-doctor-fingerprint.v3\0");
+        v3.update(template.as_bytes());
+        assert_eq!(PRODUCT_SQL_FINGERPRINT_VERSION, "sr-doctor-fingerprint.v4");
+        assert_ne!(fingerprint, format!("{:x}", v3.finalize()));
     }
 
     #[test]

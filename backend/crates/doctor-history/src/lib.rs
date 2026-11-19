@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use doctor_core::{
     HISTORY_EXEMPLARS_PER_BUCKET, HistoryBucketDelta, HistoryMetric, HistoryTemplate,
-    HistoryTemplateKind, LogHistogram,
+    HistoryTemplateKind, LogHistogram, TrendBucket,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
@@ -33,7 +33,7 @@ pub use notify::{
 };
 pub use saved_connection::StoredConnection;
 
-pub const SCHEMA_VERSION: i64 = 8;
+pub const SCHEMA_VERSION: i64 = 9;
 // Privacy policy has its own revision, independent of fingerprint identity.
 const TEMPLATE_REDACTION_VERSION: &str = "literal-free-template.v2";
 
@@ -403,6 +403,8 @@ impl HistoryStore {
             tx.execute_batch(saved_connection::MIGRATION_8)?;
         }
         if version < SCHEMA_VERSION {
+            // v9 records VersionPack identity in new rule keys. Older keys
+            // remain untouched because their semantics cannot be recovered.
             tx.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?1)",
                 params![SCHEMA_VERSION.to_string()],
@@ -556,6 +558,8 @@ impl HistoryStore {
         if current.is_some_and(|current| current > run.slice_start) {
             return Ok(false);
         }
+        let storage_rule_version = TrendBucket::storage_rule_version(engine_version, rule_version);
+        let rule_version = storage_rule_version.as_str();
         for template in templates {
             let clean = template.template.as_deref().and_then(|text| {
                 redacted_template(text, Some(&template.catalog), Some(&template.database))
@@ -834,6 +838,7 @@ impl HistoryStore {
             "DELETE FROM alerts WHERE state = 'resolved' AND resolved_at < ?1",
             params![cutoff],
         )? as u64;
+        tx.execute(governance::PURGE_ALERT_HANDOFFS, [])?;
         removed += tx.execute("DELETE FROM runs WHERE slice_end < ?1", params![cutoff])? as u64;
         removed += tx.execute(
             "DELETE FROM notify_deliveries WHERE created_at < ?1 AND state <> 'pending'",
@@ -860,7 +865,7 @@ impl HistoryStore {
         connection.execute_batch(load_alerts::CLEAR_LOAD_ALERTS)?;
         connection.execute_batch(saved_connection::CLEAR_SAVED_CONNECTION)?;
         connection.execute_batch(
-            "DELETE FROM notify_deliveries; DELETE FROM governance_events; DELETE FROM governance_items; DELETE FROM alerts; DELETE FROM exemplars; DELETE FROM buckets; DELETE FROM runs; DELETE FROM templates; DELETE FROM targets;",
+            &format!("DELETE FROM notify_deliveries; DELETE FROM governance_events; DELETE FROM governance_items; DELETE FROM alerts; {}; DELETE FROM exemplars; DELETE FROM buckets; DELETE FROM runs; DELETE FROM templates; DELETE FROM targets;", governance::PURGE_ALERT_HANDOFFS),
         )?;
         Ok(())
     }
@@ -1192,6 +1197,57 @@ mod tests {
         assert!(store.purge_before(4_000).unwrap() > 0);
         store.clear().unwrap();
         assert_eq!(store.stats().unwrap().templates, 0);
+    }
+
+    #[test]
+    fn same_release_pack_upgrade_splits_one_hour_bucket() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        let rule = doctor_core::history_rule_version();
+        let active_rule = TrendBucket::active_storage_rule_version();
+        let old_rule = format!("{rule}|vp=starrocks-3.5.14@0.1.0:old-manifest:old-deltas");
+        let (templates, buckets, _) = aggregate_collection("t1", &rows("x", 3_600));
+        for start in [3_600, 3_900, 4_200] {
+            assert!(
+                store
+                    .record_slice(
+                        "t1",
+                        "3.5.14",
+                        &rule,
+                        &run(start, start + 300, RunState::Complete),
+                        start + 300,
+                        &templates,
+                        &buckets,
+                    )
+                    .unwrap()
+            );
+            if start == 3_600 {
+                store
+                    .lock()
+                    .execute(
+                        "UPDATE buckets SET rule_version = ?1 WHERE rule_version = ?2",
+                        params![old_rule, active_rule],
+                    )
+                    .unwrap();
+            }
+        }
+        let buckets = store.buckets("t1", 3_600, 7_200, None).unwrap();
+        let totals = store.hourly_totals("t1", 3_600, 7_200).unwrap();
+        assert_eq!(buckets.len(), 2);
+        assert_eq!(totals.len(), 2);
+        for (rule, count) in [(&old_rule, 2), (&active_rule, 4)] {
+            let bucket = buckets
+                .iter()
+                .find(|bucket| &bucket.rule_version == rule)
+                .unwrap();
+            let total = totals
+                .iter()
+                .find(|total| &total.rule_version == rule)
+                .unwrap();
+            assert_eq!(bucket.delta.executions, count);
+            assert_eq!(bucket.delta.query_time.histogram.count(), count);
+            assert_eq!(total.executions, count);
+        }
+        assert_eq!(store.target_state("t1").unwrap().watermark, Some(4_500));
     }
 
     #[test]

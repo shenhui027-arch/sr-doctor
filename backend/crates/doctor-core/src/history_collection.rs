@@ -132,7 +132,7 @@ impl HistoryBucketDelta {
 pub struct CollectionTally {
     pub read: u64,
     pub attributed: u64,
-    /// Statements longer than the read prefix (no digest to key them).
+    /// Known truncated statements, including rows with an official digest.
     pub partial: u64,
     pub unavailable: u64,
     pub missing_context: u64,
@@ -174,6 +174,16 @@ pub fn aggregate_collection(
     let mut buckets: BTreeMap<(String, i64), HistoryBucketDelta> = BTreeMap::new();
     for row in rows {
         tally.read += 1;
+        if matches!(
+            row.statement,
+            AuditFingerprintStatement::Text {
+                truncated: true,
+                ..
+            }
+        ) {
+            tally.partial += 1;
+            continue;
+        }
         let (Some(catalog), Some(database)) = (
             row.catalog.as_deref().filter(|v| !v.is_empty()),
             row.database.as_deref().filter(|v| !v.is_empty()),
@@ -321,6 +331,86 @@ mod tests {
                 AuditMetricId::QueryTime,
                 AuditMetricInput::from_sql_cell(query_time.map(str::to_owned)),
             )],
+        }
+    }
+
+    #[test]
+    fn aggregate_excludes_truncated_rows_even_with_official_digest() {
+        for digest in [Some("ab12"), None] {
+            let truncated = CollectedExecution {
+                query_id: Some("truncated-query".into()),
+                database: Some("db".into()),
+                statement: AuditFingerprintStatement::Text {
+                    value: "SELECT 1".into(),
+                    truncated: true,
+                },
+                error: true,
+                ..row(digest, "SELECT 1", 7_200, Some("10"))
+            };
+            let (templates, buckets, tally) = aggregate_collection("target", &[truncated]);
+            assert_eq!(
+                tally,
+                CollectionTally {
+                    read: 1,
+                    partial: 1,
+                    ..Default::default()
+                }
+            );
+            assert!(templates.is_empty() && buckets.is_empty());
+        }
+    }
+
+    #[test]
+    fn aggregate_keeps_complete_digest_rows_and_counts_truncation_once() {
+        let complete = CollectedExecution {
+            query_id: Some("complete-query".into()),
+            ..row(Some("ab12"), "SELECT 2", 7_200, Some("7"))
+        };
+        for (catalog, database, event_epoch_seconds) in [
+            (Some("default_catalog"), Some("demo"), Some(7_201)),
+            (Some("default_catalog"), Some("demo"), None),
+            (None, Some("demo"), Some(7_201)),
+            (Some("default_catalog"), None, Some(7_201)),
+        ] {
+            let truncated = CollectedExecution {
+                query_id: Some("truncated-query".into()),
+                catalog: catalog.map(str::to_owned),
+                database: database.map(str::to_owned),
+                event_epoch_seconds,
+                statement: AuditFingerprintStatement::Text {
+                    value: "SELECT 1".into(),
+                    truncated: true,
+                },
+                error: true,
+                ..row(Some("ab12"), "SELECT 1", 7_201, Some("10"))
+            };
+            let (templates, buckets, tally) =
+                aggregate_collection("target", &[complete.clone(), truncated]);
+            assert_eq!(
+                tally,
+                CollectionTally {
+                    read: 2,
+                    attributed: 1,
+                    partial: 1,
+                    ..Default::default()
+                }
+            );
+            assert_eq!(templates.len(), 1);
+            assert_eq!(templates[0].kind, HistoryTemplateKind::OfficialDigest);
+            assert_eq!(templates[0].identity, "ab12");
+            assert_eq!(buckets.len(), 1);
+            let bucket = &buckets[0];
+            assert_eq!((bucket.executions, bucket.errors), (1, 0));
+            assert_eq!(
+                (
+                    bucket.query_time.valid_count,
+                    bucket.query_time.sum,
+                    bucket.query_time.max
+                ),
+                (1, 7, Some(7))
+            );
+            assert_eq!(bucket.exemplars.len(), 1);
+            assert_eq!(bucket.exemplars[0].query_id, "complete-query");
         }
     }
 

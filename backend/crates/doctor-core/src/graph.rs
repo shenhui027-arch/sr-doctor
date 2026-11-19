@@ -85,7 +85,7 @@ pub fn resolve_graph(evidence: GraphEvidence) -> Result<GraphView, GraphResoluti
 }
 
 fn resolve_explicit(
-    input: ExplicitGraphEvidence,
+    mut input: ExplicitGraphEvidence,
     declared_complete: bool,
 ) -> Result<GraphView, GraphResolutionError> {
     validate_refs(&input.source_refs)?;
@@ -126,6 +126,12 @@ fn resolve_explicit(
         previous_ordinal = Some(ordinal);
     }
     validate_restated_edges(&input.edges)?;
+    let mut completeness_reasons = BTreeSet::new();
+    if declared_complete {
+        let issues = plan_child_issues(&input.root_node_ids, &input.nodes, &input.edges);
+        completeness_reasons.extend(issues.iter().map(|issue| issue.reason.clone()));
+        input.unresolved_relations.extend(issues);
+    }
     let state = if declared_complete
         && input.unresolved_relations.is_empty()
         && input
@@ -150,8 +156,80 @@ fn resolve_explicit(
         input.unresolved_relations,
         input.source_refs,
     )?;
+    graph.completeness.reasons.extend(completeness_reasons);
     graph.unconnected_node_ids = unconnected_ids(&graph.nodes, &graph.edges);
     Ok(graph)
+}
+
+pub(crate) fn plan_child_issues(
+    roots: &[String],
+    nodes: &[GraphNode],
+    edges: &[GraphEdge],
+) -> Vec<UnresolvedRelation> {
+    let mut children = BTreeMap::<&str, Vec<&GraphEdge>>::new();
+    for edge in edges
+        .iter()
+        .filter(|edge| edge.relation == GraphRelation::PlanChild)
+    {
+        children.entry(edge.from.as_str()).or_default().push(edge);
+    }
+
+    let starts = roots
+        .iter()
+        .map(|root| (root.as_str(), true))
+        .chain(nodes.iter().map(|node| (node.node_id.as_str(), false)));
+    let mut reachable = BTreeSet::new();
+    let mut active = BTreeSet::new();
+    let mut finished = BTreeSet::new();
+    let mut issues = Vec::new();
+    let mut stack = Vec::<(&str, Option<&GraphEdge>, bool)>::new();
+    // Visit declared roots first to prove reachability, then inspect every
+    // remaining component for cycles. Only PlanChild follows this direction.
+    for (start, from_root) in starts {
+        if finished.contains(start) {
+            continue;
+        }
+        stack.push((start, None, false));
+        while let Some((id, incoming, exiting)) = stack.pop() {
+            if exiting {
+                active.remove(id);
+                finished.insert(id);
+            } else if active.contains(id) {
+                if let Some(edge) = incoming {
+                    issues.push(UnresolvedRelation {
+                        relation_ref: edge.edge_id.clone(),
+                        reason: "topology_cycle".into(),
+                        source_refs: edge.evidence_refs.clone(),
+                    });
+                }
+            } else if !finished.contains(id) {
+                active.insert(id);
+                if from_root {
+                    reachable.insert(id);
+                }
+                stack.push((id, None, true));
+                if let Some(edges) = children.get(id) {
+                    stack.extend(
+                        edges
+                            .iter()
+                            .rev()
+                            .map(|edge| (edge.to.as_str(), Some(*edge), false)),
+                    );
+                }
+            }
+        }
+    }
+    issues.extend(
+        nodes
+            .iter()
+            .filter(|node| !reachable.contains(node.node_id.as_str()))
+            .map(|node| UnresolvedRelation {
+                relation_ref: node.node_id.clone(),
+                reason: "topology_node_unreachable".into(),
+                source_refs: node.source_refs.clone(),
+            }),
+    );
+    issues
 }
 
 fn base_graph(
@@ -302,4 +380,141 @@ fn unconnected_ids(nodes: &[GraphNode], edges: &[GraphEdge]) -> Vec<String> {
         .filter(|node| !connected.contains(node.node_id.as_str()))
         .map(|node| node.node_id.clone())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AdapterContext, AdapterLimits, InputEnvelope, adapt_input, v01_analysis_receipt};
+    use doctor_contracts::RequestedSourceKind;
+    use serde_json::json;
+
+    #[test]
+    fn generic_explicit_topology_with_cycle_or_unreachable_nodes_is_partial() {
+        let context = AdapterContext::new(v01_analysis_receipt()).unwrap();
+        for (nodes, text_nodes, reasons, edge_count) in [
+            (
+                json!([{"node_id":"a","children":["b"]},{"node_id":"b","children":["a"]}]),
+                "GraphNode: node_id=a;children=b\nGraphNode: node_id=b;children=a\n",
+                &["topology_cycle"][..],
+                2,
+            ),
+            (
+                json!([{"node_id":"a"},{"node_id":"b"}]),
+                "GraphNode: node_id=a\nGraphNode: node_id=b\n",
+                &["topology_node_unreachable"][..],
+                0,
+            ),
+            (
+                json!([{"node_id":"a"},{"node_id":"b","children":["c"]},{"node_id":"c","children":["b"]}]),
+                "GraphNode: node_id=a\nGraphNode: node_id=b;children=c\nGraphNode: node_id=c;children=b\n",
+                &["topology_cycle", "topology_node_unreachable"][..],
+                2,
+            ),
+        ] {
+            let json = json!({
+                "profile_version":"3.5.14",
+                "execution_topology":{"complete":true,"root_node_ids":["a"],"nodes":nodes}
+            });
+            let text = format!(
+                "StarRocks Profile 3.5.14\nGraphTopologyComplete: true\nGraphRoot: a\n{text_nodes}"
+            );
+            for (kind, input) in [
+                (
+                    RequestedSourceKind::JsonProfile,
+                    serde_json::to_vec(&json).unwrap(),
+                ),
+                (RequestedSourceKind::TextProfile, text.into_bytes()),
+            ] {
+                let output = adapt_input(
+                    InputEnvelope::new(kind, input),
+                    &AdapterLimits::default(),
+                    &context,
+                )
+                .unwrap();
+                let graph = output.ir.graph;
+                assert_eq!(graph.state, GraphState::Partial);
+                assert_eq!(graph.completeness.reasons, reasons);
+                assert_eq!(graph.edges.len(), edge_count);
+                assert!(
+                    graph
+                        .edges
+                        .iter()
+                        .all(|edge| edge.source == EdgeSource::Explicit)
+                );
+                for reason in reasons {
+                    let issue = graph
+                        .unresolved_relations
+                        .iter()
+                        .find(|issue| issue.reason == *reason)
+                        .unwrap();
+                    assert!(!issue.source_refs.is_empty());
+                    assert!(issue.source_refs.iter().all(|reference| {
+                        output
+                            .source_refs
+                            .iter()
+                            .any(|source| source.ref_id == *reference)
+                    }));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn restated_fragment_sink_and_shared_dag_remain_complete() {
+        let context = AdapterContext::new(v01_analysis_receipt()).unwrap();
+        for (roots, nodes, restated) in [
+            (
+                json!(["a"]),
+                json!([{"node_id":"a","children":["b"]},{"node_id":"b","sink_ids":["a"]}]),
+                true,
+            ),
+            (
+                json!(["a"]),
+                json!([{"node_id":"a","children":["b","c"]},{"node_id":"b","children":["d"]},{"node_id":"c","children":["d"]},{"node_id":"d"}]),
+                false,
+            ),
+            (
+                json!(["a", "b"]),
+                json!([{"node_id":"a","children":["c"]},{"node_id":"b","children":["c"]},{"node_id":"c"}]),
+                false,
+            ),
+        ] {
+            let json = json!({
+                "profile_version":"3.5.14",
+                "execution_topology":{"complete":true,"root_node_ids":roots,"nodes":nodes}
+            });
+            let output = adapt_input(
+                InputEnvelope::new(
+                    RequestedSourceKind::JsonProfile,
+                    serde_json::to_vec(&json).unwrap(),
+                ),
+                &AdapterLimits::default(),
+                &context,
+            )
+            .unwrap();
+            let graph = output.ir.graph;
+            assert_eq!(graph.state, GraphState::Complete);
+            assert!(graph.unresolved_relations.is_empty() && graph.completeness.reasons.is_empty());
+            if restated {
+                let child = graph
+                    .edges
+                    .iter()
+                    .find(|edge| edge.relation == GraphRelation::PlanChild)
+                    .unwrap();
+                let sink = graph
+                    .edges
+                    .iter()
+                    .find(|edge| edge.relation == GraphRelation::FragmentSink)
+                    .unwrap();
+                assert_eq!(
+                    sink.restates_edge_id.as_deref(),
+                    Some(child.edge_id.as_str())
+                );
+                assert_eq!((&sink.from, &sink.to), (&child.to, &child.from));
+                assert_eq!(sink.source, EdgeSource::Explicit);
+                assert!(!sink.evidence_refs.is_empty());
+            }
+        }
+    }
 }

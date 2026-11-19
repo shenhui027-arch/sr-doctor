@@ -6,8 +6,8 @@ use doctor_contracts::{
     RuntimeInventoryFormatterShape, SnapshotKind,
 };
 use doctor_core::{
-    AdapterContext, AdapterLimits, InputEnvelope, adapt_input, assemble_public_report,
-    evaluate_rules, resolve_version_and_graph, v01_analysis_receipt,
+    AdapterContext, AdapterLimits, InputEnvelope, SourceLocator, adapt_input,
+    assemble_public_report, evaluate_rules, resolve_version_and_graph, v01_analysis_receipt,
 };
 use sha2::{Digest, Sha256};
 
@@ -1300,6 +1300,27 @@ fn runtime_profile_json_rejects_duplicate_object_keys_before_role_inference() {
 }
 
 #[test]
+fn runtime_profile_json_rejects_out_of_range_number_under_topology() {
+    let json = br#"{
+      "Query": {
+        "Summary": {"StarRocks Version":"3.5.14-23a56ec"},
+        "Execution": {
+          "Topology":{"rootId":1,"nodes":[],"Active_ns":1E400}
+        }
+      }
+    }"#;
+    let error = adapt_input(
+        InputEnvelope::new(RequestedSourceKind::JsonProfile, json),
+        &AdapterLimits::default(),
+        &context(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "parse_failed");
+    assert_eq!(error.stage, "parse");
+    assert_eq!(error.message_id, "json_invalid");
+}
+
+#[test]
 fn runtime_profile_rejects_duplicate_keys_in_embedded_topology_json() {
     let text = LIVE_RUNTIME_PROFILE_TEXT.replacen(r#"{"rootId":2"#, r#"{"rootId":1,"rootId":2"#, 1);
     let text_output = adapt_text(&text).unwrap();
@@ -1858,13 +1879,26 @@ fn runtime_profile_keeps_missing_topology_and_formatter_type_conflict_partial() 
         &context(),
     )
     .unwrap();
-    assert!(
-        output
-            .ir
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_json_counter_type_invalid")
-    );
+    let diagnostic = output
+        .ir
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "runtime_json_counter_type_invalid")
+        .unwrap();
+    let pointer = "/Query/Execution/Fragment 0/Pipeline (id=0)/Active_ns";
+    assert_eq!(diagnostic.source_refs, [format!("json:{pointer}")]);
+    assert!(output.source_refs.iter().any(|source| {
+        source.ref_id == diagnostic.source_refs[0]
+            && matches!(&source.locator, SourceLocator::Json { json_pointer, .. } if json_pointer == pointer)
+    }));
+    let active = output
+        .facts
+        .metric_cells
+        .iter()
+        .find(|fact| fact.metric_id == "Active")
+        .unwrap();
+    assert_eq!(active.state, MetricCellState::Invalid);
+    assert!(active.canonical_number.is_none());
     assert!(
         !output
             .ir

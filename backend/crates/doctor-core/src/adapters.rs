@@ -28,11 +28,11 @@ use starrocks_version_pack_3_5_14::deltas::TextStructure;
 
 use crate::{
     CancelSignal, Cancelled, CounterTextFormat, ExplicitGraphEvidence, FactsProjection,
-    GraphEvidence, MetricInput, MetricObservation, MetricParseOutcome, MetricRegistryLookup,
-    NormalizedIr, OperatorGroup, OperatorInfoFact, ParseMode, PhysicalOperatorMembership,
-    PipelineContainer, RuntimeDriverOccurrence, analysis_key, drop_polled, facts_hash, graph_view,
-    metric_lookup_for, parse_metric, portable_facts_cancellable, resolve_graph,
-    sr3514_metric_lookup,
+    GraphEvidence, MetricInput, MetricObservation, MetricParseError, MetricParseOutcome,
+    MetricRegistryLookup, NormalizedIr, OperatorGroup, OperatorInfoFact, ParseMode,
+    PhysicalOperatorMembership, PipelineContainer, RuntimeDriverOccurrence, analysis_key,
+    drop_polled, facts_hash, graph_view, metric_lookup_for, parse_metric,
+    portable_facts_cancellable, resolve_graph, sr3514_metric_lookup,
 };
 
 /// Request-local input only. The adapter never uses the filename to choose a parser or hash facts.
@@ -784,7 +784,13 @@ fn parse_json(
         None => None,
         Some(value) => {
             check_metric_budget(1, limits, evidence)?;
-            let source_ref = json_ref(content, "operator_total_time_ns")?;
+            let source_ref = if matches!(value, Value::String(_) | Value::Number(_) | Value::Null) {
+                json_ref(content, "operator_total_time_ns")?
+            } else {
+                // The parsed top-level key proves the pointer even when the
+                // invalid payload repeats that name inside an object or array.
+                runtime_json_ref(content, "/operator_total_time_ns")?
+            };
             source_refs.push(source_ref.clone());
             let raw = match value {
                 Value::String(value) => value.clone(),
@@ -807,7 +813,7 @@ fn parse_json(
                 // JSON strings preserve large counters; numeric values retain their source token above.
                 MetricInput::JsonNumber(raw.clone())
             } else {
-                MetricInput::Text(raw.clone())
+                MetricInput::WrongType
             };
             let definition =
                 match sr3514_metric_lookup(SourceKind::JsonProfile, "OperatorTotalTime") {
@@ -1667,7 +1673,7 @@ fn parse_runtime_profile_text(
         if matches!(section, RuntimeTextSection::Planner) {
             if let Some(value) = runtime_planner_total_text_value(trimmed) {
                 let source_ref = text_ref(line_no, start, end)?;
-                if let Some(metric) = runtime_metric_from_text(
+                if let Some(mut metric) = runtime_metric_from_text(
                     "QueryPlanningTime",
                     value,
                     "query",
@@ -1678,6 +1684,7 @@ fn parse_runtime_profile_text(
                     evidence,
                     &mut diagnostics,
                 )? {
+                    metric.source_name = "Planner/Total".into();
                     planning_time_candidates.push(metric);
                     source_refs.push(source_ref);
                 }
@@ -3536,31 +3543,19 @@ fn runtime_json_planning_candidates(
         return Ok(vec![]);
     };
     let source_ref = runtime_json_ref(content, "/Query/Planner/Total")?;
-    let Value::String(value) = value else {
-        diagnostics.push(diagnostic(
-            "runtime_json_counter_type_invalid",
-            "parse",
-            "warning",
-            "partial",
-            "runtime_json_counter_type_invalid",
-            vec![source_ref.ref_id.clone()],
-        ));
-        source_refs.push(source_ref);
+    let encoding = RuntimeJsonCounterEncoding::Display(format);
+    let Some(definition) = runtime_json_counter_definition("QueryPlanningTime", encoding) else {
         return Ok(vec![]);
-    };
-    let definition = match metric_lookup_for(SourceKind::JsonProfile, format, "QueryPlanningTime") {
-        MetricRegistryLookup::Registered(definition) => definition,
-        MetricRegistryLookup::UnknownNonAdditiveUnavailable => return Ok(vec![]),
     };
     *metric_count = metric_count.saturating_add(1);
     check_metric_budget(*metric_count, limits, evidence)?;
     let outcome = parse_metric(
-        &definition,
-        MetricInput::Text(value.clone()),
+        definition,
+        runtime_json_counter_input(value, encoding),
         ParseMode::Strict,
     );
     if outcome.parse_state != ParseState::Exact {
-        diagnostics.push(metric_diagnostic(
+        diagnostics.push(runtime_json_counter_diagnostic(
             "QueryPlanningTime",
             &outcome,
             &source_ref,
@@ -3581,7 +3576,7 @@ fn runtime_json_planning_candidates(
         source_name: "Planner/Total".into(),
         value_role: "reported_base".into(),
         display_text: if outcome.parse_state == ParseState::Exact {
-            value.clone()
+            value.as_str().unwrap_or("—").into()
         } else {
             "—".into()
         },
@@ -4182,6 +4177,74 @@ fn runtime_json_operator_metrics(
     Ok(metrics)
 }
 
+#[derive(Clone, Copy)]
+enum RuntimeJsonCounterEncoding {
+    Display(CounterTextFormat),
+    ActiveNanoseconds,
+}
+
+fn runtime_json_counter_definition(
+    metric_id: &str,
+    encoding: RuntimeJsonCounterEncoding,
+) -> Option<&'static crate::metrics::MetricDefinition> {
+    let (source, format) = match encoding {
+        RuntimeJsonCounterEncoding::Display(format) => (SourceKind::TextProfile, format),
+        RuntimeJsonCounterEncoding::ActiveNanoseconds => {
+            (SourceKind::JsonProfile, CounterTextFormat::Padded)
+        }
+    };
+    crate::metrics::registered_metric_for(source, format, metric_id)
+}
+
+fn runtime_json_counter_input(value: &Value, encoding: RuntimeJsonCounterEncoding) -> MetricInput {
+    match (encoding, value) {
+        (RuntimeJsonCounterEncoding::ActiveNanoseconds, Value::Number(number)) => {
+            if number.is_u64() || number.is_i64() {
+                return MetricInput::JsonNumber(number.to_string());
+            }
+            // A negative literal is invalid_number regardless of notation
+            // (-0, -0.0 and below i64::MIN all parse as f64 here).
+            if number.as_f64().is_some_and(f64::is_sign_negative) {
+                return MetricInput::JsonNumber(number.to_string());
+            }
+            if let Some(value) = number.as_f64()
+                && value.is_finite()
+                && value.fract() == 0.0
+                // u64::MAX rounds up to 2^64 as f64, already out of range.
+                && value.abs() >= u64::MAX as f64
+            {
+                return MetricInput::JsonNumber(format!("{value:.0}"));
+            }
+            MetricInput::WrongType
+        }
+        (_, Value::Null) => MetricInput::Missing,
+        (RuntimeJsonCounterEncoding::Display(_), Value::String(value)) => {
+            MetricInput::Text(value.clone())
+        }
+        _ => MetricInput::WrongType,
+    }
+}
+
+fn runtime_json_counter_diagnostic(
+    metric_id: &str,
+    outcome: &MetricParseOutcome,
+    source_ref: &SourceRef,
+) -> Diagnostic {
+    if outcome.error_code == Some(MetricParseError::WrongType) {
+        let code = "runtime_json_counter_type_invalid";
+        diagnostic(
+            code,
+            "parse",
+            "warning",
+            "partial",
+            code,
+            vec![source_ref.ref_id.clone()],
+        )
+    } else {
+        metric_diagnostic(metric_id, outcome, source_ref)
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn runtime_json_metrics(
     content: &[u8],
@@ -4230,46 +4293,38 @@ fn runtime_json_metrics(
         } else {
             (key.as_str(), "reported_base")
         };
-        let definition = match metric_lookup_for(SourceKind::JsonProfile, format, metric_id) {
-            MetricRegistryLookup::Registered(definition)
-                if definition
-                    .valid_scopes
-                    .iter()
-                    .any(|candidate| candidate == scope) =>
-            {
-                definition
-            }
-            _ => continue,
+        let encoding = if raw_companion {
+            RuntimeJsonCounterEncoding::ActiveNanoseconds
+        } else {
+            RuntimeJsonCounterEncoding::Display(format)
         };
-        // The formatter's raw companion wins whenever it is present.  If it
-        // has the wrong type below, retain a diagnostic rather than silently
-        // treating the rendered display value as exact raw data.
-        if metric_id == "Active" && !raw_companion && object.contains_key("Active_ns") {
+        let Some(definition) = runtime_json_counter_definition(metric_id, encoding) else {
+            continue;
+        };
+        if !definition
+            .valid_scopes
+            .iter()
+            .any(|candidate| candidate == scope)
+        {
+            continue;
+        }
+        // The raw companion represents the same base counter, even when
+        // malformed. MIN/MAX companions are independent observations.
+        if key == "Active" && object.contains_key("Active_ns") {
             continue;
         }
         let pointer = format!("{path}/{}", json_pointer_component(key));
         let source_ref = runtime_json_ref(content, &pointer)?;
-        let input = match (raw_companion, value) {
-            (true, Value::Number(value)) => MetricInput::JsonNumber(value.to_string()),
-            (false, Value::String(value)) => MetricInput::Text(value.clone()),
-            _ => {
-                diagnostics.push(diagnostic(
-                    "runtime_json_counter_type_invalid",
-                    "parse",
-                    "warning",
-                    "partial",
-                    "runtime_json_counter_type_invalid",
-                    vec![source_ref.ref_id.clone()],
-                ));
-                source_refs.push(source_ref);
-                continue;
-            }
-        };
+        let input = runtime_json_counter_input(value, encoding);
         *metric_count = metric_count.saturating_add(1);
         check_metric_budget(*metric_count, limits, evidence)?;
-        let outcome = parse_metric(&definition, input, ParseMode::Strict);
+        let outcome = parse_metric(definition, input, ParseMode::Strict);
         if outcome.parse_state != ParseState::Exact {
-            diagnostics.push(metric_diagnostic(metric_id, &outcome, &source_ref));
+            diagnostics.push(runtime_json_counter_diagnostic(
+                metric_id,
+                &outcome,
+                &source_ref,
+            ));
         }
         let display_text = match value {
             Value::String(value) if outcome.parse_state == ParseState::Exact => value.clone(),
@@ -5385,7 +5440,14 @@ fn runtime_projection(
     let mut group_indexes = BTreeMap::new();
     for metric in &runtime.query_metrics {
         let cell = runtime_metric_cell(metric, "query", None)?;
-        let observation = runtime_observation(metric, "query", None, None, None, None);
+        let observation = runtime_observation(
+            metric,
+            "query",
+            None,
+            None,
+            None,
+            Some(runtime_query_counter_match_key(&metric.source_name)),
+        );
         derived_metric_cells.push(cell.clone());
         all_metric_cells.push(cell);
         observations.push(observation);
@@ -5467,6 +5529,19 @@ fn runtime_projection(
         let mut observation_refs = Vec::with_capacity(operator.metrics.len());
         for metric in &operator.metrics {
             cancel.tick()?;
+            all_metric_cells.push(runtime_metric_cell(
+                metric,
+                &group_id,
+                Some(&operator.operator_group_id),
+            )?);
+            // Keep the invalid container cell without publishing a malformed
+            // raw companion as a normalized Active observation.
+            if metric.outcome.error_code == Some(MetricParseError::WrongType)
+                && metric.source_name == "Active_ns"
+                && matches!(metric.scope.as_str(), "fragment" | "pipeline")
+            {
+                continue;
+            }
             let observation = runtime_observation(
                 metric,
                 &group_id,
@@ -5476,11 +5551,6 @@ fn runtime_projection(
                 runtime_counter_match_key(operator, metric),
             );
             observation_refs.push(observation.observation_id.clone());
-            all_metric_cells.push(runtime_metric_cell(
-                metric,
-                &group_id,
-                Some(&operator.operator_group_id),
-            )?);
             observations.push(observation);
         }
         groups[group_index]
@@ -5546,10 +5616,18 @@ fn runtime_counter_match_key(
     let operator_id = operator
         .native_operator_id
         .map_or_else(|| "-".to_owned(), |id| id.to_string());
+    let source_name = match (metric.source_name.as_str(), metric.value_role.as_str()) {
+        ("Active_ns", "reported_base") => "Active",
+        (source_name, _) => source_name,
+    };
     Some(format!(
-        "{fragment}:{pipeline}:{}:{plan_node_id}:{operator_id}/{}",
-        operator.canonical_type, metric.source_name
+        "{fragment}:{pipeline}:{}:{plan_node_id}:{operator_id}/{source_name}",
+        operator.canonical_type
     ))
+}
+
+fn runtime_query_counter_match_key(source_name: &str) -> String {
+    format!("query/{source_name}")
 }
 
 fn runtime_group_id(operator: &RuntimeOperator) -> String {
@@ -5567,25 +5645,39 @@ fn runtime_group_id(operator: &RuntimeOperator) -> String {
 fn runtime_planning_projection(
     runtime: &RuntimeProfileData,
 ) -> Result<(MetricCell, MetricObservation), AdapterError> {
+    let source_name = "Planner/Total";
     match runtime.planning_time_candidates.as_slice() {
         [metric] => Ok((
             runtime_metric_cell(metric, "query", None)?,
-            runtime_observation(metric, "query", None, None, None, None),
+            runtime_observation(
+                metric,
+                "query",
+                None,
+                None,
+                None,
+                Some(runtime_query_counter_match_key(&metric.source_name)),
+            ),
         )),
-        [] => Ok(runtime_unavailable_metric(RuntimeUnavailableMetricInput {
-            subject_ref: "query",
-            metric_id: "QueryPlanningTime",
-            source_name: "Planner/Total",
-            source_refs: runtime_fallback_source_refs(runtime),
-            reason: "query_planning_time_unavailable",
-            definition_ref: Some("sr3514-metric-registry:QueryPlanningTime"),
-            scope: "query",
-            strategy_origin: "registry",
-        })),
+        [] => {
+            let (mut cell, mut observation) =
+                runtime_unavailable_metric(RuntimeUnavailableMetricInput {
+                    subject_ref: "query",
+                    metric_id: "QueryPlanningTime",
+                    source_name,
+                    source_refs: runtime_fallback_source_refs(runtime),
+                    reason: "query_planning_time_unavailable",
+                    definition_ref: Some("sr3514-metric-registry:QueryPlanningTime"),
+                    scope: "query",
+                    strategy_origin: "registry",
+                });
+            cell.match_key = Some(runtime_query_counter_match_key(source_name));
+            observation.match_key.clone_from(&cell.match_key);
+            Ok((cell, observation))
+        }
         candidates => Ok(runtime_unavailable_metric(RuntimeUnavailableMetricInput {
             subject_ref: "query",
             metric_id: "QueryPlanningTime",
-            source_name: "Planner/Total",
+            source_name,
             source_refs: candidates
                 .iter()
                 .map(|candidate| candidate.source_ref.ref_id.clone())
@@ -6179,7 +6271,8 @@ fn runtime_metric_cell(
 ) -> Result<MetricCell, AdapterError> {
     let source_ref = metric.source_ref.ref_id.clone();
     Ok(MetricCell {
-        match_key: None,
+        match_key: (subject_ref == "query")
+            .then(|| runtime_query_counter_match_key(&metric.source_name)),
         metric_cell_ref: format!(
             "metric:{subject_ref}:{}:{}:{}",
             operator_ref.unwrap_or("query"),
@@ -6970,5 +7063,331 @@ fn error(
         source_refs,
         adapter_evidence,
         details: BTreeMap::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{assemble_public_report, resolve_version_and_graph, v01_analysis_receipt};
+    use doctor_contracts::MetricCellState;
+
+    #[test]
+    fn official_json_preserves_formatter_precision() {
+        let context = AdapterContext::new(v01_analysis_receipt()).unwrap();
+        for (kind, input, memory, wall_time) in [
+            (
+                RequestedSourceKind::JsonProfile,
+                &include_bytes!(
+                    "../../../../fixtures/runtime/3.5.14/format-pair/c04_broadcast_multi_join.profile.json"
+                )[..],
+                ("9221177.344", "9220654", "9221702"),
+                ("29271000", "29271000", "29272000"),
+            ),
+            (
+                RequestedSourceKind::TextProfile,
+                &include_bytes!(
+                    "../../../../fixtures/runtime/3.5.14/format-pair/c04_broadcast_multi_join.profile.txt"
+                )[..],
+                ("9566158.848", "9565635", "9566684"),
+                ("50984000", "50984000", "50985000"),
+            ),
+        ] {
+            let mut output = adapt_input(
+                InputEnvelope::new(kind, input),
+                &AdapterLimits::default(),
+                &context,
+            )
+            .unwrap();
+            let graph = output.graph_evidence.clone();
+            resolve_version_and_graph(&mut output, graph).unwrap();
+            let report = assemble_public_report(output).unwrap();
+            for (id, unit, fidelity, (value, lower, upper)) in [
+                (
+                    "QueryPeakMemoryUsagePerNode",
+                    "byte",
+                    Fidelity::Rounded,
+                    memory,
+                ),
+                (
+                    "QueryExecutionWallTime",
+                    "ns",
+                    Fidelity::Truncated,
+                    wall_time,
+                ),
+            ] {
+                let metric = report
+                    .derived_metric_cells
+                    .iter()
+                    .find(|cell| cell.metric_id == id)
+                    .unwrap();
+                assert_eq!(metric.state(), MetricCellState::Exact, "{id}");
+                assert_eq!(metric.canonical_number().unwrap().value, value, "{id}");
+                assert_eq!(metric.canonical_unit(), Some(unit), "{id}");
+                assert_eq!(metric.fidelity(), Some(fidelity), "{id}");
+                let bounds = metric.bounds().unwrap();
+                assert_eq!(bounds.lower.value, lower, "{id}");
+                assert_eq!(bounds.upper.value, upper, "{id}");
+                assert!(bounds.lower_inclusive && !bounds.upper_inclusive, "{id}");
+            }
+            if report.input.detected_kind == SourceKind::JsonProfile {
+                let mut old = report.clone();
+                let adapter = old
+                    .analysis_receipt
+                    .components
+                    .iter_mut()
+                    .find(|component| component.id == "sr3514-runtime-profile-adapter")
+                    .unwrap();
+                adapter.version = "0.2.3".into();
+                let comparison = crate::compare_attempts(
+                    crate::analysis_attempt(old),
+                    crate::analysis_attempt(report),
+                );
+                let wall = comparison
+                    .metric_deltas
+                    .iter()
+                    .find(|delta| delta.metric_id == "QueryExecutionWallTime")
+                    .unwrap();
+                assert_eq!(wall.limitations, ["metric_precision_unknown"]);
+                assert!(
+                    wall.absolute_delta.is_none()
+                        && wall.bounds.is_none()
+                        && wall.percentage_value.is_none()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn official_json_raw_active_requires_integer_notation() {
+        let context = AdapterContext::new(v01_analysis_receipt()).unwrap();
+        for (literal, state, reason) in [
+            ("1000.0", MetricCellState::Invalid, "wrong_type"),
+            ("1e3", MetricCellState::Invalid, "wrong_type"),
+            (
+                "1000.00000000000000001",
+                MetricCellState::Invalid,
+                "wrong_type",
+            ),
+            ("1E-400", MetricCellState::Invalid, "wrong_type"),
+            ("-1000", MetricCellState::Invalid, "invalid_number"),
+            ("-0", MetricCellState::Invalid, "invalid_number"),
+            ("-0.0", MetricCellState::Invalid, "invalid_number"),
+            (
+                "-9223372036854775809",
+                MetricCellState::Invalid,
+                "invalid_number",
+            ),
+            (
+                "18446744073709551616.0",
+                MetricCellState::Overflow,
+                "numeric_overflow",
+            ),
+            (
+                "9223372036854775808",
+                MetricCellState::Overflow,
+                "numeric_overflow",
+            ),
+            (
+                "18446744073709551616",
+                MetricCellState::Overflow,
+                "numeric_overflow",
+            ),
+        ] {
+            let input = r#"{
+                "Query":{"Summary":{"StarRocks Version":"3.5.14"},
+                "Execution":{"Fragment 0":{"Pipeline (id=0)":{"SCAN (plan_node_id=0)":{
+                    "CommonMetrics":{"Active_ns":ACTIVE_LITERAL}
+                }}}}}
+            }"#
+            .replace("ACTIVE_LITERAL", literal);
+            let output = adapt_input(
+                InputEnvelope::new(RequestedSourceKind::JsonProfile, input.as_bytes()),
+                &AdapterLimits::default(),
+                &context,
+            )
+            .unwrap();
+            let fact = output
+                .facts
+                .metric_cells
+                .iter()
+                .find(|fact| fact.metric_id == "Active")
+                .unwrap();
+            assert_eq!(fact.state, state, "{literal}");
+            assert!(fact.canonical_number.is_none(), "{literal}");
+            let observation = output
+                .ir
+                .metric_observations
+                .iter()
+                .find(|metric| metric.metric_id.as_deref() == Some("Active"))
+                .unwrap();
+            assert_eq!(observation.diagnostics[0].code, reason, "{literal}");
+        }
+    }
+
+    #[test]
+    fn official_json_raw_active_and_legacy_display_keep_their_own_precision() {
+        let context = AdapterContext::new(v01_analysis_receipt()).unwrap();
+        let adapt = |input: &[u8]| {
+            adapt_input(
+                InputEnvelope::new(RequestedSourceKind::JsonProfile, input),
+                &AdapterLimits::default(),
+                &context,
+            )
+            .unwrap()
+        };
+        let output = adapt(br#"{"Query":{"Summary":{"StarRocks Version":"3.5.14"},"Execution":{"Fragment 0":{"Pipeline (id=0)":{"Active":"9s","Active_ns":9007199254740993,"__MIN_OF_Active":"1.000ms","__MAX_OF_Active":"2.000ms"}}}}}"#);
+        let active = output
+            .ir
+            .metric_observations
+            .iter()
+            .filter(|metric| metric.metric_id.as_deref() == Some("Active"))
+            .collect::<Vec<_>>();
+        assert_eq!(active.len(), 3);
+        assert_eq!(
+            active
+                .iter()
+                .filter(|metric| metric.value_role == "reported_base")
+                .count(),
+            1
+        );
+        let base = active
+            .iter()
+            .find(|metric| metric.value_role == "reported_base")
+            .unwrap();
+        assert_eq!(base.source_name, "Active_ns");
+        assert_eq!(
+            base.canonical_number.as_ref().unwrap().value,
+            "9007199254740993"
+        );
+        assert_eq!(base.fidelity, Fidelity::Exact);
+        assert!(base.bounds.is_none());
+        for role in ["reported_min", "reported_max"] {
+            let metric = active
+                .iter()
+                .find(|metric| metric.value_role == role)
+                .unwrap();
+            assert_eq!(metric.fidelity, Fidelity::Truncated);
+        }
+
+        let legacy = adapt(br#"{"Query":{"Summary":{"StarRocks Version":"3.1.0"},"Execution":{"QueryExecutionWallTime":"1.5ms"}}}"#);
+        let metric = legacy
+            .ir
+            .derived_metric_cells
+            .iter()
+            .find(|cell| cell.metric_id == "QueryExecutionWallTime")
+            .unwrap();
+        assert_eq!(metric.canonical_number().unwrap().value, "1005000");
+        assert_eq!(metric.fidelity(), Some(Fidelity::Truncated));
+        let bounds = metric.bounds().unwrap();
+        assert_eq!(bounds.lower.value, "1005000");
+        assert_eq!(bounds.upper.value, "1006000");
+        assert!(bounds.lower_inclusive && !bounds.upper_inclusive);
+
+        let generic = assemble_public_report(adapt(
+            br#"{"profile_version":"3.5.14","operator_total_time_ns":"500000"}"#,
+        ))
+        .unwrap();
+        let metric = &generic.operator_rows[0].metric_cells[0];
+        assert_eq!(metric.canonical_number().unwrap().value, "500000");
+        assert_eq!(metric.fidelity(), Some(Fidelity::Exact));
+        assert!(metric.bounds().is_none());
+    }
+
+    #[test]
+    fn json_counter_wrong_type_stays_invalid_with_source_ref() {
+        let context = AdapterContext::new(v01_analysis_receipt()).unwrap();
+        let adapt = |input: Value| {
+            adapt_input(
+                InputEnvelope::new(
+                    RequestedSourceKind::JsonProfile,
+                    serde_json::to_vec(&input).unwrap(),
+                ),
+                &AdapterLimits::default(),
+                &context,
+            )
+            .unwrap()
+        };
+        for (value, state) in [
+            (serde_json::json!(true), MetricCellState::Invalid),
+            (serde_json::json!([12]), MetricCellState::Invalid),
+            (
+                serde_json::json!({"operator_total_time_ns": 12}),
+                MetricCellState::Invalid,
+            ),
+            (Value::Null, MetricCellState::Missing),
+            (serde_json::json!(0), MetricCellState::Exact),
+        ] {
+            let output = adapt(serde_json::json!({
+                "profile_version": "3.5.14",
+                "operator_total_time_ns": value,
+            }));
+            let report = assemble_public_report(output).unwrap();
+            let cell = &report.operator_rows[0].metric_cells[0];
+            assert_eq!(cell.state(), state);
+            assert_eq!(cell.source_refs, ["json:/operator_total_time_ns"]);
+            match state {
+                MetricCellState::Invalid => {
+                    assert_eq!(cell.reasons, ["wrong_type"]);
+                    assert!(cell.canonical_number().is_none());
+                }
+                MetricCellState::Missing => assert!(cell.canonical_number().is_none()),
+                MetricCellState::Exact => {
+                    assert_eq!(cell.canonical_number().unwrap().value, "0");
+                    assert_eq!(cell.fidelity(), Some(Fidelity::Exact));
+                }
+                _ => unreachable!(),
+            }
+        }
+        let absent =
+            assemble_public_report(adapt(serde_json::json!({"profile_version": "3.5.14"})))
+                .unwrap();
+        assert!(absent.operator_rows.is_empty() && absent.derived_metric_cells.is_empty());
+
+        let output = adapt(serde_json::json!({
+            "Query": {
+                "Summary": {"StarRocks Version": "3.5.14"},
+                "Planner": {"Total": true},
+                "Execution": {
+                    "QueryExecutionWallTime": true,
+                    "Fragment 0": {"Pipeline (id=0)": {
+                        "SCAN (plan_node_id=0)": {"CommonMetrics": {"Active": "1ms", "Active_ns": true}}
+                    }}
+                }
+            }
+        }));
+        let report = assemble_public_report(output).unwrap();
+        let cells = report
+            .derived_metric_cells
+            .iter()
+            .chain(
+                report
+                    .operator_rows
+                    .iter()
+                    .flat_map(|row| &row.metric_cells),
+            )
+            .collect::<Vec<_>>();
+        for (id, source) in [
+            (
+                "QueryExecutionWallTime",
+                "json:/Query/Execution/QueryExecutionWallTime",
+            ),
+            ("QueryPlanningTime", "json:/Query/Planner/Total"),
+            (
+                "Active",
+                "json:/Query/Execution/Fragment 0/Pipeline (id=0)/SCAN (plan_node_id=0)/CommonMetrics/Active_ns",
+            ),
+        ] {
+            let matching = cells
+                .iter()
+                .filter(|cell| cell.metric_id == id)
+                .collect::<Vec<_>>();
+            assert_eq!(matching.len(), 1, "{id}");
+            let cell = matching[0];
+            assert_eq!(cell.state(), MetricCellState::Invalid, "{id}");
+            assert_eq!(cell.reasons, ["wrong_type"], "{id}");
+            assert_eq!(cell.source_refs, [source], "{id}");
+            assert!(cell.canonical_number().is_none(), "{id}");
+        }
     }
 }

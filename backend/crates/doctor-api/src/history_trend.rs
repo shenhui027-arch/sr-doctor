@@ -103,7 +103,7 @@ fn row(template: &StoredTemplate, trend: TemplateTrend) -> TrendRow {
         }),
         comparability: TrendComparability {
             engine_version: trend.engine_version,
-            rule_version: trend.rule_version,
+            rule_version: TrendBucket::rule_version_label(&trend.rule_version).to_owned(),
         },
         limitations: trend.limitations.into_iter().map(str::to_owned).collect(),
     }
@@ -162,24 +162,52 @@ pub(crate) fn evaluate(
                 delta: bucket.delta,
             });
     }
+    let active_rule = TrendBucket::active_storage_rule_version();
     let trends = templates
         .iter()
-        .filter_map(|template| {
-            let own = buckets.get(&template.template.template_key)?;
-            evaluate_template_trend(own, &coverage, windows).map(|mut trend| {
-                if trend.rule_version != doctor_core::history_rule_version() {
-                    trend.verdict = TrendVerdict::NotComparable {
-                        reason: doctor_contracts::TrendNotComparableReason::RuleVersionChanged,
-                    };
+        .map(|template| {
+            let own = buckets
+                .get(&template.template.template_key)
+                .map_or(&[][..], Vec::as_slice);
+            let trend = if let Some(mut trend) = evaluate_template_trend(own, &coverage, windows) {
+                let pack = TrendBucket::version_pack_in(&trend.rule_version);
+                if trend.rule_version != active_rule || pack.is_none() {
+                    if !matches!(
+                        trend.verdict,
+                        TrendVerdict::NotComparable {
+                            reason:
+                                doctor_contracts::TrendNotComparableReason::EngineVersionChanged
+                        }
+                    ) {
+                        trend.verdict = TrendVerdict::NotComparable {
+                            reason: doctor_contracts::TrendNotComparableReason::RuleVersionChanged,
+                        };
+                    }
                     trend.change = None;
                     trend.confidence = None;
                     trend.evidence = doctor_contracts::EvidenceCompleteness::Unavailable;
                     trend
                         .limitations
                         .push("historical_rule_requires_new_samples");
+                    let limitation = match pack {
+                        None => Some("version_pack_semantics_unknown"),
+                        Some(_) if pack != TrendBucket::version_pack_in(&active_rule) => {
+                            Some("version_pack_changed")
+                        }
+                        Some(_) => None,
+                    };
+                    if let Some(limitation) = limitation
+                        && !trend.limitations.contains(&limitation)
+                    {
+                        trend.limitations.push(limitation);
+                    }
                 }
-                (template.clone(), trend)
-            })
+                trend
+            } else {
+                let reference = own.iter().max_by_key(|bucket| bucket.bucket_start);
+                TemplateTrend::without_current_samples(own, &coverage, windows, reference)
+            };
+            (template.clone(), trend)
         })
         .collect();
     Ok(Evaluated {
@@ -327,7 +355,7 @@ pub(super) async fn series(
                 series_start,
                 windows.end,
                 &trend.engine_version,
-                &doctor_core::history_rule_version(),
+                &TrendBucket::active_storage_rule_version(),
             )
             .into_iter()
             .map(|point| TrendPoint {
@@ -340,15 +368,18 @@ pub(super) async fn series(
                 comparable: point.comparable,
             })
             .collect();
-            let exemplars = store
-                .exemplars(&request.template_key, windows.current_start, windows.end, 5)?
-                .into_iter()
-                .map(|exemplar| TrendExemplar {
-                    query_id: exemplar.query_id,
-                    query_time: fact(exemplar.query_time),
-                    event_seconds: seconds(exemplar.event_time),
-                })
-                .collect();
+            let exemplars = if trend.current.executions == 0 {
+                Vec::new()
+            } else {
+                store.exemplars(&request.template_key, windows.current_start, windows.end, 5)?
+            }
+            .into_iter()
+            .map(|exemplar| TrendExemplar {
+                query_id: exemplar.query_id,
+                query_time: fact(exemplar.query_time),
+                event_seconds: seconds(exemplar.event_time),
+            })
+            .collect();
             Ok(Some(HistorySeriesResponse {
                 target: request.target.clone(),
                 window: window(windows),
@@ -373,5 +404,195 @@ pub(super) async fn series(
             "history_template_not_found",
             "change_input",
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::{Body, to_bytes};
+    use doctor_core::{HistoryBucketDelta, HistoryMetric, HistoryTemplate, HistoryTemplateKind};
+    use doctor_history::RunState;
+    use serde_json::{Value, json};
+
+    #[tokio::test]
+    async fn known_template_without_current_buckets_is_unscored_in_both_endpoints() {
+        let path = std::env::temp_dir().join(format!(
+            "doctor-task78-known-template-{}.sqlite",
+            std::process::id()
+        ));
+        let state = ApiState::new(ApiConfig {
+            history: HistoryConfig {
+                path: Some(path.clone()),
+                ..HistoryConfig::default()
+            },
+            ..ApiConfig::default()
+        })
+        .unwrap();
+        let store = state.history.store().unwrap();
+        let hour = HISTORY_BUCKET_SECONDS;
+        let start = unix_now().div_euclid(hour) * hour - 4 * hour;
+        let template = HistoryTemplate {
+            template_key: "k".into(),
+            kind: HistoryTemplateKind::OfficialDigest,
+            identity: "digest".into(),
+            catalog: "c".into(),
+            database: "d".into(),
+            template: None,
+        };
+        let mut bucket = HistoryBucketDelta {
+            template_key: "k".into(),
+            bucket_start: start,
+            executions: 3,
+            query_time: HistoryMetric {
+                valid_count: 3,
+                sum: 300,
+                max: Some(100),
+                ..HistoryMetric::default()
+            },
+            ..HistoryBucketDelta::default()
+        };
+        for _ in 0..3 {
+            bucket.query_time.histogram.record(100);
+        }
+        store
+            .record_slice(
+                "t",
+                "3.5.14",
+                &doctor_core::history_rule_version(),
+                &RunRecord {
+                    started_at: start + hour,
+                    slice_start: start,
+                    slice_end: start + hour,
+                    state: RunState::Complete,
+                    reason: None,
+                    rows_read: 3,
+                    attributed: 3,
+                    partial_statements: 0,
+                    unavailable_statements: 0,
+                    duration_ms: 1,
+                },
+                start + hour,
+                &[template],
+                &[bucket],
+            )
+            .unwrap();
+        let request = |body: Value| {
+            Request::builder()
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap()
+        };
+        for has_baseline in [true, false] {
+            if !has_baseline {
+                rusqlite::Connection::open(&path)
+                    .unwrap()
+                    .execute("DELETE FROM buckets WHERE template_key = 'k'", [])
+                    .unwrap();
+            }
+            let list = trends(
+                State(state.clone()),
+                request(json!({"target":"t","current_hours":1,"baseline_hours":24,"limit":10})),
+            )
+            .await
+            .unwrap();
+            assert_eq!(list.status(), StatusCode::OK);
+            let list: Value =
+                serde_json::from_slice(&to_bytes(list.into_body(), usize::MAX).await.unwrap())
+                    .unwrap();
+            assert_eq!(list["counts"]["unscored"], "1");
+            let row = &list["rows"][0];
+            assert_eq!(row["template_key"], "k");
+            assert_eq!(
+                row["verdict"],
+                json!({"state":"unscored","reason":"insufficient_current"})
+            );
+            assert_eq!(row["baseline"]["median"].is_object(), has_baseline);
+            assert_eq!(row["current"]["executions"], "0");
+            assert_eq!(row["current"]["median"], Value::Null);
+            assert_eq!(row["change"], Value::Null);
+
+            let response = series(
+                State(state.clone()),
+                request(json!({"target":"t","template_key":"k","current_hours":1,"baseline_hours":24,"points":24})),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let result: Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                    .unwrap();
+            assert_eq!(&result["row"], row);
+            assert_eq!(result["exemplars"], json!([]));
+        }
+        drop(state);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn series_returns_404_for_template_outside_requested_target() {
+        let path = std::env::temp_dir().join(format!(
+            "doctor-task78-other-target-{}.sqlite",
+            std::process::id()
+        ));
+        let state = ApiState::new(ApiConfig {
+            history: HistoryConfig {
+                path: Some(path.clone()),
+                ..HistoryConfig::default()
+            },
+            ..ApiConfig::default()
+        })
+        .unwrap();
+        let store = state.history.store().unwrap();
+        let now = unix_now();
+        store.set_paused("t", true, now).unwrap();
+        store
+            .record_slice(
+                "other",
+                "3.5.14",
+                &doctor_core::history_rule_version(),
+                &RunRecord {
+                    started_at: now,
+                    slice_start: now - 60,
+                    slice_end: now,
+                    state: RunState::Complete,
+                    reason: None,
+                    rows_read: 0,
+                    attributed: 0,
+                    partial_statements: 0,
+                    unavailable_statements: 0,
+                    duration_ms: 1,
+                },
+                now,
+                &[HistoryTemplate {
+                    template_key: "k".into(),
+                    kind: HistoryTemplateKind::OfficialDigest,
+                    identity: "digest".into(),
+                    catalog: "c".into(),
+                    database: "d".into(),
+                    template: None,
+                }],
+                &[],
+            )
+            .unwrap();
+        let request = Request::builder()
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({"target":"t","template_key":"k","current_hours":1,"baseline_hours":24,"points":24})
+                    .to_string(),
+            ))
+            .unwrap();
+        let response = series(State(state), request)
+            .await
+            .unwrap_err()
+            .into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        assert_eq!(body["code"], "history_template_not_found");
+        std::fs::remove_file(path).unwrap();
     }
 }

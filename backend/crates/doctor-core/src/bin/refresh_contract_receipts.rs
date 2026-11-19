@@ -1,10 +1,14 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
-use doctor_contracts::{AnalysisSnapshotReport, ReceiptComponent, SourceKind, canonical_hash};
+use doctor_contracts::{
+    AnalysisSnapshotReport, ComparisonReceipt, ComparisonState, MetricDeltaState, ReceiptComponent,
+    SourceKind, canonical_hash,
+};
 use doctor_core::{
     AdapterContext, AdapterLimits, InputEnvelope, MetricDefinition, MetricDimension, adapt_input,
-    analysis_key, assemble_public_report, evaluate_rules, facts_hash, report_facts,
-    resolve_version_and_graph, sr3514_metric_registry,
+    analysis_attempt, analysis_key, assemble_public_report, compare_attempts, evaluate_rules,
+    facts_hash, report_facts, resolve_version_and_graph, sr3514_metric_registry,
+    v01_comparison_receipt,
 };
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -209,7 +213,81 @@ fn comparison_attempt_key_material(attempt: &Value) -> Value {
     }
 }
 
-fn refresh_compare_cases(comparator_manifest: &Value, comparator_semantic_hash: &str, check: bool) {
+fn replay_incomparable_metric_case(
+    case: &mut Value,
+    template: &AnalysisSnapshotReport,
+    reason: &str,
+) {
+    let [baseline, candidate] = ["baseline", "candidate"].map(|side| {
+        let mut report = template.clone();
+        let input = &mut case["input"][side];
+        report.analysis_state = serde_json::from_value(input["attempt"]["analysis_state"].clone())
+            .expect("case analysis state");
+        let projection = &mut input["comparison_projection"];
+        report.graph_view.state = serde_json::from_value(projection["structure"]["state"].clone())
+            .expect("case graph state");
+        assert_eq!(
+            projection["structure"]["stable_entity_ids"],
+            serde_json::json!(["query"])
+        );
+        let registry = report
+            .analysis_receipt
+            .components
+            .iter_mut()
+            .find(|component| component.id == "sr3514-metric-registry")
+            .expect("template registry receipt");
+        *registry = serde_json::from_value(projection["registry"].clone()).expect("case registry");
+        projection["version"] = serde_json::to_value(&report.version).expect("case version");
+        let Some([cell]) = projection["metric_cells"]
+            .as_array_mut()
+            .map(Vec::as_mut_slice)
+        else {
+            panic!("comparison fixture should have exactly one metric on each side");
+        };
+        cell["match_key"] = serde_json::json!("query/QuerySpillBytes");
+        let mut typed_cell = cell.clone();
+        typed_cell["display_text"] = serde_json::json!("");
+        typed_cell["source_refs"] = serde_json::json!([]);
+        typed_cell["reasons"] = serde_json::json!([]);
+        report.derived_metric_cells =
+            vec![serde_json::from_value(typed_cell).expect("case metric cell")];
+        report.facts_hash = facts_hash(&report_facts(&report));
+        input["attempt"]["facts_hash"] = serde_json::json!(&report.facts_hash);
+        analysis_attempt(report)
+    });
+    let comparison = compare_attempts(baseline, candidate);
+    assert_eq!(
+        comparison.state,
+        ComparisonState::NotComparable,
+        "{}",
+        case["case_id"]
+    );
+    let [metric] = comparison.metric_deltas.as_slice() else {
+        panic!("expected one comparison metric: {}", case["case_id"]);
+    };
+    assert_eq!(metric.state, MetricDeltaState::NotComparable);
+    assert!(
+        metric
+            .limitations
+            .iter()
+            .any(|limitation| limitation == reason),
+        "{metric:?}"
+    );
+
+    let mut expected = serde_json::to_value(comparison).expect("case comparison");
+    // The contract table keeps the portable attempt summaries in both columns.
+    for side in ["baseline", "candidate"] {
+        expected[side] = case["input"][side]["attempt"].clone();
+    }
+    case["expected"] = expected;
+}
+
+fn refresh_compare_cases(
+    comparator_manifest: &Value,
+    comparator_semantic_hash: &str,
+    template: &AnalysisSnapshotReport,
+    check: bool,
+) {
     let comparator = comparator_manifest
         .as_object()
         .expect("comparator manifest object");
@@ -225,19 +303,37 @@ fn refresh_compare_cases(comparator_manifest: &Value, comparator_semantic_hash: 
         .get("comparison_schema_range")
         .and_then(Value::as_str)
         .expect("comparison schema version");
+    let component = ReceiptComponent {
+        id: comparator_id.into(),
+        version: comparator_version.into(),
+        manifest_hash: comparator_semantic_hash.into(),
+    };
+    let receipt = ComparisonReceipt {
+        components: vec![component],
+    };
+    if check {
+        assert_eq!(
+            v01_comparison_receipt(),
+            receipt,
+            "comparator runtime receipt must match the semantic manifest"
+        );
+    }
+    let receipt = serde_json::to_value(receipt).expect("comparison receipt");
     let mut cases = read_value(COMPARE_CASES_PATH);
     for case in cases.as_array_mut().expect("comparison case array") {
+        let reason = match case["case_id"].as_str() {
+            Some("compare_missing_not_zero") => Some("baseline_metric_missing"),
+            Some("compare_invalid_not_zero") => Some("baseline_metric_invalid"),
+            Some("compare_registry_semantic_mismatch") => Some("registry_semantic_mismatch"),
+            _ => None,
+        };
+        if let Some(reason) = reason {
+            replay_incomparable_metric_case(case, template, reason);
+        }
         let expected = case
             .get_mut("expected")
             .and_then(Value::as_object_mut)
             .expect("comparison expected");
-        let receipt = serde_json::json!({
-            "components": [{
-                "id": comparator_id,
-                "version": comparator_version,
-                "manifest_hash": comparator_semantic_hash,
-            }],
-        });
         expected.insert(
             "schema_version".to_owned(),
             Value::String(comparison_schema_version.to_owned()),
@@ -512,7 +608,6 @@ fn main() {
         comparator_manifest_hash.clone(),
     );
     write_value(COMPARATOR_MANIFEST_PATH, &comparator_manifest, check);
-    refresh_compare_cases(&comparator_manifest, &comparator_semantic_hash, check);
 
     let mut component_manifest = read_value(COMPONENT_MANIFEST_PATH);
     let metric_cases_hash = canonical_hash(&read_value(METRIC_CASES_PATH));
@@ -581,7 +676,7 @@ fn main() {
                 set_string(component, "version", metric_registry_version.clone());
             }
             "sr3514-graph-resolver-contract" => {
-                set_string(component, "version", "0.10.0".to_owned());
+                set_string(component, "version", "0.10.1".to_owned());
                 set_string(
                     component,
                     "implementation_status",
@@ -707,12 +802,32 @@ fn main() {
         );
     }
 
-    // Unlike the two historical synthetic examples, this is a real production
-    // assembly replay of the retained Docker-captured input, not a new live E2E.
     let context = AdapterContext::new(doctor_contracts::AnalysisReceipt {
         components: receipt_components.clone(),
     })
     .expect("generated receipt context");
+    let mut compare_input = adapt_input(
+        InputEnvelope::new(
+            doctor_contracts::RequestedSourceKind::JsonProfile,
+            br#"{"profile_version":"3.5.14","execution_topology":{"complete":true,"root_node_ids":["query"],"nodes":[{"node_id":"query"}]}}"#,
+        ),
+        &AdapterLimits::default(),
+        &context,
+    )
+    .expect("comparison fixture adapts");
+    let evidence = compare_input.graph_evidence.clone();
+    resolve_version_and_graph(&mut compare_input, evidence)
+        .expect("comparison fixture graph resolves");
+    let compare_template =
+        assemble_public_report(compare_input).expect("comparison fixture report");
+    refresh_compare_cases(
+        &comparator_manifest,
+        &comparator_semantic_hash,
+        &compare_template,
+        check,
+    );
+
+    // Replay the retained Docker capture after the synthetic comparison cases.
     let runtime_input = fs::read(RUNTIME_PROFILE_TEXT_PATH).expect("runtime source fixture");
     let mut output = adapt_input(
         InputEnvelope::new(

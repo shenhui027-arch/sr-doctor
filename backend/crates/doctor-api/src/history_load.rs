@@ -10,7 +10,7 @@ use doctor_contracts::{
     HistoryLoadHeatCell, HistoryLoadNotComparableReason, HistoryLoadRequest, HistoryLoadResponse,
     HistoryLoadSegment, HistoryLoadWeekRow,
 };
-use doctor_core::HISTORY_BUCKET_SECONDS;
+use doctor_core::{HISTORY_BUCKET_SECONDS, TrendBucket};
 use doctor_history::HistoryStore;
 
 use super::*;
@@ -65,11 +65,27 @@ pub(super) async fn load(
 }
 
 #[derive(Default)]
-struct Hour {
+struct LoadTotals {
     executions: u128,
     errors: u128,
-    query_time: u128,
+    query_time_valid: u128,
+    query_time_sum: u128,
+}
+
+#[derive(Default)]
+struct Hour {
+    totals: LoadTotals,
     versions: BTreeSet<(String, String)>,
+}
+
+fn observed_day_query_time(totals: &LoadTotals, coverage: HistoryLoadCoverage) -> Option<u128> {
+    if totals.query_time_valid > 0 {
+        Some(totals.query_time_sum)
+    } else if totals.executions == 0 && coverage == HistoryLoadCoverage::Complete {
+        Some(0)
+    } else {
+        None
+    }
 }
 
 /// 1970-01-01 was a Thursday; 0 = Monday.
@@ -133,9 +149,10 @@ pub(crate) fn build(
     let mut hours: BTreeMap<i64, Hour> = BTreeMap::new();
     for total in totals {
         let hour = hours.entry(total.bucket_start).or_default();
-        hour.executions += u128::from(total.executions);
-        hour.errors += u128::from(total.errors);
-        hour.query_time += total.query_time_sum;
+        hour.totals.executions += u128::from(total.executions);
+        hour.totals.errors += u128::from(total.errors);
+        hour.totals.query_time_valid += u128::from(total.query_time_valid);
+        hour.totals.query_time_sum += total.query_time_sum;
         hour.versions
             .insert((total.engine_version, total.rule_version));
     }
@@ -146,14 +163,15 @@ pub(crate) fn build(
         complete: u16,
         partial: u16,
         missing: u16,
-        sums: Option<(u128, u128, u128)>,
+        sums: Option<LoadTotals>,
+        query_time: Option<u128>,
         versions: BTreeSet<(String, String)>,
     }
     let mut day_facts = Vec::new();
     for index in 0..i64::from(days) {
         let day_start = start + index * DAY;
         let (mut complete, mut partial, mut missing) = (0u16, 0u16, 0u16);
-        let mut sums = (0u128, 0u128, 0u128);
+        let mut sums = LoadTotals::default();
         let mut versions = BTreeSet::new();
         for hour_start in (day_start..day_start + DAY).step_by(HISTORY_BUCKET_SECONDS as usize) {
             match coverage.get(&hour_start) {
@@ -163,9 +181,10 @@ pub(crate) fn build(
                 None => {}
             }
             if let Some(hour) = hours.get(&hour_start) {
-                sums.0 += hour.executions;
-                sums.1 += hour.errors;
-                sums.2 += hour.query_time;
+                sums.executions += hour.totals.executions;
+                sums.errors += hour.totals.errors;
+                sums.query_time_valid += hour.totals.query_time_valid;
+                sums.query_time_sum += hour.totals.query_time_sum;
                 versions.extend(hour.versions.iter().cloned());
             }
         }
@@ -178,6 +197,11 @@ pub(crate) fn build(
         } else {
             HistoryLoadCoverage::Partial
         };
+        let query_time = if versions.len() <= 1 {
+            observed_day_query_time(&sums, state)
+        } else {
+            None
+        };
         day_facts.push(DayFacts {
             start: day_start,
             coverage: state,
@@ -185,6 +209,7 @@ pub(crate) fn build(
             partial,
             missing,
             sums: (state != HistoryLoadCoverage::NotCollected).then_some(sums),
+            query_time,
             versions,
         });
     }
@@ -208,7 +233,7 @@ pub(crate) fn build(
                 rule_versions: day
                     .versions
                     .iter()
-                    .map(|pair| pair.1.clone())
+                    .map(|pair| TrendBucket::rule_version_label(&pair.1).to_owned())
                     .collect::<BTreeSet<_>>()
                     .into_iter()
                     .collect(),
@@ -219,16 +244,21 @@ pub(crate) fn build(
         segment_of.push(segments.len().saturating_sub(1) as u16);
     }
 
-    let max_of = |pick: fn(&(u128, u128, u128)) -> u128| {
+    let max_of = |pick: fn(&LoadTotals) -> u128| {
         day_facts
             .iter()
             .filter_map(|day| day.sums.as_ref().map(pick))
             .max()
             .unwrap_or(0)
     };
-    let (executions_top, executions_ticks) = linear_axis(max_of(|sums| sums.0));
-    let (errors_top, errors_ticks) = linear_axis(max_of(|sums| sums.1));
-    let (time_top, time_ticks) = linear_axis(max_of(|sums| sums.2));
+    let (executions_top, executions_ticks) = linear_axis(max_of(|sums| sums.executions));
+    let (errors_top, errors_ticks) = linear_axis(max_of(|sums| sums.errors));
+    let (time_top, time_ticks) = day_facts
+        .iter()
+        .filter_map(|day| day.query_time)
+        .max()
+        .map(linear_axis)
+        .unwrap_or_default();
     let days_out = day_facts
         .iter()
         .zip(&segment_of)
@@ -238,18 +268,24 @@ pub(crate) fn build(
             complete_hours: day.complete,
             partial_hours: day.partial,
             not_collected_hours: day.missing,
-            executions: day.sums.map(|sums| sums.0.to_string()),
-            errors: day.sums.map(|sums| sums.1.to_string()),
-            query_time_sum: day.sums.map(|sums| {
+            executions: day.sums.as_ref().map(|sums| sums.executions.to_string()),
+            errors: day.sums.as_ref().map(|sums| sums.errors.to_string()),
+            query_time_sum: day.query_time.map(|value| {
                 metric_fact(
                     AuditMetricId::QueryTime,
-                    u64::try_from(sums.2).unwrap_or(u64::MAX),
+                    u64::try_from(value).unwrap_or(u64::MAX),
                 )
             }),
             segment: *segment,
-            executions_permyriad: day.sums.map(|sums| permyriad(sums.0, executions_top)),
-            errors_permyriad: day.sums.map(|sums| permyriad(sums.1, errors_top)),
-            query_time_permyriad: day.sums.map(|sums| permyriad(sums.2, time_top)),
+            executions_permyriad: day
+                .sums
+                .as_ref()
+                .map(|sums| permyriad(sums.executions, executions_top)),
+            errors_permyriad: day
+                .sums
+                .as_ref()
+                .map(|sums| permyriad(sums.errors, errors_top)),
+            query_time_permyriad: day.query_time.map(|value| permyriad(value, time_top)),
         })
         .collect::<Vec<_>>();
 
@@ -265,7 +301,7 @@ pub(crate) fn build(
             [(hour_start.rem_euclid(DAY) / HISTORY_BUCKET_SECONDS) as usize];
         cell.0 += hours
             .get(hour_start)
-            .map(|hour| hour.executions)
+            .map(|hour| hour.totals.executions)
             .unwrap_or(0);
         cell.1 += 1;
     }
@@ -313,13 +349,26 @@ pub(crate) fn build(
             HistoryLoadComparison::NotComparable {
                 reason: HistoryLoadNotComparableReason::PartialCoverage,
             }
-        } else if segment_of[current_index] != segment_of[previous_index] {
+        } else if segment_of[current_index] != segment_of[previous_index]
+            || current.versions != previous.versions
+            || current.versions.len() != 1
+            || current
+                .versions
+                .iter()
+                .any(|(_, rule)| TrendBucket::version_pack_in(rule).is_none())
+        {
             HistoryLoadComparison::NotComparable {
                 reason: HistoryLoadNotComparableReason::VersionOrRuleChanged,
             }
         } else {
-            let now_value = current.sums.map(|sums| sums.0 as i128).unwrap_or(0);
-            let before = previous.sums.map(|sums| sums.0 as i128).unwrap_or(0);
+            let now_value = current
+                .sums
+                .as_ref()
+                .map_or(0, |sums| sums.executions as i128);
+            let before = previous
+                .sums
+                .as_ref()
+                .map_or(0, |sums| sums.executions as i128);
             HistoryLoadComparison::Exact {
                 delta: (now_value - before).to_string(),
                 permille: (before > 0).then(|| {
@@ -330,8 +379,14 @@ pub(crate) fn build(
         week.push(HistoryLoadWeekRow {
             current_day_seconds: seconds(current_day),
             previous_day_seconds: seconds(previous_day),
-            current_executions: current.sums.map(|sums| sums.0.to_string()),
-            previous_executions: previous.sums.map(|sums| sums.0.to_string()),
+            current_executions: current
+                .sums
+                .as_ref()
+                .map(|sums| sums.executions.to_string()),
+            previous_executions: previous
+                .sums
+                .as_ref()
+                .map(|sums| sums.executions.to_string()),
             comparison,
         });
     }
@@ -340,11 +395,10 @@ pub(crate) fn build(
         .values()
         .filter(|state| **state != CoverageHourState::NotCollected)
         .count();
-    let collected_days = day_facts.iter().filter(|day| day.sums.is_some());
+    let collected_days = day_facts.iter().filter_map(|day| day.sums.as_ref());
     let totals = collected_days.fold(None, |sum: Option<(u128, u128)>, day| {
-        let (executions, errors, _) = day.sums.unwrap_or_default();
         let (total_executions, total_errors) = sum.unwrap_or_default();
-        Some((total_executions + executions, total_errors + errors))
+        Some((total_executions + day.executions, total_errors + day.errors))
     });
     Ok(HistoryLoadResponse {
         target,
@@ -378,6 +432,7 @@ pub(crate) fn build(
             "quantiles_are_not_combined_from_hourly_aggregates",
             "hours_not_collected_are_never_interpolated",
             "version_or_rule_changes_split_comparisons",
+            "query_time_sum_only_includes_valid_samples",
             "weekday_and_hour_are_utc",
         ]
         .into_iter()
@@ -389,6 +444,7 @@ pub(crate) fn build(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use doctor_core::{HistoryBucketDelta, HistoryMetric, HistoryTemplate, HistoryTemplateKind};
     use doctor_history::{RunRecord, RunState};
 
     fn run(store: &HistoryStore, start: i64, end: i64, state: RunState) {
@@ -493,5 +549,119 @@ mod tests {
         assert_eq!(rounded_average(5, 2), Some(3));
         assert_eq!(rounded_average(4, 3), Some(1));
         assert_eq!(rounded_average(1, 0), None);
+    }
+
+    #[test]
+    fn daily_query_time_is_null_when_all_execution_times_are_missing() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        let start = 1_792_972_800;
+        let end = start + DAY;
+        store
+            .record_slice(
+                "t",
+                "3.5.14",
+                &doctor_core::history_rule_version(),
+                &RunRecord {
+                    started_at: end,
+                    slice_start: start,
+                    slice_end: end,
+                    state: RunState::Complete,
+                    reason: None,
+                    rows_read: 1,
+                    attributed: 1,
+                    partial_statements: 0,
+                    unavailable_statements: 0,
+                    duration_ms: 1,
+                },
+                end,
+                &[HistoryTemplate {
+                    template_key: "k".into(),
+                    kind: HistoryTemplateKind::OfficialDigest,
+                    identity: "digest".into(),
+                    catalog: "c".into(),
+                    database: "d".into(),
+                    template: None,
+                }],
+                &[HistoryBucketDelta {
+                    template_key: "k".into(),
+                    bucket_start: start,
+                    executions: 1,
+                    ..HistoryBucketDelta::default()
+                }],
+            )
+            .unwrap();
+        let result = build(&store, Some("t".into()), 2, end).unwrap();
+        let day = &result.days[0];
+        assert_eq!(day.coverage, HistoryLoadCoverage::Complete);
+        assert_eq!(day.executions.as_deref(), Some("1"));
+        let day = serde_json::to_value(day).unwrap();
+        assert_eq!(day["query_time_sum"], serde_json::Value::Null);
+        assert_eq!(day["query_time_permyriad"], serde_json::Value::Null);
+        assert!(result.axes.query_time.is_empty());
+    }
+
+    #[test]
+    fn daily_query_time_preserves_observed_zero_and_valid_only_sum() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        let start = 1_792_972_800;
+        let template = HistoryTemplate {
+            template_key: "k".into(),
+            kind: HistoryTemplateKind::OfficialDigest,
+            identity: "digest".into(),
+            catalog: "c".into(),
+            database: "d".into(),
+            template: None,
+        };
+        for (offset, executions, valid_time) in [(0, 1, 0), (3, 2, 20)] {
+            let day = start + offset * DAY;
+            if offset == 3 {
+                run(&store, start + DAY, start + 2 * DAY, RunState::Complete);
+                run(&store, start + 2 * DAY, day, RunState::Partial);
+            }
+            let mut bucket = HistoryBucketDelta {
+                template_key: "k".into(),
+                bucket_start: day,
+                executions,
+                query_time: HistoryMetric {
+                    valid_count: 1,
+                    sum: u128::from(valid_time),
+                    max: Some(u128::from(valid_time)),
+                    ..HistoryMetric::default()
+                },
+                ..HistoryBucketDelta::default()
+            };
+            bucket.query_time.histogram.record(valid_time);
+            store
+                .record_slice(
+                    "t",
+                    "3.5.14",
+                    &doctor_core::history_rule_version(),
+                    &RunRecord {
+                        started_at: day + DAY,
+                        slice_start: day,
+                        slice_end: day + DAY,
+                        state: RunState::Complete,
+                        reason: None,
+                        rows_read: executions,
+                        attributed: executions,
+                        partial_statements: 0,
+                        unavailable_statements: 0,
+                        duration_ms: 1,
+                    },
+                    day + DAY,
+                    std::slice::from_ref(&template),
+                    &[bucket],
+                )
+                .unwrap();
+        }
+        let result = build(&store, Some("t".into()), 5, start + 4 * DAY).unwrap();
+        for (day, time) in result.days.iter().zip([Some(0), Some(0), None, Some(20)]) {
+            assert_eq!(
+                day.query_time_sum,
+                time.map(|value| metric_fact(AuditMetricId::QueryTime, value))
+            );
+            assert_eq!(day.query_time_permyriad.is_some(), time.is_some());
+        }
+        assert_eq!(result.days[3].executions.as_deref(), Some("2"));
     }
 }

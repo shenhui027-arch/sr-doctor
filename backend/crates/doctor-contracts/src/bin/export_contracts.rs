@@ -772,7 +772,7 @@ fn export_fixtures(check: bool) {
             .as_str()
             .expect("comparator version")
             .to_owned(),
-        manifest_hash: comparator_manifest["manifest_hash"]
+        manifest_hash: comparator_manifest["semantic_manifest_hash"]
             .as_str()
             .expect("comparator hash")
             .to_owned(),
@@ -1809,7 +1809,7 @@ fn main() {
             .as_str()
             .expect("comparator version")
             .to_owned(),
-        manifest_hash: comparator_manifest["manifest_hash"]
+        manifest_hash: comparator_manifest["semantic_manifest_hash"]
             .as_str()
             .expect("comparator hash")
             .to_owned(),

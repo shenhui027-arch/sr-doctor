@@ -9381,7 +9381,7 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
         assert_eq!(fingerprints["authority"], "product_unofficial");
         assert_eq!(
             fingerprints["fingerprint_version"],
-            "sr-doctor-fingerprint.v3"
+            "sr-doctor-fingerprint.v4"
         );
         let row = &fingerprints["rows"][0];
         assert_eq!(row["template"], "SELECT id FROM t WHERE id = ?");
@@ -9742,7 +9742,13 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
         let mut cases = Vec::new();
         {
             let store = state.history.store().unwrap();
-            for case in ["legacy", "mixed_engine", "mixed_rule", "compatible"] {
+            for case in [
+                "legacy",
+                "missing_window_evidence",
+                "mixed_engine",
+                "mixed_rule",
+                "compatible",
+            ] {
                 let before_rule = if case == "legacy" {
                     "sr-doctor-fingerprint.v2"
                 } else {
@@ -9794,12 +9800,22 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
                     .create_item(case, &key, "Controlled fixture", "manual", None, now)
                     .unwrap()
                     .unwrap();
-                let snapshot = serde_json::json!({
+                let pinned_rule = if case == "legacy" {
+                    before_rule.to_owned()
+                } else {
+                    doctor_core::TrendBucket::active_storage_rule_version()
+                };
+                let mut snapshot = serde_json::json!({
                     "view": {"pinned_seconds":now, "template":"SELECT id FROM t WHERE id = ?", "window_start_seconds":current-3*3600, "window_end_seconds":current-3600,
-                        "comparability":{"engine_version":"3.5.14","rule_version":before_rule}, "executions":"40","valid_samples":"40",
+                        "comparability":{"engine_version":"3.5.14","rule_version":pinned_rule}, "executions":"40","valid_samples":"40",
                         "query_time_median":null,"scan_bytes_median":null,"cpu_cost_median":null,"exemplar_query_id":null,"verdict":null},
                     "executions":40,"valid":40,"query_time_median":250,"scan_bytes_median":3000,"cpu_cost_median":null
                 });
+                if !matches!(case, "legacy" | "missing_window_evidence") {
+                    snapshot["window_semantics"] = serde_json::json!([["3.5.14", pinned_rule]]);
+                } else if case == "missing_window_evidence" {
+                    snapshot["window_is_single_semantics"] = serde_json::json!(true);
+                }
                 store
                     .update_item(
                         item,
@@ -9857,6 +9873,14 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
                     "rule_version_changed"
                 };
                 assert_eq!(response["verification"]["outcome"]["reason"], reason);
+                if matches!(case, "legacy" | "missing_window_evidence") {
+                    assert!(
+                        response["verification"]["limitations"]
+                            .as_array()
+                            .unwrap()
+                            .contains(&serde_json::json!("version_pack_semantics_unknown"))
+                    );
+                }
             }
         }
         drop(app);
@@ -10618,7 +10642,7 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
     }
 
     #[tokio::test]
-    async fn alerts_from_an_older_rule_version_are_flagged_and_resolve_on_request() {
+    async fn alerts_from_an_older_rule_version_are_counted_and_resolved_beyond_list_limit() {
         let dir =
             std::env::temp_dir().join(format!("doctor-api-rule-changed-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -10639,7 +10663,7 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
                 )]
             },
         );
-        {
+        let (old, current_facts) = {
             let store = doctor_history::HistoryStore::open(&path).unwrap();
             let facts = doctor_history::AlertFacts {
                 severity: "high".into(),
@@ -10654,12 +10678,24 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
                 engine_version: "3.5.14".into(),
                 rule_version: "rules-before-upgrade".into(),
             };
-            store
+            let doctor_history::AlertUpsert::Created(old) = store
                 .upsert_alert("127.0.0.1:9030", "old-template", &facts, now - 600)
-                .unwrap();
-        }
+                .unwrap()
+            else {
+                panic!("expected a new legacy alert");
+            };
+            (
+                old,
+                doctor_history::AlertFacts {
+                    rule_version: doctor_core::TrendBucket::active_storage_rule_version(),
+                    ..facts
+                },
+            )
+        };
         let factory = Arc::new(ConnectorTestFactory::connected());
-        let app = router(history_state(factory, &path));
+        let state = history_state(factory, &path);
+        let store = state.history.store().unwrap().clone();
+        let app = router(state);
         let post =
             |path: &'static str, body: serde_json::Value| history_post(app.clone(), path, body);
 
@@ -10676,6 +10712,29 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
         );
         assert_eq!(alerts["counts"]["rule_changed"], "1");
 
+        store
+            .upsert_alert("127.0.0.1:9030", "old-template", &current_facts, now)
+            .unwrap();
+        for i in 0..500 {
+            store
+                .upsert_alert("127.0.0.1:9030", &format!("newer-{i}"), &current_facts, now)
+                .unwrap();
+        }
+        let old_alert = store.alert(old).unwrap().unwrap();
+        assert!(old_alert.superseded);
+        assert_eq!(old_alert.state, "open");
+        let (code, alerts) = post(
+            "/api/v1/history/alerts",
+            serde_json::json!({ "target": null }),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK, "{alerts}");
+        let list = alerts["alerts"].as_array().unwrap();
+        assert_eq!(list.len(), 500);
+        let old_id = old.to_string();
+        assert!(list.iter().all(|alert| alert["alert_id"] != old_id));
+        assert_eq!(alerts["counts"]["rule_changed"], "1");
+
         let (code, resolved) = post(
             "/api/v1/history/alerts/resolve-rule-changed",
             serde_json::json!({ "target": null }),
@@ -10686,19 +10745,21 @@ Error: NULL value in non-nullable column 'v'. Row: [4, 'nul', NULL]
             resolved,
             serde_json::json!({ "target": "127.0.0.1:9030", "resolved": "1" })
         );
+        assert_eq!(store.alert(old).unwrap().unwrap().state, "resolved");
         let (_, after) = post(
             "/api/v1/history/alerts",
             serde_json::json!({ "target": null }),
         )
         .await;
-        assert_eq!(after["alerts"][0]["state"], "resolved");
         assert_eq!(
             (
                 after["counts"]["rule_changed"].clone(),
                 after["counts"]["open"].clone()
             ),
-            (serde_json::json!("0"), serde_json::json!("0"))
+            (serde_json::json!("0"), serde_json::json!("500"))
         );
+        drop(store);
+        drop(app);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

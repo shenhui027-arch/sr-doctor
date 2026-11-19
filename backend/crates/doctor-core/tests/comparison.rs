@@ -1,8 +1,8 @@
 use doctor_contracts::{
     AnalysisSnapshotReport, AnalysisState, BoundedFidelity, BoundedInterval, CanonicalNumber,
-    Comparison, ExecutionShape, ExecutionShapeState, Finding, GraphState, LosslessFidelity,
-    MetricCell, MetricCellValue, MetricDelta, MetricDeltaState, NumberKind, ObservedMetricFidelity,
-    PercentageState, Recommendation, RequestedSourceKind,
+    Comparison, ExecutionShape, ExecutionShapeState, Finding, FragmentInstanceCount, GraphRelation,
+    GraphState, LosslessFidelity, MetricCell, MetricCellValue, MetricDelta, MetricDeltaState,
+    NumberKind, ObservedMetricFidelity, PercentageState, Recommendation, RequestedSourceKind,
 };
 use doctor_core::{
     AdapterContext, AdapterLimits, InputEnvelope, adapt_input, analysis_attempt,
@@ -31,14 +31,14 @@ fn number(value: &str) -> CanonicalNumber {
 
 fn metric(value: &str, bounds: Option<BoundedInterval>) -> MetricCell {
     MetricCell {
-        metric_cell_ref: "metric:operator-0:QuerySpillBytes".into(),
+        metric_cell_ref: "metric:query:query:QuerySpillBytes:0".into(),
         metric_id: "QuerySpillBytes".into(),
-        subject_ref: "operator-0".into(),
+        subject_ref: "query".into(),
         display_text: value.into(),
         order_rank: Some(1),
-        source_refs: vec!["json:/query_spill_bytes".into()],
+        source_refs: vec!["json:/Query/Execution/QuerySpillBytes".into()],
         reasons: vec![],
-        match_key: None,
+        match_key: Some("query/QuerySpillBytes".into()),
         value: MetricCellValue::Exact {
             canonical_number: number(value),
             canonical_unit: "byte".into(),
@@ -57,7 +57,21 @@ fn metric(value: &str, bounds: Option<BoundedInterval>) -> MetricCell {
 }
 
 fn with_metric(mut report: AnalysisSnapshotReport, metric: MetricCell) -> AnalysisSnapshotReport {
-    report.operator_rows[0].metric_cells = vec![metric];
+    report.operator_rows[0].metric_cells.clear();
+    report.derived_metric_cells = vec![metric];
+    report.execution_shape = ExecutionShape {
+        state: ExecutionShapeState::Complete,
+        fragment_count: Some(1),
+        instance_count: Some(1),
+        fragments: vec![FragmentInstanceCount {
+            fragment_id: "0".into(),
+            instance_num: Some(1),
+            reasons: vec![],
+            source_refs: vec!["json:/Query/Execution/Fragment 0/InstanceNum".into()],
+        }],
+        reasons: vec![],
+        ..report.execution_shape
+    };
     report.facts_hash = facts_hash(&report_facts(&report));
     report
 }
@@ -167,7 +181,7 @@ fn comparator_handles_lossy_zero_closure_registry_equivalence_algorithm_and_fail
     );
     assert_eq!(
         comparison.state,
-        doctor_contracts::ComparisonState::PartiallyComparable
+        doctor_contracts::ComparisonState::NotComparable
     );
     assert!(
         comparison
@@ -671,10 +685,23 @@ fn task21_level2_profiles_do_not_resolve_or_add_findings() {
 
 #[test]
 fn audit_v1_03_edge_semantics_and_node_types_survive_stable_ids() {
-    let baseline = retained_complex_report();
+    let mut baseline = retained_complex_report();
+    // Changing a PlanChild edge's relation would also affect root reachability.
+    let relation_edge_index = baseline
+        .graph_view
+        .edges
+        .iter()
+        .position(|edge| edge.relation == GraphRelation::FragmentSink)
+        .unwrap();
+    baseline.graph_view.edges[relation_edge_index].restates_edge_id = None;
     for field in ["from", "to", "input_role", "source_ordinal", "relation"] {
         let mut value = serde_json::to_value(&baseline).unwrap();
-        let edge = &mut value["graph_view"]["edges"][0];
+        let edge_index = if field == "relation" {
+            relation_edge_index
+        } else {
+            0
+        };
+        let edge = &mut value["graph_view"]["edges"][edge_index];
         let replacement = match field {
             "from" => serde_json::json!("changed-from"),
             "to" => serde_json::json!("changed-to"),
@@ -684,11 +711,7 @@ fn audit_v1_03_edge_semantics_and_node_types_survive_stable_ids() {
                 "build"
             }),
             "source_ordinal" => serde_json::json!(999),
-            _ => serde_json::json!(if edge[field] == "plan_child" {
-                "fragment_sink"
-            } else {
-                "plan_child"
-            }),
+            _ => serde_json::json!("exchange_link"),
         };
         edge[field] = replacement;
         let candidate: AnalysisSnapshotReport = serde_json::from_value(value).unwrap();
@@ -696,8 +719,41 @@ fn audit_v1_03_edge_semantics_and_node_types_survive_stable_ids() {
             analysis_attempt(baseline.clone()),
             analysis_attempt(candidate),
         );
-        assert!(!comparison.structure_delta.edge_delta.is_empty(), "{field}");
+        if matches!(field, "from" | "to") {
+            assert_eq!(
+                comparison.structure_delta.state, "not_comparable",
+                "{field}"
+            );
+            assert_eq!(
+                comparison.structure_delta.unresolved,
+                ["topology_node_unreachable"],
+                "{field}"
+            );
+            assert!(comparison.structure_delta.edge_delta.is_empty(), "{field}");
+        } else {
+            assert!(!comparison.structure_delta.edge_delta.is_empty(), "{field}");
+        }
     }
+    assert_eq!(baseline.graph_view.state, GraphState::Complete);
+    let mut candidate = baseline.clone();
+    let edge = &mut candidate.graph_view.edges[relation_edge_index];
+    let edge_id = edge.edge_id.clone();
+    edge.to = baseline
+        .graph_view
+        .nodes
+        .iter()
+        .find(|node| node.node_id != edge.from && node.node_id != edge.to)
+        .unwrap()
+        .node_id
+        .clone();
+    let comparison = compare_attempts(
+        analysis_attempt(baseline.clone()),
+        analysis_attempt(candidate),
+    );
+    // The graph is complete even though this retained analysis is partial.
+    assert_eq!(comparison.structure_delta.state, "partial");
+    assert_eq!(comparison.structure_delta.edge_delta, [edge_id]);
+
     let mut candidate = baseline.clone();
     let id = candidate.graph_view.nodes[0].node_id.clone();
     candidate.graph_view.nodes[0].plan_node_type = Some("CHANGED_OPERATOR".into());

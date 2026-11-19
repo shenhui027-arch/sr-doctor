@@ -278,6 +278,7 @@ pub struct NormalizedIr {
 pub struct PortableMetricFact {
     pub metric_id: String,
     pub subject_ref: String,
+    pub match_key: Option<String>,
     pub state: MetricCellState,
     pub canonical_number: Option<CanonicalNumber>,
     pub canonical_unit: Option<String>,
@@ -581,6 +582,7 @@ fn portable_metric_fact(cell: &MetricCell) -> PortableMetricFact {
     PortableMetricFact {
         metric_id: cell.metric_id.clone(),
         subject_ref: cell.subject_ref.clone(),
+        match_key: cell.match_key.clone(),
         state: cell.state(),
         canonical_number: cell.canonical_number().cloned(),
         canonical_unit: cell.canonical_unit().map(str::to_owned),

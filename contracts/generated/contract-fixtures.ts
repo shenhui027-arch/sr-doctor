@@ -8,13 +8,13 @@ export const sr3514JsonMinimal = {
     "components": [
       {
         "id": "sr3514-runtime-profile-adapter",
-        "version": "0.2.3",
-        "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+        "version": "0.2.4",
+        "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
       },
       {
         "id": "strict-metric-parser-contract",
-        "version": "0.1.0",
-        "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+        "version": "0.1.1",
+        "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
       },
       {
         "id": "sr3514-metric-registry",
@@ -23,8 +23,8 @@ export const sr3514JsonMinimal = {
       },
       {
         "id": "sr3514-graph-resolver-contract",
-        "version": "0.10.0",
-        "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+        "version": "0.10.1",
+        "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
       },
       {
         "id": "starrocks-3.5.14",
@@ -38,8 +38,8 @@ export const sr3514JsonMinimal = {
       }
     ]
   },
-  "analysis_key": "f90ea4c96750b33690cc730f0be50677fa84b1276098c824fdf02225348d0175",
-  "facts_hash": "8ec1f1623e8a1e4f6e92c676aea74b21324d84d0e72ba4d9913bc0ed73d8e6b4",
+  "analysis_key": "aa8696849778b9d7549a229b3a9a04c76ef92977e19c922367a0de0fcaed6cc0",
+  "facts_hash": "ef23dee75b1a29016d8d440f4bbb7c1c22ecc78dd71b778495c15360f4da8123",
   "input": {
     "requested_kind": "auto",
     "detected_kind": "json_profile",
@@ -288,13 +288,13 @@ export const sr3514TextMinimal = {
     "components": [
       {
         "id": "sr3514-runtime-profile-adapter",
-        "version": "0.2.3",
-        "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+        "version": "0.2.4",
+        "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
       },
       {
         "id": "strict-metric-parser-contract",
-        "version": "0.1.0",
-        "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+        "version": "0.1.1",
+        "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
       },
       {
         "id": "sr3514-metric-registry",
@@ -303,8 +303,8 @@ export const sr3514TextMinimal = {
       },
       {
         "id": "sr3514-graph-resolver-contract",
-        "version": "0.10.0",
-        "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+        "version": "0.10.1",
+        "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
       },
       {
         "id": "starrocks-3.5.14",
@@ -318,8 +318,8 @@ export const sr3514TextMinimal = {
       }
     ]
   },
-  "analysis_key": "df71e8cde765ca904417d53ae35f439fa9cbe55d16ce17d6ffe3b87cf693ec8e",
-  "facts_hash": "8ec1f1623e8a1e4f6e92c676aea74b21324d84d0e72ba4d9913bc0ed73d8e6b4",
+  "analysis_key": "c3e401cb55a6fe166ad77cfbfaeb8ba7538ceac66f8f3a9ebe41376faea8b940",
+  "facts_hash": "ef23dee75b1a29016d8d440f4bbb7c1c22ecc78dd71b778495c15360f4da8123",
   "input": {
     "requested_kind": "auto",
     "detected_kind": "text_profile",

@@ -13,7 +13,7 @@ use crate::{
 
 /// Bumped whenever a normalization rule changes; fingerprints of different
 /// versions are never comparable.
-pub const PRODUCT_SQL_FINGERPRINT_VERSION: &str = "sr-doctor-fingerprint.v3";
+pub const PRODUCT_SQL_FINGERPRINT_VERSION: &str = "sr-doctor-fingerprint.v4";
 
 /// The most digest-missing executions one fingerprint read takes, newest first.
 pub const AUDIT_FINGERPRINT_READ_LIMIT: u16 = 500;

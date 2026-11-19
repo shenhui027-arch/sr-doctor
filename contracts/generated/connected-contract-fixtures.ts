@@ -134,18 +134,18 @@ export const sr3514ConnectedContractGolden = {
     "source_kind": "text_profile",
     "state": "fetched",
     "source_hash": "3aeb9a126d70be2f999f4bca2929cb7207542b9f6d1e2cd21f51f163e7db6c9b",
-    "analysis_key": "df71e8cde765ca904417d53ae35f439fa9cbe55d16ce17d6ffe3b87cf693ec8e",
+    "analysis_key": "c3e401cb55a6fe166ad77cfbfaeb8ba7538ceac66f8f3a9ebe41376faea8b940",
     "analysis_receipt": {
       "components": [
         {
           "id": "sr3514-runtime-profile-adapter",
-          "version": "0.2.3",
-          "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+          "version": "0.2.4",
+          "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
         },
         {
           "id": "strict-metric-parser-contract",
-          "version": "0.1.0",
-          "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+          "version": "0.1.1",
+          "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
         },
         {
           "id": "sr3514-metric-registry",
@@ -154,8 +154,8 @@ export const sr3514ConnectedContractGolden = {
         },
         {
           "id": "sr3514-graph-resolver-contract",
-          "version": "0.10.0",
-          "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+          "version": "0.10.1",
+          "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
         },
         {
           "id": "starrocks-3.5.14",
@@ -177,13 +177,13 @@ export const sr3514ConnectedContractGolden = {
           "components": [
             {
               "id": "sr3514-runtime-profile-adapter",
-              "version": "0.2.3",
-              "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+              "version": "0.2.4",
+              "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
             },
             {
               "id": "strict-metric-parser-contract",
-              "version": "0.1.0",
-              "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+              "version": "0.1.1",
+              "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
             },
             {
               "id": "sr3514-metric-registry",
@@ -192,8 +192,8 @@ export const sr3514ConnectedContractGolden = {
             },
             {
               "id": "sr3514-graph-resolver-contract",
-              "version": "0.10.0",
-              "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+              "version": "0.10.1",
+              "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
             },
             {
               "id": "starrocks-3.5.14",
@@ -207,8 +207,8 @@ export const sr3514ConnectedContractGolden = {
             }
           ]
         },
-        "analysis_key": "df71e8cde765ca904417d53ae35f439fa9cbe55d16ce17d6ffe3b87cf693ec8e",
-        "facts_hash": "8ec1f1623e8a1e4f6e92c676aea74b21324d84d0e72ba4d9913bc0ed73d8e6b4",
+        "analysis_key": "c3e401cb55a6fe166ad77cfbfaeb8ba7538ceac66f8f3a9ebe41376faea8b940",
+        "facts_hash": "ef23dee75b1a29016d8d440f4bbb7c1c22ecc78dd71b778495c15360f4da8123",
         "input": {
           "requested_kind": "auto",
           "detected_kind": "text_profile",
@@ -552,18 +552,18 @@ export const sr3514ConnectedContractGolden = {
     "input_origin": "connected_profile_fetch",
     "source_kind": "text_profile",
     "source_hash": "3aeb9a126d70be2f999f4bca2929cb7207542b9f6d1e2cd21f51f163e7db6c9b",
-    "analysis_key": "df71e8cde765ca904417d53ae35f439fa9cbe55d16ce17d6ffe3b87cf693ec8e",
+    "analysis_key": "c3e401cb55a6fe166ad77cfbfaeb8ba7538ceac66f8f3a9ebe41376faea8b940",
     "analysis_receipt": {
       "components": [
         {
           "id": "sr3514-runtime-profile-adapter",
-          "version": "0.2.3",
-          "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+          "version": "0.2.4",
+          "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
         },
         {
           "id": "strict-metric-parser-contract",
-          "version": "0.1.0",
-          "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+          "version": "0.1.1",
+          "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
         },
         {
           "id": "sr3514-metric-registry",
@@ -572,8 +572,8 @@ export const sr3514ConnectedContractGolden = {
         },
         {
           "id": "sr3514-graph-resolver-contract",
-          "version": "0.10.0",
-          "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+          "version": "0.10.1",
+          "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
         },
         {
           "id": "starrocks-3.5.14",
@@ -595,13 +595,13 @@ export const sr3514ConnectedContractGolden = {
           "components": [
             {
               "id": "sr3514-runtime-profile-adapter",
-              "version": "0.2.3",
-              "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+              "version": "0.2.4",
+              "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
             },
             {
               "id": "strict-metric-parser-contract",
-              "version": "0.1.0",
-              "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+              "version": "0.1.1",
+              "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
             },
             {
               "id": "sr3514-metric-registry",
@@ -610,8 +610,8 @@ export const sr3514ConnectedContractGolden = {
             },
             {
               "id": "sr3514-graph-resolver-contract",
-              "version": "0.10.0",
-              "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+              "version": "0.10.1",
+              "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
             },
             {
               "id": "starrocks-3.5.14",
@@ -625,8 +625,8 @@ export const sr3514ConnectedContractGolden = {
             }
           ]
         },
-        "analysis_key": "df71e8cde765ca904417d53ae35f439fa9cbe55d16ce17d6ffe3b87cf693ec8e",
-        "facts_hash": "8ec1f1623e8a1e4f6e92c676aea74b21324d84d0e72ba4d9913bc0ed73d8e6b4",
+        "analysis_key": "c3e401cb55a6fe166ad77cfbfaeb8ba7538ceac66f8f3a9ebe41376faea8b940",
+        "facts_hash": "ef23dee75b1a29016d8d440f4bbb7c1c22ecc78dd71b778495c15360f4da8123",
         "input": {
           "requested_kind": "auto",
           "detected_kind": "text_profile",
@@ -953,12 +953,12 @@ export const sr3514ConnectedContractGolden = {
         "components": [
           {
             "id": "doctor-comparator-v0.1",
-            "version": "0.6.0",
-            "manifest_hash": "ce32aa3e6c476bac7579a048f4778247d5329eccbe944b62ba54022d43e67c86"
+            "version": "0.7.0",
+            "manifest_hash": "88a8cdf6f4ce000172dd33363f2f3e0770a6469c8590fda95f553d4fe3a5228a"
           }
         ]
       },
-      "comparison_key": "45b82b23987153aa0a9c5f917e76b39d6c943e0d399d3a1c9c4c245333023383",
+      "comparison_key": "9a9fc589b0289ceb18448b839b7692baf44263dfc7ce73f713131118b6dc73c5",
       "baseline": {
         "outcome": {
           "report": {
@@ -968,13 +968,13 @@ export const sr3514ConnectedContractGolden = {
               "components": [
                 {
                   "id": "sr3514-runtime-profile-adapter",
-                  "version": "0.2.3",
-                  "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+                  "version": "0.2.4",
+                  "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
                 },
                 {
                   "id": "strict-metric-parser-contract",
-                  "version": "0.1.0",
-                  "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+                  "version": "0.1.1",
+                  "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
                 },
                 {
                   "id": "sr3514-metric-registry",
@@ -983,8 +983,8 @@ export const sr3514ConnectedContractGolden = {
                 },
                 {
                   "id": "sr3514-graph-resolver-contract",
-                  "version": "0.10.0",
-                  "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+                  "version": "0.10.1",
+                  "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
                 },
                 {
                   "id": "starrocks-3.5.14",
@@ -998,8 +998,8 @@ export const sr3514ConnectedContractGolden = {
                 }
               ]
             },
-            "analysis_key": "df71e8cde765ca904417d53ae35f439fa9cbe55d16ce17d6ffe3b87cf693ec8e",
-            "facts_hash": "8ec1f1623e8a1e4f6e92c676aea74b21324d84d0e72ba4d9913bc0ed73d8e6b4",
+            "analysis_key": "c3e401cb55a6fe166ad77cfbfaeb8ba7538ceac66f8f3a9ebe41376faea8b940",
+            "facts_hash": "ef23dee75b1a29016d8d440f4bbb7c1c22ecc78dd71b778495c15360f4da8123",
             "input": {
               "requested_kind": "auto",
               "detected_kind": "text_profile",
@@ -1257,13 +1257,13 @@ export const sr3514ConnectedContractGolden = {
               "components": [
                 {
                   "id": "sr3514-runtime-profile-adapter",
-                  "version": "0.2.3",
-                  "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+                  "version": "0.2.4",
+                  "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
                 },
                 {
                   "id": "strict-metric-parser-contract",
-                  "version": "0.1.0",
-                  "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+                  "version": "0.1.1",
+                  "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
                 },
                 {
                   "id": "sr3514-metric-registry",
@@ -1272,8 +1272,8 @@ export const sr3514ConnectedContractGolden = {
                 },
                 {
                   "id": "sr3514-graph-resolver-contract",
-                  "version": "0.10.0",
-                  "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+                  "version": "0.10.1",
+                  "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
                 },
                 {
                   "id": "starrocks-3.5.14",
@@ -1287,8 +1287,8 @@ export const sr3514ConnectedContractGolden = {
                 }
               ]
             },
-            "analysis_key": "df71e8cde765ca904417d53ae35f439fa9cbe55d16ce17d6ffe3b87cf693ec8e",
-            "facts_hash": "8ec1f1623e8a1e4f6e92c676aea74b21324d84d0e72ba4d9913bc0ed73d8e6b4",
+            "analysis_key": "c3e401cb55a6fe166ad77cfbfaeb8ba7538ceac66f8f3a9ebe41376faea8b940",
+            "facts_hash": "ef23dee75b1a29016d8d440f4bbb7c1c22ecc78dd71b778495c15360f4da8123",
             "input": {
               "requested_kind": "auto",
               "detected_kind": "text_profile",

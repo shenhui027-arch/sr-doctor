@@ -15,11 +15,11 @@ pub const METRIC_REGISTRY_VERSION: &str = "0.3.2";
 pub const SEMANTIC_MANIFEST_HASH: &str =
     "bdbb05eeeded2e75898bac09a80c1d8ca6080440a2a5926e1c4442490d38adc2";
 pub const OUTER_MANIFEST_HASH: &str =
-    "6afe6fc2c2b4e5388ba0479382c2cd42d7fa6987f8c15f8ce2edfb79293b743c";
+    "cb37c78e95f17ec7d3d435d1f7931b69a4e8014f0bc07a3bba9984eebe062bcb";
 pub const RECIPE_MANIFEST_HASH: &str =
     "d40c05871af023dd2b6cf88fa3a1a9ad122ac2fd6a527eea523d87f05f5b3415";
 pub const GOLDEN_MANIFEST_HASH: &str =
-    "aa0dc153d931324354fb3cd57ea60b5050342f3a80924b820892814282eb73ab";
+    "7503dfa8267052a4e8fa35e439d4c981453343c8982c509973285587db827ffd";
 const PACK_JSON: &str = include_str!("../version-pack.json");
 const GOLDEN_MANIFEST_JSON: &str =
     include_str!("../../../../../fixtures/manifests/sr3514-contract-fixtures.json");

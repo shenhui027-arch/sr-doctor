@@ -64,6 +64,13 @@ WHERE state NOT IN ('closed', 'wont_fix');
 ";
 
 const ACTIVE: &str = "('open', 'acknowledged', 'muted')";
+// Kept separately so the old row stays intact and its successor may expire.
+const SUPERSEDED: &str =
+    "EXISTS (SELECT 1 FROM meta WHERE key = 'sql_alert_superseded:' || alerts.id)";
+pub(crate) const PURGE_ALERT_HANDOFFS: &str = "DELETE FROM meta
+    WHERE key GLOB 'sql_alert_superseded:*'
+      AND NOT EXISTS (SELECT 1 FROM alerts
+          WHERE id = CAST(substr(meta.key, length('sql_alert_superseded:') + 1) AS INTEGER))";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AlertFacts {
@@ -93,6 +100,7 @@ pub struct StoredAlert {
     pub resolved_at: Option<i64>,
     pub facts: AlertFacts,
     pub governance_item_id: Option<i64>,
+    pub superseded: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -179,6 +187,7 @@ fn alert_from_row(row: &Row<'_>) -> rusqlite::Result<StoredAlert> {
             rule_version: row.get(18)?,
         },
         governance_item_id: row.get(19)?,
+        superseded: row.get(20)?,
     })
 }
 
@@ -207,9 +216,13 @@ fn clamp(value: Option<u64>) -> Option<i64> {
     value.map(|v| i64::try_from(v).unwrap_or(i64::MAX))
 }
 
+fn active_rule_changed_filter() -> String {
+    format!("target = ?1 AND state IN {ACTIVE} AND (rule_version <> ?2 OR {SUPERSEDED})")
+}
+
 impl HistoryStore {
-    /// One active alert per template (dedup); a muted one stays muted until
-    /// its window ends, then reopens if the regression is still there.
+    /// Refresh only the active alert for these semantics. After handoff, an
+    /// earlier alert is left for the user even if its semantics return later.
     pub fn upsert_alert(
         &self,
         target: &str,
@@ -219,14 +232,19 @@ impl HistoryStore {
     ) -> Result<AlertUpsert> {
         let mut connection = self.lock();
         let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let f = facts;
         let active: Option<(i64, String, Option<i64>)> = tx
             .query_row(
-                &format!("SELECT id, state, muted_until FROM alerts WHERE target = ?1 AND template_key = ?2 AND state IN {ACTIVE} ORDER BY id DESC LIMIT 1"),
-                params![target, template_key],
+                &format!(
+                    "SELECT id, state, muted_until FROM alerts
+                 WHERE target = ?1 AND template_key = ?2 AND state IN {ACTIVE}
+                   AND engine_version = ?3 AND rule_version = ?4 AND NOT {SUPERSEDED}
+                 ORDER BY id DESC LIMIT 1"
+                ),
+                params![target, template_key, f.engine_version, f.rule_version],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()?;
-        let f = facts;
         let outcome = match active {
             Some((id, state, muted_until)) => {
                 let still_muted = state == "muted" && muted_until.is_some_and(|until| until > now);
@@ -238,9 +256,9 @@ impl HistoryStore {
                 tx.execute(
                     "UPDATE alerts SET state = ?2, muted_until = CASE WHEN ?2 = 'muted' THEN muted_until ELSE NULL END, last_seen = ?3,
                        severity = ?4, confidence = ?5, evidence = ?6, workload = ?7, baseline_median = ?8, current_median = ?9,
-                       relative_permille = ?10, bucket_start = ?11, exemplar = COALESCE(?12, exemplar), engine_version = ?13, rule_version = ?14
+                       relative_permille = ?10, bucket_start = ?11, exemplar = COALESCE(?12, exemplar)
                      WHERE id = ?1",
-                    params![id, next_state, now, f.severity, f.confidence, f.evidence, f.workload, clamp(f.baseline_median), clamp(f.current_median), f.relative_permille, f.bucket_start, f.exemplar, f.engine_version, f.rule_version],
+                    params![id, next_state, now, f.severity, f.confidence, f.evidence, f.workload, clamp(f.baseline_median), clamp(f.current_median), f.relative_permille, f.bucket_start, f.exemplar],
                 )?;
                 if still_muted {
                     AlertUpsert::Suppressed
@@ -251,6 +269,15 @@ impl HistoryStore {
                 }
             }
             None => {
+                tx.execute(
+                    &format!(
+                        "INSERT OR IGNORE INTO meta (key, value)
+                     SELECT 'sql_alert_superseded:' || id, '1' FROM alerts
+                     WHERE target = ?1 AND template_key = ?2 AND state IN {ACTIVE}
+                       AND (engine_version <> ?3 OR rule_version <> ?4)"
+                    ),
+                    params![target, template_key, f.engine_version, f.rule_version],
+                )?;
                 tx.execute(
                     "INSERT INTO alerts (target, template_key, state, muted_until, first_seen, last_seen, resolved_at, severity, confidence, evidence, workload,
                        baseline_median, current_median, relative_permille, bucket_start, exemplar, engine_version, rule_version, governance_item_id)
@@ -264,18 +291,53 @@ impl HistoryStore {
         Ok(outcome)
     }
 
-    /// Back inside the baseline band: active alerts of the template resolve.
+    /// Back inside the baseline band under the alert's recorded semantics.
     /// Returns the ids that changed.
-    pub fn resolve_alerts(&self, target: &str, template_key: &str, now: i64) -> Result<Vec<i64>> {
+    pub fn resolve_alerts(
+        &self,
+        target: &str,
+        template_key: &str,
+        engine_version: &str,
+        storage_rule_version: &str,
+        now: i64,
+    ) -> Result<Vec<i64>> {
         let connection = self.lock();
-        let mut statement = connection.prepare(&format!("UPDATE alerts SET state = 'resolved', resolved_at = ?3, muted_until = NULL WHERE target = ?1 AND template_key = ?2 AND state IN {ACTIVE} RETURNING id"))?;
-        let ids = statement.query_map(params![target, template_key, now], |row| row.get(0))?;
+        let mut statement = connection.prepare(&format!(
+            "UPDATE alerts SET state = 'resolved', resolved_at = ?5, muted_until = NULL
+             WHERE target = ?1 AND template_key = ?2 AND engine_version = ?3
+               AND rule_version = ?4 AND state IN {ACTIVE} AND NOT {SUPERSEDED} RETURNING id"
+        ))?;
+        let ids = statement.query_map(
+            params![
+                target,
+                template_key,
+                engine_version,
+                storage_rule_version,
+                now
+            ],
+            |row| row.get(0),
+        )?;
         ids.map(|id| id.map_err(Into::into)).collect()
     }
 
-    /// Resolves the target's active alerts raised under another rule version.
-    /// The current rules call their trends not comparable, so these alerts
-    /// would otherwise never resolve; they can still be reopened by hand.
+    /// Counts all alerts eligible for manual batch resolution, including
+    /// those outside the alert list's limit.
+    pub fn count_rule_changed_alerts(
+        &self,
+        target: &str,
+        current_rule_version: &str,
+    ) -> Result<u64> {
+        Ok(self.lock().query_row(
+            &format!(
+                "SELECT COUNT(*) FROM alerts WHERE {}",
+                active_rule_changed_filter()
+            ),
+            params![target, current_rule_version],
+            |row| row.get(0),
+        )?)
+    }
+
+    /// Manually resolves the target's active alerts from superseded semantics.
     pub fn resolve_rule_changed_alerts(
         &self,
         target: &str,
@@ -283,14 +345,17 @@ impl HistoryStore {
         now: i64,
     ) -> Result<u64> {
         Ok(self.lock().execute(
-            &format!("UPDATE alerts SET state = 'resolved', resolved_at = ?3, muted_until = NULL WHERE target = ?1 AND rule_version <> ?2 AND state IN {ACTIVE}"),
+            &format!(
+                "UPDATE alerts SET state = 'resolved', resolved_at = ?3, muted_until = NULL WHERE {}",
+                active_rule_changed_filter(),
+            ),
             params![target, current_rule_version, now],
         )? as u64)
     }
 
     pub fn alerts(&self, target: &str, limit: u32) -> Result<Vec<StoredAlert>> {
         let connection = self.lock();
-        let mut statement = connection.prepare(&format!("SELECT {ALERT_COLUMNS} FROM alerts WHERE target = ?1 ORDER BY last_seen DESC, id DESC LIMIT ?2"))?;
+        let mut statement = connection.prepare(&format!("SELECT {ALERT_COLUMNS}, {SUPERSEDED} FROM alerts WHERE target = ?1 ORDER BY last_seen DESC, id DESC LIMIT ?2"))?;
         let rows = statement.query_map(params![target, i64::from(limit)], alert_from_row)?;
         rows.map(|row| row.map_err(Into::into)).collect()
     }
@@ -299,7 +364,7 @@ impl HistoryStore {
         Ok(self
             .lock()
             .query_row(
-                &format!("SELECT {ALERT_COLUMNS} FROM alerts WHERE id = ?1"),
+                &format!("SELECT {ALERT_COLUMNS}, {SUPERSEDED} FROM alerts WHERE id = ?1"),
                 params![id],
                 alert_from_row,
             )
@@ -307,7 +372,7 @@ impl HistoryStore {
     }
 
     /// `acknowledge` from open; `mute` from open or acknowledged; `reopen`
-    /// from resolved when no other alert of the template is active.
+    /// from resolved when no other alert with the same semantics is active.
     pub fn alert_action(
         &self,
         id: i64,
@@ -317,11 +382,11 @@ impl HistoryStore {
     ) -> Result<StoreChange> {
         let mut connection = self.lock();
         let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        let Some((state, target, key)): Option<(String, String, String)> = tx
+        let Some(state): Option<String> = tx
             .query_row(
-                "SELECT state, target, template_key FROM alerts WHERE id = ?1",
+                "SELECT state FROM alerts WHERE id = ?1",
                 params![id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| row.get(0),
             )
             .optional()?
         else {
@@ -337,12 +402,20 @@ impl HistoryStore {
                 params![id, now + mute_seconds],
             )?,
             ("reopen", "resolved") => {
-                let other: i64 = tx.query_row(
-                    &format!("SELECT COUNT(*) FROM alerts WHERE target = ?1 AND template_key = ?2 AND state IN {ACTIVE}"),
-                    params![target, key],
+                let conflict: bool = tx.query_row(
+                    &format!(
+                        "SELECT EXISTS (
+                           SELECT 1 FROM alerts WHERE state IN {ACTIVE}
+                             AND (target, template_key, engine_version, rule_version) = (
+                               SELECT target, template_key, engine_version, rule_version
+                               FROM alerts WHERE id = ?1
+                             )
+                         )"
+                    ),
+                    params![id],
                     |row| row.get(0),
                 )?;
-                if other > 0 {
+                if conflict {
                     0
                 } else {
                     tx.execute("UPDATE alerts SET state = 'open', resolved_at = NULL, last_seen = ?2 WHERE id = ?1", params![id, now])?
@@ -549,6 +622,83 @@ mod tests {
     }
 
     #[test]
+    fn engine_only_handoff_survives_recovery_and_retention() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        let first = facts("high");
+        let second = AlertFacts {
+            engine_version: "3.5.15".into(),
+            ..first.clone()
+        };
+        assert_eq!(
+            store.upsert_alert("t", "k", &first, 10).unwrap(),
+            AlertUpsert::Created(1)
+        );
+        assert_eq!(
+            store.alert_action(1, "acknowledge", 11, 0).unwrap(),
+            StoreChange::Applied
+        );
+        let old = store.alert(1).unwrap().unwrap();
+        assert_eq!(
+            store.upsert_alert("t", "k", &second, 12).unwrap(),
+            AlertUpsert::Created(2)
+        );
+        assert_eq!(
+            store.upsert_alert("t", "k", &second, 13).unwrap(),
+            AlertUpsert::Updated
+        );
+        assert_eq!(
+            store
+                .resolve_alerts("t", "k", &second.engine_version, &second.rule_version, 14)
+                .unwrap(),
+            vec![2]
+        );
+        store.purge_before(15).unwrap();
+        assert_eq!(store.alert(2).unwrap(), None);
+        assert!(
+            store
+                .resolve_alerts("t", "k", &first.engine_version, &first.rule_version, 16)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            store.alert(1).unwrap(),
+            Some(StoredAlert {
+                superseded: true,
+                ..old
+            })
+        );
+        assert_eq!(
+            store
+                .count_rule_changed_alerts("t", &first.rule_version)
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            store
+                .resolve_rule_changed_alerts("t", &first.rule_version, 17)
+                .unwrap(),
+            1
+        );
+        assert_eq!(store.alert(1).unwrap().unwrap().resolved_at, Some(17));
+        assert_eq!(
+            store
+                .count_rule_changed_alerts("t", &first.rule_version)
+                .unwrap(),
+            0
+        );
+        store.purge_before(18).unwrap();
+        let markers: i64 = store
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM meta WHERE key GLOB 'sql_alert_superseded:*'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(markers, 0);
+    }
+
+    #[test]
     fn rd01_one_alert_per_template_and_mute_suppresses_until_it_ends() {
         let store = HistoryStore::open_in_memory().unwrap();
         assert_eq!(
@@ -606,7 +756,12 @@ mod tests {
         );
         // Back in band: resolved; a later regression is a new alert; the old
         // one cannot be reopened while the new one is active.
-        assert_eq!(store.resolve_alerts("t", "k", 90_000).unwrap(), vec![id]);
+        assert_eq!(
+            store
+                .resolve_alerts("t", "k", "3.5.14", "v1", 90_000)
+                .unwrap(),
+            vec![id]
+        );
         assert_eq!(
             store
                 .upsert_alert("t", "k", &facts("high"), 91_000)

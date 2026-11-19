@@ -114,12 +114,13 @@ pub enum MetricInput {
     Missing,
     Text(String),
     JsonNumber(String),
+    WrongType,
 }
 
 impl MetricInput {
     fn text(&self) -> Option<&str> {
         match self {
-            Self::Missing => None,
+            Self::Missing | Self::WrongType => None,
             Self::Text(text) | Self::JsonNumber(text) => Some(text),
         }
     }
@@ -132,6 +133,7 @@ impl MetricInput {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MetricParseError {
     MetricMissing,
+    WrongType,
     InvalidNumber,
     UnknownUnit,
     UnitRequired,
@@ -150,6 +152,7 @@ impl MetricParseError {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::MetricMissing => "metric_missing",
+            Self::WrongType => "wrong_type",
             Self::InvalidNumber => "invalid_number",
             Self::UnknownUnit => "unknown_unit",
             Self::UnitRequired => "unit_required",
@@ -580,6 +583,14 @@ pub fn parse_metric(
     input: MetricInput,
     mode: ParseMode,
 ) -> MetricParseOutcome {
+    if input == MetricInput::WrongType {
+        return MetricParseOutcome::failure(
+            Failure::at(MetricParseError::WrongType, 0),
+            mode,
+            0,
+            0,
+        );
+    }
     let Some(raw) = input.text() else {
         return MetricParseOutcome::missing();
     };

@@ -13,6 +13,7 @@ use doctor_contracts::{
     NotifyTargetDeleteRequest, NotifyTargetInput, NotifyTargetView, NotifyTestRequest,
     NotifyTestResponse,
 };
+use doctor_core::TrendBucket;
 use doctor_history::{
     DeliveryAttempt, DeliveryFilter, HistoryStore, NewDelivery, SecretUpdate, StoredAlert,
     StoredChannel, StoredDelivery, StoredTarget, TargetWrite,
@@ -713,7 +714,7 @@ fn alert_fact(
         relative_permille: alert.facts.relative_permille,
         bucket_start: alert.facts.bucket_start,
         engine_version: alert.facts.engine_version.clone(),
-        rule_version: alert.facts.rule_version.clone(),
+        rule_version: TrendBucket::rule_version_label(&alert.facts.rule_version).to_owned(),
     }
 }
 
@@ -992,7 +993,7 @@ pub(crate) async fn run_worker(state: ApiState) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use doctor_contracts::EmailSecurity;
     use doctor_history::AlertFacts;
@@ -1013,7 +1014,7 @@ mod tests {
         }
     }
 
-    fn email_target(store: &HistoryStore, name: &str, min_severity: &str) -> i64 {
+    pub(crate) fn email_target(store: &HistoryStore, name: &str, min_severity: &str) -> i64 {
         store
             .insert_notify_target(
                 &TargetWrite {
@@ -1032,7 +1033,7 @@ mod tests {
             .unwrap()
     }
 
-    fn email_channel(store: &HistoryStore, enabled: bool, port: u16) {
+    pub(crate) fn email_channel(store: &HistoryStore, enabled: bool, port: u16) {
         store
             .save_notify_channel(
                 &NotifyChannelConfig::Email {
@@ -1089,6 +1090,49 @@ mod tests {
             .unwrap();
         enqueue_alert_events(&store, "t", &[], &[a], &[], &[], 12).unwrap();
         assert_eq!(store.due_deliveries(12, 10).unwrap().len(), 4);
+    }
+
+    #[test]
+    fn trend_alert_email_renders_only_the_rule_label() {
+        let store = HistoryStore::open_in_memory().unwrap();
+        email_channel(&store, true, 25);
+        email_target(&store, "dba", "medium");
+        let storage_key = TrendBucket::active_storage_rule_version();
+        let facts = AlertFacts {
+            rule_version: storage_key.clone(),
+            ..facts("high")
+        };
+        let doctor_history::AlertUpsert::Created(id) =
+            store.upsert_alert("t", "template-key", &facts, 10).unwrap()
+        else {
+            panic!("expected a new alert");
+        };
+        enqueue_alert_events(&store, "t", &[id], &[], &[], &[], 10).unwrap();
+        let rows = store.due_deliveries(10, 10).unwrap();
+        let batch: AlertBatch = serde_json::from_str(&rows[0].payload_json).unwrap();
+        let label = doctor_core::history_rule_version();
+        assert_eq!(batch.alerts[0].rule_version, label);
+        let pack = TrendBucket::version_pack_in(&storage_key).unwrap();
+        let (identity, hashes) = pack.split_once(':').unwrap();
+        let (manifest_hash, deltas_hash) = hashes.split_once(':').unwrap();
+        let email = doctor_notify::message::email(
+            &Context {
+                language: doctor_contracts::NotifyLanguage::En,
+                link: None,
+                calibrated: false,
+            },
+            &batch,
+        );
+        assert!(email.text.contains(&label));
+        assert!(email.html.contains(&label));
+        for part in [email.subject, email.text, email.html] {
+            for hidden in ["|vp=", identity, manifest_hash, deltas_hash] {
+                assert!(
+                    !part.contains(hidden),
+                    "internal version data exposed: {part}"
+                );
+            }
+        }
     }
 
     #[test]

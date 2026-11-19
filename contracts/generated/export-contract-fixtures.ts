@@ -12,13 +12,13 @@ export const sr3514ExportAnalysis = {
         "components": [
           {
             "id": "sr3514-runtime-profile-adapter",
-            "version": "0.2.3",
-            "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+            "version": "0.2.4",
+            "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
           },
           {
             "id": "strict-metric-parser-contract",
-            "version": "0.1.0",
-            "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+            "version": "0.1.1",
+            "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
           },
           {
             "id": "sr3514-metric-registry",
@@ -27,8 +27,8 @@ export const sr3514ExportAnalysis = {
           },
           {
             "id": "sr3514-graph-resolver-contract",
-            "version": "0.10.0",
-            "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+            "version": "0.10.1",
+            "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
           },
           {
             "id": "starrocks-3.5.14",
@@ -42,8 +42,8 @@ export const sr3514ExportAnalysis = {
           }
         ]
       },
-      "analysis_key": "f90ea4c96750b33690cc730f0be50677fa84b1276098c824fdf02225348d0175",
-      "facts_hash": "8ec1f1623e8a1e4f6e92c676aea74b21324d84d0e72ba4d9913bc0ed73d8e6b4",
+      "analysis_key": "aa8696849778b9d7549a229b3a9a04c76ef92977e19c922367a0de0fcaed6cc0",
+      "facts_hash": "ef23dee75b1a29016d8d440f4bbb7c1c22ecc78dd71b778495c15360f4da8123",
       "input": {
         "requested_kind": "auto",
         "detected_kind": "json_profile",
@@ -270,7 +270,7 @@ export const sr3514ExportAnalysis = {
         "path": "report.json",
         "media_type": "application/vnd.sr-doctor.report+json;version=0.1",
         "byte_length": 4701,
-        "sha256": "e2fa6055499ce71d9d2bc6aecc21b41c17c1378511068eea3c0852e72ea0ea3a"
+        "sha256": "3fa1f52189012f4256ab5a2daf483a649351c001ce1823edc019fa77ac4148c7"
       }
     ],
     "schemas": [
@@ -293,16 +293,16 @@ export const sr3514ExportAnalysis = {
         "scope": "analysis",
         "component": {
           "id": "sr3514-runtime-profile-adapter",
-          "version": "0.2.3",
-          "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+          "version": "0.2.4",
+          "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
         }
       },
       {
         "scope": "analysis",
         "component": {
           "id": "strict-metric-parser-contract",
-          "version": "0.1.0",
-          "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+          "version": "0.1.1",
+          "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
         }
       },
       {
@@ -317,8 +317,8 @@ export const sr3514ExportAnalysis = {
         "scope": "analysis",
         "component": {
           "id": "sr3514-graph-resolver-contract",
-          "version": "0.10.0",
-          "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+          "version": "0.10.1",
+          "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
         }
       },
       {
@@ -340,10 +340,10 @@ export const sr3514ExportAnalysis = {
     ],
     "subject_hashes": {
       "kind": "analysis",
-      "analysis_key": "f90ea4c96750b33690cc730f0be50677fa84b1276098c824fdf02225348d0175",
-      "facts_hash": "8ec1f1623e8a1e4f6e92c676aea74b21324d84d0e72ba4d9913bc0ed73d8e6b4"
+      "analysis_key": "aa8696849778b9d7549a229b3a9a04c76ef92977e19c922367a0de0fcaed6cc0",
+      "facts_hash": "ef23dee75b1a29016d8d440f4bbb7c1c22ecc78dd71b778495c15360f4da8123"
     },
-    "manifest_hash": "6999fac5a5a541bf3346484820167edc347e16e542dccbe1693e28f8be6fbc4c"
+    "manifest_hash": "3cc95916bdd9ba040aeddfcce17cf96bd3e81c3c3b4fefe3b1931a71d0f5802e"
   }
 } satisfies ExportArtifact;
 
@@ -357,8 +357,8 @@ export const sr3514ExportComparisonFailedCandidate = {
         "components": [
           {
             "id": "doctor-comparator-v0.1",
-            "version": "0.6.0",
-            "manifest_hash": "ce32aa3e6c476bac7579a048f4778247d5329eccbe944b62ba54022d43e67c86"
+            "version": "0.7.0",
+            "manifest_hash": "88a8cdf6f4ce000172dd33363f2f3e0770a6469c8590fda95f553d4fe3a5228a"
           }
         ]
       },
@@ -372,13 +372,13 @@ export const sr3514ExportComparisonFailedCandidate = {
               "components": [
                 {
                   "id": "sr3514-runtime-profile-adapter",
-                  "version": "0.2.3",
-                  "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+                  "version": "0.2.4",
+                  "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
                 },
                 {
                   "id": "strict-metric-parser-contract",
-                  "version": "0.1.0",
-                  "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+                  "version": "0.1.1",
+                  "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
                 },
                 {
                   "id": "sr3514-metric-registry",
@@ -387,8 +387,8 @@ export const sr3514ExportComparisonFailedCandidate = {
                 },
                 {
                   "id": "sr3514-graph-resolver-contract",
-                  "version": "0.10.0",
-                  "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+                  "version": "0.10.1",
+                  "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
                 },
                 {
                   "id": "starrocks-3.5.14",
@@ -402,8 +402,8 @@ export const sr3514ExportComparisonFailedCandidate = {
                 }
               ]
             },
-            "analysis_key": "f90ea4c96750b33690cc730f0be50677fa84b1276098c824fdf02225348d0175",
-            "facts_hash": "8ec1f1623e8a1e4f6e92c676aea74b21324d84d0e72ba4d9913bc0ed73d8e6b4",
+            "analysis_key": "aa8696849778b9d7549a229b3a9a04c76ef92977e19c922367a0de0fcaed6cc0",
+            "facts_hash": "ef23dee75b1a29016d8d440f4bbb7c1c22ecc78dd71b778495c15360f4da8123",
             "input": {
               "requested_kind": "auto",
               "detected_kind": "json_profile",
@@ -671,7 +671,7 @@ export const sr3514ExportComparisonFailedCandidate = {
         "path": "report.json",
         "media_type": "application/vnd.sr-doctor.report+json;version=0.1",
         "byte_length": 5592,
-        "sha256": "d91b5129ff48cc84c4ee4e048e742ae1ef6d46b1f0b7159656b51952c1a06d0e"
+        "sha256": "a4198809c3215e6102a67529e4194ff38466c93acd8bbd84106722e0c915bcb0"
       }
     ],
     "schemas": [
@@ -694,24 +694,24 @@ export const sr3514ExportComparisonFailedCandidate = {
         "scope": "comparison",
         "component": {
           "id": "doctor-comparator-v0.1",
-          "version": "0.6.0",
-          "manifest_hash": "ce32aa3e6c476bac7579a048f4778247d5329eccbe944b62ba54022d43e67c86"
+          "version": "0.7.0",
+          "manifest_hash": "88a8cdf6f4ce000172dd33363f2f3e0770a6469c8590fda95f553d4fe3a5228a"
         }
       },
       {
         "scope": "baseline",
         "component": {
           "id": "sr3514-runtime-profile-adapter",
-          "version": "0.2.3",
-          "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+          "version": "0.2.4",
+          "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
         }
       },
       {
         "scope": "baseline",
         "component": {
           "id": "strict-metric-parser-contract",
-          "version": "0.1.0",
-          "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+          "version": "0.1.1",
+          "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
         }
       },
       {
@@ -726,8 +726,8 @@ export const sr3514ExportComparisonFailedCandidate = {
         "scope": "baseline",
         "component": {
           "id": "sr3514-graph-resolver-contract",
-          "version": "0.10.0",
-          "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+          "version": "0.10.1",
+          "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
         }
       },
       {
@@ -752,14 +752,14 @@ export const sr3514ExportComparisonFailedCandidate = {
       "comparison_key": "comparison:synthetic-export-failed-candidate",
       "baseline": {
         "state": "success",
-        "analysis_key": "f90ea4c96750b33690cc730f0be50677fa84b1276098c824fdf02225348d0175",
-        "facts_hash": "8ec1f1623e8a1e4f6e92c676aea74b21324d84d0e72ba4d9913bc0ed73d8e6b4"
+        "analysis_key": "aa8696849778b9d7549a229b3a9a04c76ef92977e19c922367a0de0fcaed6cc0",
+        "facts_hash": "ef23dee75b1a29016d8d440f4bbb7c1c22ecc78dd71b778495c15360f4da8123"
       },
       "candidate": {
         "state": "failed",
         "error_state": "parse_failed"
       }
     },
-    "manifest_hash": "93ea1aaa7e0891c4837ad19c3b8ca62103847cea2194f4162232797394439a62"
+    "manifest_hash": "c3f6423d79b7ff1356c5c3fbafa672a6ad2219fbb44e7432830df601481628fa"
   }
 } satisfies ExportArtifact;

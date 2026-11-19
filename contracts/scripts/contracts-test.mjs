@@ -355,12 +355,21 @@ const comparatorSemantic = canonicalHash(without(
   comparatorManifest,
   'evidence', 'status', 'golden_case_ids', 'manifest_hash', 'semantic_manifest_hash',
 ));
+const comparatorReceiptComponent = {
+  id: comparatorManifest.id,
+  version: comparatorManifest.version,
+  manifest_hash: comparatorManifest.semantic_manifest_hash,
+};
+const comparatorReceipt = { components: [comparatorReceiptComponent] };
 if (comparatorManifest.semantic_manifest_hash !== comparatorSemantic
   || comparatorManifest.manifest_hash !== canonicalHash(without(comparatorManifest, 'manifest_hash'))
   || fixtureManifest.comparison_component_manifest.sha256 !== comparatorManifest.manifest_hash) {
   throw new Error('comparator manifest or fixture link hash mismatch');
 }
-if (comparatorManifest.id !== 'doctor-comparator-v0.1' || comparatorManifest.version !== '0.6.0'
+if (canonical(connectedGolden.profile_comparison_response.comparison.comparison_receipt) !== canonical(comparatorReceipt)) {
+  throw new Error('connected comparison receipt must use the comparator semantic hash');
+}
+if (comparatorManifest.id !== 'doctor-comparator-v0.1' || comparatorManifest.version !== '0.7.0'
   || comparatorManifest.analysis_schema_range !== '2.0' || comparatorManifest.comparison_schema_range !== '2.0'
   || comparatorManifest.status !== 'contract_only_not_ready') {
   throw new Error('comparator manifest identity or status mismatch');
@@ -451,11 +460,11 @@ for (const component of componentManifest.components) {
   if (!allowedComponentStatuses.has(component.implementation_status) && !presentationOnly) throw new Error(`${component.id} has an unknown implementation status`);
 }
 const runtimeAdapter = componentManifest.components.find((component) => component.id === 'sr3514-runtime-profile-adapter');
-if (!runtimeAdapter || runtimeAdapter.version !== '0.2.3' || runtimeAdapter.implementation_status !== 'implemented_pending_e2e') {
+if (!runtimeAdapter || runtimeAdapter.version !== '0.2.4' || runtimeAdapter.implementation_status !== 'implemented_pending_e2e') {
   throw new Error('real RuntimeProfile adapter status/version is missing');
 }
 const graphResolver = componentManifest.components.find((component) => component.id === 'sr3514-graph-resolver-contract');
-if (!graphResolver || graphResolver.version !== '0.10.0'
+if (!graphResolver || graphResolver.version !== '0.10.1'
   || graphResolver.implementation_status !== 'implemented_pending_e2e'
   || canonical(Object.keys(graphResolver.material_hashes ?? {}).sort()) !== canonical(['cross_fragment_membership_fixture', 'graph_cases', 'order_recipe_cases', 'recipe_manifest'])) {
   throw new Error('v0.6 graph resolver receipt must bind only graph/order cases, recipe and cross-fragment fixture');
@@ -850,9 +859,7 @@ for (const compareCase of compareCases) {
     'compatibility_delta', 'structure_delta', 'metric_deltas', 'finding_delta', 'diagnostics', 'limitations',
   ], 'comparison expected');
   if (expected.schema_version !== '2.0'
-    || canonical(expected.comparison_receipt) !== canonical({ components: [{
-      id: comparatorManifest.id, version: comparatorManifest.version, manifest_hash: comparatorManifest.semantic_manifest_hash,
-    }] })) {
+    || canonical(expected.comparison_receipt) !== canonical(comparatorReceipt)) {
     throw new Error(`${compareCase.case_id} comparison receipt or schema drifted`);
   }
   if (expected.comparison_key !== canonicalHash({
@@ -988,6 +995,11 @@ for (const fixture of exportManifest.fixtures) {
     }
   } else {
     const snapshot = artifact.subject.snapshot;
+    const comparisonBindings = manifest.receipt_bindings.filter((binding) => binding.scope === 'comparison');
+    if (canonical(snapshot.comparison_receipt) !== canonical(comparatorReceipt)
+      || canonical(comparisonBindings.map((binding) => binding.component)) !== canonical(comparatorReceipt.components)) {
+      throw new Error('export comparison receipt and binding must use the comparator semantic hash');
+    }
     if (manifest.subject_hashes.comparison_key !== snapshot.comparison_key
       || snapshot.candidate?.error === undefined
       || snapshot.candidate?.outcome !== undefined

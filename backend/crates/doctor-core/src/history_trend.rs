@@ -9,6 +9,10 @@ use doctor_contracts::{
     CoverageHourState, EvidenceCompleteness, TrendConfidence, TrendDirection,
     TrendNotComparableReason, TrendSeverity, TrendUnscoredReason, TrendVerdict, WorkloadSignal,
 };
+use starrocks_version_pack_3_5_14::{
+    PACK_ID, PRODUCT_PACK_VERSION, SEMANTIC_MANIFEST_HASH, UPSTREAM_RELEASE,
+    deltas::{DELTAS_HASH, ReleaseResolution, resolve_release},
+};
 
 use crate::{HISTORY_BUCKET_SECONDS, HistoryBucketDelta, LogHistogram};
 
@@ -43,6 +47,66 @@ pub struct TrendBucket {
 impl TrendBucket {
     fn key(&self) -> (&str, &str) {
         (&self.engine_version, &self.rule_version)
+    }
+
+    pub fn storage_rule_version(engine_version: &str, rule_version: &str) -> String {
+        // Official builds can report the release followed by a short commit.
+        let engine_version = engine_version.trim();
+        let release = engine_version
+            .rsplit_once('-')
+            .filter(|(_, suffix)| {
+                suffix.len() == 7 && suffix.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+            .map_or(engine_version, |(release, _)| release);
+        if matches!(resolve_release(release), ReleaseResolution::Audited(_)) {
+            format!(
+                "{rule_version}|vp={PACK_ID}@{PRODUCT_PACK_VERSION}:{SEMANTIC_MANIFEST_HASH}:{DELTAS_HASH}"
+            )
+        } else {
+            format!("{rule_version}|vp=unknown")
+        }
+    }
+
+    pub fn active_storage_rule_version() -> String {
+        Self::storage_rule_version(UPSTREAM_RELEASE, &history_rule_version())
+    }
+
+    pub fn version_pack_in(rule_version: &str) -> Option<&str> {
+        let (label, pack) = rule_version.split_once("|vp=")?;
+        let (id, rest) = pack.split_once('@')?;
+        let (version, hashes) = rest.split_once(':')?;
+        let (manifest_hash, deltas_hash) = hashes.split_once(':')?;
+        let label_valid = !label.is_empty()
+            && label
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"._-/".contains(&byte));
+        let id_valid = matches!(id.as_bytes().first(), Some(b'a'..=b'z' | b'0'..=b'9'))
+            && id
+                .bytes()
+                .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'.' | b'-'));
+        let (major, rest) = version.split_once('.')?;
+        let (minor, patch) = rest.split_once('.')?;
+        let version_valid = [major, minor, patch]
+            .into_iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()));
+        let hash_valid = |part: &str| {
+            part.len() == 64
+                && part
+                    .bytes()
+                    .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+        };
+        (label_valid
+            && id_valid
+            && version_valid
+            && hash_valid(manifest_hash)
+            && hash_valid(deltas_hash))
+        .then_some(pack)
+    }
+
+    pub fn rule_version_label(rule_version: &str) -> &str {
+        rule_version
+            .split_once("|vp=")
+            .map_or(rule_version, |(label, _)| label)
     }
 }
 
@@ -98,6 +162,73 @@ pub struct TemplateTrend {
     pub limitations: Vec<&'static str>,
 }
 
+impl TemplateTrend {
+    pub fn without_current_samples(
+        buckets: &[TrendBucket],
+        coverage: &BTreeMap<i64, CoverageHourState>,
+        windows: TrendWindows,
+        reference: Option<&TrendBucket>,
+    ) -> Self {
+        let before = windows.baseline_start..windows.current_start;
+        let baseline: Vec<_> = buckets
+            .iter()
+            .filter(|bucket| {
+                before.contains(&bucket.bucket_start)
+                    && reference.is_some_and(|reference| {
+                        TrendBucket::version_pack_in(&reference.rule_version).is_some()
+                            && bucket.key() == reference.key()
+                    })
+            })
+            .collect();
+        let baseline_gap =
+            window_has_coverage_gap(coverage, windows.baseline_start, windows.current_start);
+        let current_gap = window_has_coverage_gap(coverage, windows.current_start, windows.end);
+        let mut limitations = vec!["quantiles_are_log_histogram_approximations"];
+        if baseline_gap {
+            limitations.push("baseline_window_not_fully_collected");
+        }
+        if current_gap {
+            limitations.push("current_window_not_fully_collected");
+        }
+        if reference
+            .is_some_and(|bucket| TrendBucket::version_pack_in(&bucket.rule_version).is_none())
+        {
+            limitations.push("version_pack_semantics_unknown");
+        }
+        let evidence = if !baseline_gap && !current_gap {
+            EvidenceCompleteness::Complete
+        } else if buckets
+            .iter()
+            .any(|bucket| before.contains(&bucket.bucket_start))
+            || coverage
+                .range(windows.baseline_start..windows.end)
+                .any(|(_, state)| *state != CoverageHourState::NotCollected)
+        {
+            EvidenceCompleteness::Partial
+        } else {
+            EvidenceCompleteness::Unavailable
+        };
+        let baseline = baseline_stats(&baseline);
+        if baseline.thin_hours > 0 {
+            limitations.push("thin_hours_excluded_from_statistics");
+        }
+        Self {
+            verdict: TrendVerdict::Unscored {
+                reason: TrendUnscoredReason::InsufficientCurrent,
+            },
+            confidence: None,
+            evidence,
+            baseline,
+            current: SideStats::default(),
+            change: None,
+            engine_version: reference
+                .map_or_else(String::new, |bucket| bucket.engine_version.clone()),
+            rule_version: reference.map_or_else(String::new, |bucket| bucket.rule_version.clone()),
+            limitations,
+        }
+    }
+}
+
 fn median_of(values: &mut [u64]) -> Option<u64> {
     if values.is_empty() {
         return None;
@@ -126,8 +257,62 @@ fn merged(
     histogram
 }
 
+fn baseline_stats(buckets: &[&TrendBucket]) -> SideStats {
+    let mut hourly = Vec::new();
+    let mut thin = 0u32;
+    let mut valid = 0;
+    for bucket in buckets {
+        let query_time = &bucket.delta.query_time;
+        if query_time.valid_count < u64::from(TREND_MIN_HOUR_SAMPLES) {
+            thin += 1;
+        } else {
+            valid += query_time.valid_count;
+            if let Some(median) = histogram_median(&query_time.histogram) {
+                hourly.push(median);
+            }
+        }
+    }
+    let median = median_of(&mut hourly);
+    let mad = median.and_then(|center| {
+        let mut deviations: Vec<_> = hourly.iter().map(|value| value.abs_diff(center)).collect();
+        median_of(&mut deviations)
+    });
+    SideStats {
+        median,
+        mad,
+        executions: buckets.iter().map(|b| b.delta.executions).sum(),
+        valid,
+        hours: hourly.len() as u32,
+        thin_hours: thin,
+    }
+}
+
+fn window_has_coverage_gap(
+    coverage: &BTreeMap<i64, CoverageHourState>,
+    start: i64,
+    end: i64,
+) -> bool {
+    (start..end)
+        .step_by(HISTORY_BUCKET_SECONDS as usize)
+        .any(|hour| coverage.get(&hour) != Some(&CoverageHourState::Complete))
+}
+
+fn workload_ratio(
+    baseline: &[&TrendBucket],
+    current: &[&TrendBucket],
+    metric: fn(&HistoryBucketDelta) -> &crate::HistoryMetric,
+) -> Option<f64> {
+    let before = histogram_median(&merged(baseline, metric))?;
+    let after = histogram_median(&merged(current, metric))?;
+    Some(if before == 0 {
+        if after == 0 { 1.0 } else { f64::INFINITY }
+    } else {
+        after as f64 / before as f64
+    })
+}
+
 /// The verdict for one template. `buckets` are all of its buckets in the two
-/// windows; `coverage` is the collection state of each current-window hour.
+/// windows; `coverage` is the collection state of each hour in both windows.
 /// Returns `None` when the template did not run in the current window.
 pub fn evaluate_template_trend(
     buckets: &[TrendBucket],
@@ -178,59 +363,33 @@ pub fn evaluate_template_trend(
         hours: current_eligible.len() as u32,
         thin_hours: (current.len() - current_eligible.len()) as u32,
     };
-    let mut hourly: Vec<u64> = Vec::new();
-    let mut thin = 0u32;
-    for bucket in &baseline {
-        if bucket.delta.query_time.valid_count < u64::from(TREND_MIN_HOUR_SAMPLES) {
-            thin += 1;
-        } else if let Some(median) = histogram_median(&bucket.delta.query_time.histogram) {
-            hourly.push(median);
-        }
-    }
-    let baseline_median = median_of(&mut hourly.clone());
-    let mad = baseline_median.and_then(|center| {
-        median_of(
-            &mut hourly
-                .iter()
-                .map(|value| value.abs_diff(center))
-                .collect::<Vec<_>>(),
-        )
-    });
-    let baseline_stats = SideStats {
-        median: baseline_median,
-        mad,
-        executions: baseline.iter().map(|b| b.delta.executions).sum(),
-        valid: baseline_eligible
-            .iter()
-            .map(|b| b.delta.query_time.valid_count)
-            .sum(),
-        hours: hourly.len() as u32,
-        thin_hours: thin,
-    };
+    let baseline_stats = baseline_stats(&baseline);
     if baseline_stats.thin_hours > 0 || current_stats.thin_hours > 0 {
         limitations.push("thin_hours_excluded_from_statistics");
     }
 
-    let current_hours =
-        (windows.current_start..windows.end).step_by(HISTORY_BUCKET_SECONDS as usize);
-    let gaps = current_hours.clone().any(|hour| {
-        coverage
-            .get(&hour)
-            .is_none_or(|state| *state != CoverageHourState::Complete)
-    });
-    if gaps {
+    let baseline_gap =
+        window_has_coverage_gap(coverage, windows.baseline_start, windows.current_start);
+    let current_gap = window_has_coverage_gap(coverage, windows.current_start, windows.end);
+    if baseline_gap {
+        limitations.push("baseline_window_not_fully_collected");
+    }
+    if current_gap {
         limitations.push("current_window_not_fully_collected");
     }
     let observed_valid: u64 = current.iter().map(|b| b.delta.query_time.valid_count).sum();
     if observed_valid < current_stats.executions {
         limitations.push("some_executions_lack_a_valid_query_time");
     }
-    let mut evidence =
-        if gaps || observed_valid < current_stats.executions || current_stats.thin_hours > 0 {
-            EvidenceCompleteness::Partial
-        } else {
-            EvidenceCompleteness::Complete
-        };
+    let evidence = if baseline_gap
+        || current_gap
+        || observed_valid < current_stats.executions
+        || current_stats.thin_hours > 0
+    {
+        EvidenceCompleteness::Partial
+    } else {
+        EvidenceCompleteness::Complete
+    };
 
     let change = match (baseline_stats.median, current_stats.median) {
         (Some(base), Some(now)) => Some(ChangeStats {
@@ -257,38 +416,48 @@ pub fn evaluate_template_trend(
         limitations,
     };
 
-    if mixed_current {
-        let reason = if buckets.iter().any(|b| {
-            (windows.current_start..windows.end).contains(&b.bucket_start)
-                && b.engine_version != key.0
-        }) {
-            TrendNotComparableReason::EngineVersionChanged
+    if mixed_current || baseline.len() < baseline_all.len() {
+        let window = if mixed_current {
+            windows.current_start..windows.end
         } else {
-            TrendNotComparableReason::RuleVersionChanged
+            windows.baseline_start..windows.current_start
         };
-        return Some(result(
-            TrendVerdict::NotComparable { reason },
-            None,
-            EvidenceCompleteness::Unavailable,
-            None,
-            limitations,
-        ));
-    }
-
-    if baseline.is_empty() && !baseline_all.is_empty() {
-        let reason = if baseline_all.iter().any(|b| b.engine_version != key.0) {
-            TrendNotComparableReason::EngineVersionChanged
-        } else {
-            TrendNotComparableReason::RuleVersionChanged
-        };
-        limitations.push("baseline_waits_for_samples_under_the_current_version");
-        return Some(result(
-            TrendVerdict::NotComparable { reason },
-            None,
-            EvidenceCompleteness::Unavailable,
-            None,
-            limitations,
-        ));
+        let mut incompatible = buckets
+            .iter()
+            .filter(|bucket| window.contains(&bucket.bucket_start) && bucket.key() != key);
+        let pack = TrendBucket::version_pack_in(key.1);
+        if pack.is_none()
+            || incompatible
+                .clone()
+                .any(|b| TrendBucket::version_pack_in(&b.rule_version).is_none())
+        {
+            limitations.push("version_pack_semantics_unknown");
+        }
+        if let Some(pack) = pack
+            && incompatible
+                .clone()
+                .filter_map(|b| TrendBucket::version_pack_in(&b.rule_version))
+                .any(|other| other != pack)
+        {
+            limitations.push("version_pack_changed");
+        }
+        if mixed_current || baseline.is_empty() {
+            let reason = if incompatible.any(|b| b.engine_version != key.0) {
+                TrendNotComparableReason::EngineVersionChanged
+            } else {
+                TrendNotComparableReason::RuleVersionChanged
+            };
+            if !mixed_current {
+                limitations.push("baseline_waits_for_samples_under_the_current_version");
+            }
+            return Some(result(
+                TrendVerdict::NotComparable { reason },
+                None,
+                EvidenceCompleteness::Unavailable,
+                None,
+                limitations,
+            ));
+        }
     }
     if baseline_stats.hours < u32::from(TREND_MIN_BASELINE_HOURS) {
         return Some(result(
@@ -338,6 +507,25 @@ pub fn evaluate_template_trend(
             limitations,
         ));
     }
+    let signals: Vec<f64> = [
+        workload_ratio(&baseline_eligible, &current_eligible, |d| &d.scan_bytes),
+        workload_ratio(&baseline_eligible, &current_eligible, |d| &d.cpu_cost),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if signals.is_empty() {
+        limitations.push("scan_bytes_and_cpu_unavailable");
+        return Some(result(
+            TrendVerdict::Unscored {
+                reason: TrendUnscoredReason::WorkloadSignalMissing,
+            },
+            None,
+            EvidenceCompleteness::Partial,
+            change,
+            limitations,
+        ));
+    }
     let threshold = (TREND_K_MAD * MAD_SCALE * mad as f64)
         .max(base as f64 * f64::from(TREND_MIN_RELATIVE_PERCENT) / 100.0);
     let deviation = now as f64 - base as f64;
@@ -359,33 +547,6 @@ pub fn evaluate_template_trend(
         return Some(result(
             TrendVerdict::Improvement,
             Some(confidence),
-            evidence,
-            change,
-            limitations,
-        ));
-    }
-    // Latency rose: it counts only beside a workload signal.
-    let ratio_of = |pick: fn(&HistoryBucketDelta) -> &crate::HistoryMetric| -> Option<f64> {
-        let before = histogram_median(&merged(&baseline_eligible, pick))?;
-        let after = histogram_median(&merged(&current_eligible, pick))?;
-        Some(if before == 0 {
-            if after == 0 { 1.0 } else { f64::INFINITY }
-        } else {
-            after as f64 / before as f64
-        })
-    };
-    let signals: Vec<f64> = [ratio_of(|d| &d.scan_bytes), ratio_of(|d| &d.cpu_cost)]
-        .into_iter()
-        .flatten()
-        .collect();
-    if signals.is_empty() {
-        limitations.push("scan_bytes_and_cpu_unavailable");
-        evidence = EvidenceCompleteness::Partial;
-        return Some(result(
-            TrendVerdict::Unscored {
-                reason: TrendUnscoredReason::WorkloadSignalMissing,
-            },
-            None,
             evidence,
             change,
             limitations,
@@ -431,7 +592,7 @@ pub fn evaluate_template_trend(
 pub struct SeriesPoint {
     pub hour_start: i64,
     pub coverage: CoverageHourState,
-    /// `None` when the hour was not collected.
+    /// `None` when zero executions could not be established.
     pub executions: Option<u64>,
     pub median: Option<u64>,
     pub valid: u64,
@@ -439,8 +600,8 @@ pub struct SeriesPoint {
     pub comparable: bool,
 }
 
-/// Hourly points `[start, end)`. A collected hour without a bucket is a true
-/// 0; a hour that was not collected stays `None`, never interpolated.
+/// Hourly points `[start, end)`. Only complete collection can establish a
+/// true zero. Positive execution counts reflect the observed samples.
 pub fn trend_series(
     buckets: &[TrendBucket],
     coverage: &BTreeMap<i64, CoverageHourState>,
@@ -458,25 +619,24 @@ pub fn trend_series(
                 .unwrap_or(CoverageHourState::NotCollected);
             let here: Vec<&TrendBucket> =
                 buckets.iter().filter(|b| b.bucket_start == hour).collect();
-            let comparable_here: Vec<&TrendBucket> = here
+            let comparable = here
                 .iter()
-                .copied()
-                .filter(|b| b.engine_version == engine_version && b.rule_version == rule_version)
-                .collect();
-            let histogram = merged(&comparable_here, |d| &d.query_time);
+                .all(|b| b.engine_version == engine_version && b.rule_version == rule_version);
+            let histogram = if comparable {
+                merged(&here, |d| &d.query_time)
+            } else {
+                LogHistogram::default()
+            };
             let executions: u64 = here.iter().map(|b| b.delta.executions).sum();
             SeriesPoint {
                 hour_start: hour,
                 coverage: state,
-                executions: if here.is_empty() && state == CoverageHourState::NotCollected {
-                    None
-                } else {
-                    Some(executions)
-                },
+                executions: (executions > 0 || state == CoverageHourState::Complete)
+                    .then_some(executions),
                 median: histogram_median(&histogram),
                 valid: histogram.count(),
                 thin: !here.is_empty() && histogram.count() < u64::from(TREND_MIN_HOUR_SAMPLES),
-                comparable: here.is_empty() || !comparable_here.is_empty(),
+                comparable,
             }
         })
         .collect()
@@ -599,3 +759,259 @@ pub fn verify_change(
 #[cfg(test)]
 #[path = "history_trend_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod trend_correctness_tests {
+    use super::*;
+
+    #[test]
+    fn storage_rule_key_has_all_version_pack_components() {
+        let key = TrendBucket::storage_rule_version("3.5.14", "example-rule");
+        let (label, identity) = key.split_once("|vp=").unwrap();
+        let (id, version_and_hashes) = identity.split_once('@').unwrap();
+        let components: Vec<_> = version_and_hashes.split(':').collect();
+        assert_eq!(label, "example-rule");
+        assert_eq!(id, PACK_ID);
+        assert_eq!(components.len(), 3);
+        assert_eq!(components[0], PRODUCT_PACK_VERSION);
+        assert_eq!(components[1], SEMANTIC_MANIFEST_HASH);
+        assert_eq!(components[2], DELTAS_HASH);
+        assert_eq!(TrendBucket::version_pack_in(&key), Some(identity));
+    }
+
+    #[test]
+    fn storage_rule_key_rejects_missing_or_malformed_pack_components() {
+        let hash = "a".repeat(64);
+        let short = &hash[..63];
+        let non_hex = "g".repeat(64);
+        let uppercase = hash.to_ascii_uppercase();
+        for key in [
+            "rule".into(),
+            "rule|vp=unknown".into(),
+            "rule|vp=garbage".into(),
+            format!("|vp=pack@1.2.3:{hash}:{hash}"),
+            format!("   |vp=pack@1.2.3:{hash}:{hash}"),
+            format!("rule label|vp=pack@1.2.3:{hash}:{hash}"),
+            format!("rule|vp=pack@1.2.3:{hash}"),
+            format!("rule|vp=pack@:{hash}:{hash}"),
+            format!("rule|vp=starrocks-3.5.14@not-a-version:{hash}:{hash}"),
+            format!("rule|vp=pack@1..3:{hash}:{hash}"),
+            format!("rule|vp=pack@1.2.3.4:{hash}:{hash}"),
+            format!("rule|vp=@1.2.3:{hash}:{hash}"),
+            format!("rule|vp=-pack@1.2.3:{hash}:{hash}"),
+            format!("rule|vp=Pack@1.2.3:{hash}:{hash}"),
+            format!("rule|vp=the_pack@1.2.3:{hash}:{hash}"),
+            format!("rule|vp=pack@1.2.3:{short}:{hash}"),
+            format!("rule|vp=pack@1.2.3:{hash}:{non_hex}"),
+            format!("rule|vp=pack@1.2.3:{uppercase}:{hash}"),
+            format!("rule|vp=pack@1.2.3:{hash}:{uppercase}"),
+            format!("rule|vp=pack@1.2.3:{hash}:{hash}:extra"),
+        ] {
+            assert_eq!(TrendBucket::version_pack_in(&key), None, "{key}");
+        }
+    }
+
+    #[test]
+    fn storage_rule_key_accepts_slash_label_and_historical_pack_version() {
+        let pack = format!("starrocks-3.5.14@0.1.10:{:064x}:{:064x}", 10, 15);
+        let key = format!("SQL_fingerprint-v1/trend.v2|vp={pack}");
+        assert_eq!(TrendBucket::version_pack_in(&key), Some(pack.as_str()));
+    }
+
+    #[test]
+    fn baseline_gap_downgrades_trend_evidence() {
+        let hour = HISTORY_BUCKET_SECONDS;
+        let windows = TrendWindows::ending_at(6 * hour, 1, 6);
+        let rule = TrendBucket::active_storage_rule_version();
+        let buckets: Vec<_> = (0..7)
+            .map(|index| {
+                let (executions, latency) = if index == 6 { (10, 300) } else { (3, 100) };
+                let mut delta = HistoryBucketDelta {
+                    executions,
+                    ..HistoryBucketDelta::default()
+                };
+                for _ in 0..executions {
+                    delta.query_time.add(latency);
+                    delta.scan_bytes.add(1_000);
+                }
+                TrendBucket {
+                    bucket_start: index * hour,
+                    engine_version: "3.5.14".into(),
+                    rule_version: rule.clone(),
+                    delta,
+                }
+            })
+            .collect();
+        let mut coverage: BTreeMap<_, _> = (0..7)
+            .map(|index| (index * hour, CoverageHourState::Complete))
+            .collect();
+        let complete = evaluate_template_trend(&buckets, &coverage, windows).unwrap();
+        assert_eq!(complete.evidence, EvidenceCompleteness::Complete);
+        coverage.insert(hour, CoverageHourState::Partial);
+        let partial = evaluate_template_trend(&buckets, &coverage, windows).unwrap();
+        coverage.remove(&hour);
+        let missing = evaluate_template_trend(&buckets, &coverage, windows).unwrap();
+        for trend in [partial, missing] {
+            assert_eq!(trend.evidence, EvidenceCompleteness::Partial);
+            assert_eq!(trend.confidence, Some(TrendConfidence::Low));
+            assert!(
+                trend
+                    .limitations
+                    .contains(&"baseline_window_not_fully_collected")
+            );
+        }
+    }
+
+    #[test]
+    fn coverage_gap_survives_incomparable_verdict() {
+        let hour = HISTORY_BUCKET_SECONDS;
+        let windows = TrendWindows::ending_at(6 * hour, 1, 6);
+        let rule = TrendBucket::active_storage_rule_version();
+        let buckets: Vec<_> = (0..7)
+            .map(|index| {
+                let (engine, executions, latency) = if index == 6 {
+                    ("3.5.14", 10, 300)
+                } else {
+                    ("3.5.13", 3, 100)
+                };
+                let mut delta = HistoryBucketDelta {
+                    executions,
+                    ..HistoryBucketDelta::default()
+                };
+                for _ in 0..executions {
+                    delta.query_time.add(latency);
+                    delta.scan_bytes.add(1_000);
+                }
+                TrendBucket {
+                    bucket_start: index * hour,
+                    engine_version: engine.into(),
+                    rule_version: rule.clone(),
+                    delta,
+                }
+            })
+            .collect();
+        let mut coverage: BTreeMap<_, _> = (0..7)
+            .map(|index| (index * hour, CoverageHourState::Complete))
+            .collect();
+        coverage.insert(hour, CoverageHourState::Partial);
+        let trend = evaluate_template_trend(&buckets, &coverage, windows).unwrap();
+        assert_eq!(
+            trend.verdict,
+            TrendVerdict::NotComparable {
+                reason: TrendNotComparableReason::EngineVersionChanged,
+            }
+        );
+        assert_eq!(trend.change, None);
+        assert_eq!(trend.evidence, EvidenceCompleteness::Unavailable);
+        assert!(
+            trend
+                .limitations
+                .contains(&"baseline_window_not_fully_collected")
+        );
+    }
+
+    #[test]
+    fn series_distinguishes_unknown_executions_from_proven_zero() {
+        let hour = HISTORY_BUCKET_SECONDS;
+        let rule = TrendBucket::active_storage_rule_version();
+        let coverage = BTreeMap::from([
+            (0, CoverageHourState::Partial),
+            (hour, CoverageHourState::Complete),
+            (3 * hour, CoverageHourState::Partial),
+        ]);
+        let buckets = [TrendBucket {
+            bucket_start: 3 * hour,
+            engine_version: "3.5.14".into(),
+            rule_version: rule.clone(),
+            delta: HistoryBucketDelta {
+                executions: 2,
+                ..HistoryBucketDelta::default()
+            },
+        }];
+        let points = trend_series(&buckets, &coverage, 0, 4 * hour, "3.5.14", &rule);
+        let observed: Vec<_> = points.iter().map(|p| (p.coverage, p.executions)).collect();
+        assert_eq!(
+            observed,
+            [
+                (CoverageHourState::Partial, None),
+                (CoverageHourState::Complete, Some(0)),
+                (CoverageHourState::NotCollected, None),
+                (CoverageHourState::Partial, Some(2)),
+            ]
+        );
+    }
+
+    #[test]
+    fn latency_drop_without_paired_workload_is_unscored() {
+        let hour = HISTORY_BUCKET_SECONDS;
+        let windows = TrendWindows::ending_at(6 * hour, 1, 6);
+        let rule = TrendBucket::active_storage_rule_version();
+        let coverage = (0..7)
+            .map(|index| (index * hour, CoverageHourState::Complete))
+            .collect();
+        for baseline_has_scan in [false, true] {
+            let buckets: Vec<_> = (0..7)
+                .map(|index| {
+                    let (executions, latency) = if index == 6 { (10, 100) } else { (3, 400) };
+                    let mut delta = HistoryBucketDelta {
+                        executions,
+                        ..HistoryBucketDelta::default()
+                    };
+                    for _ in 0..executions {
+                        delta.query_time.add(latency);
+                        if baseline_has_scan && index < 6 {
+                            delta.scan_bytes.add(1_000);
+                        }
+                    }
+                    TrendBucket {
+                        bucket_start: index * hour,
+                        engine_version: "3.5.14".into(),
+                        rule_version: rule.clone(),
+                        delta,
+                    }
+                })
+                .collect();
+            let trend = evaluate_template_trend(&buckets, &coverage, windows).unwrap();
+            assert_eq!(
+                trend.verdict,
+                TrendVerdict::Unscored {
+                    reason: TrendUnscoredReason::WorkloadSignalMissing,
+                }
+            );
+            assert_eq!(trend.confidence, None);
+            assert_eq!(trend.evidence, EvidenceCompleteness::Partial);
+            assert_eq!(trend.change.unwrap().direction, TrendDirection::Down);
+        }
+    }
+
+    #[test]
+    fn valid_zero_scan_on_both_sides_is_a_workload_signal() {
+        let hour = HISTORY_BUCKET_SECONDS;
+        let windows = TrendWindows::ending_at(6 * hour, 1, 6);
+        let rule = TrendBucket::active_storage_rule_version();
+        let buckets: Vec<_> = (0..7)
+            .map(|index| {
+                let (executions, latency) = if index == 6 { (10, 100) } else { (3, 400) };
+                let mut delta = HistoryBucketDelta {
+                    executions,
+                    ..HistoryBucketDelta::default()
+                };
+                for _ in 0..executions {
+                    delta.query_time.add(latency);
+                    delta.scan_bytes.add(0);
+                }
+                TrendBucket {
+                    bucket_start: index * hour,
+                    engine_version: "3.5.14".into(),
+                    rule_version: rule.clone(),
+                    delta,
+                }
+            })
+            .collect();
+        let coverage = (0..7)
+            .map(|index| (index * hour, CoverageHourState::Complete))
+            .collect();
+        let trend = evaluate_template_trend(&buckets, &coverage, windows).unwrap();
+        assert_eq!(trend.verdict, TrendVerdict::Improvement);
+    }
+}

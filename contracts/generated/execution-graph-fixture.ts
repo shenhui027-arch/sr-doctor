@@ -7,13 +7,13 @@ export const sr3514ExecutionGraph = {
     "components": [
       {
         "id": "sr3514-runtime-profile-adapter",
-        "version": "0.2.3",
-        "manifest_hash": "18681e9af2ba4f02ef2b8437cf11df86cdb778f7aa30cdabd63bfa7067e22eeb"
+        "version": "0.2.4",
+        "manifest_hash": "c40b1872fdae07461bb31112a23b2f7f5e2e6657cc4447ffc8b250736027ef32"
       },
       {
         "id": "strict-metric-parser-contract",
-        "version": "0.1.0",
-        "manifest_hash": "a05e1deca8a50f4ebaa421c4b1940f1d68815048780ddfe0cf291d3d42d0924a"
+        "version": "0.1.1",
+        "manifest_hash": "c3ed2374d641f8faa770c9b5c4564a1fa349f7642e9b56855ee80fa492cbf967"
       },
       {
         "id": "sr3514-metric-registry",
@@ -22,8 +22,8 @@ export const sr3514ExecutionGraph = {
       },
       {
         "id": "sr3514-graph-resolver-contract",
-        "version": "0.10.0",
-        "manifest_hash": "adc61d94eab987cf24bd3c3af93eac7e0229ebe389b773af4aba3ab224ac77d5"
+        "version": "0.10.1",
+        "manifest_hash": "ddaf52c0bdb5bda7224dddd8e64ccf0fe833cd6f7976a41e72a4e7ac4243433b"
       },
       {
         "id": "starrocks-3.5.14",
@@ -37,8 +37,8 @@ export const sr3514ExecutionGraph = {
       }
     ]
   },
-  "analysis_key": "76835c9b3b9c34b8838782640123c2bb4bec2e0bebc89c2db9b4946ac69d3a77",
-  "facts_hash": "c79023c27915af1fa96f6b33c1f744ea0d77c6ef8d23f8a493dfbe9afac5f49d",
+  "analysis_key": "b6c76647fa93bae9742006f940b3b89f6f2cea84d3a4ec30ba611c58693ee43f",
+  "facts_hash": "716c7ff055fc78cc69b13508be727d2645afbd722092d2c48a4f4fc16270dd4a",
   "input": {
     "requested_kind": "text_profile",
     "detected_kind": "text_profile",
@@ -2003,6 +2003,7 @@ export const sr3514ExecutionGraph = {
         "text:6"
       ],
       "reasons": [],
+      "match_key": "query/QueryTotalTime",
       "state": "exact",
       "canonical_number": {
         "kind": "integer",
@@ -2036,6 +2037,7 @@ export const sr3514ExecutionGraph = {
         "text:52"
       ],
       "reasons": [],
+      "match_key": "query/FrontendProfileMergeTime",
       "state": "exact",
       "canonical_number": {
         "kind": "integer",
@@ -2069,6 +2071,7 @@ export const sr3514ExecutionGraph = {
         "text:53"
       ],
       "reasons": [],
+      "match_key": "query/QueryAllocatedMemoryUsage",
       "state": "exact",
       "canonical_number": {
         "kind": "decimal",
@@ -2104,6 +2107,7 @@ export const sr3514ExecutionGraph = {
       "reasons": [
         "query_cpu_summed_over_instance_reports_not_wall_or_operator_time"
       ],
+      "match_key": "query/QueryCumulativeCpuTime",
       "state": "exact",
       "canonical_number": {
         "kind": "integer",
@@ -2137,6 +2141,7 @@ export const sr3514ExecutionGraph = {
         "text:55"
       ],
       "reasons": [],
+      "match_key": "query/QueryCumulativeNetworkTime",
       "state": "exact",
       "canonical_number": {
         "kind": "integer",
@@ -2157,6 +2162,7 @@ export const sr3514ExecutionGraph = {
         "text:56"
       ],
       "reasons": [],
+      "match_key": "query/QueryCumulativeOperatorTime",
       "state": "exact",
       "canonical_number": {
         "kind": "integer",
@@ -2190,6 +2196,7 @@ export const sr3514ExecutionGraph = {
         "text:57"
       ],
       "reasons": [],
+      "match_key": "query/QueryCumulativeScanTime",
       "state": "exact",
       "canonical_number": {
         "kind": "integer",
@@ -2223,6 +2230,7 @@ export const sr3514ExecutionGraph = {
         "text:58"
       ],
       "reasons": [],
+      "match_key": "query/QueryDeallocatedMemoryUsage",
       "state": "exact",
       "canonical_number": {
         "kind": "decimal",
@@ -2256,6 +2264,7 @@ export const sr3514ExecutionGraph = {
         "text:59"
       ],
       "reasons": [],
+      "match_key": "query/QueryExecutionWallTime",
       "state": "exact",
       "canonical_number": {
         "kind": "integer",
@@ -2289,6 +2298,7 @@ export const sr3514ExecutionGraph = {
         "text:60"
       ],
       "reasons": [],
+      "match_key": "query/QueryPeakMemoryUsagePerNode",
       "state": "exact",
       "canonical_number": {
         "kind": "decimal",
@@ -2322,6 +2332,7 @@ export const sr3514ExecutionGraph = {
         "text:61"
       ],
       "reasons": [],
+      "match_key": "query/QueryPeakScheduleTime",
       "state": "exact",
       "canonical_number": {
         "kind": "integer",
@@ -2344,6 +2355,7 @@ export const sr3514ExecutionGraph = {
       "reasons": [
         "query_spill_summed_over_instance_reports"
       ],
+      "match_key": "query/QuerySpillBytes",
       "state": "exact",
       "canonical_number": {
         "kind": "integer",
@@ -2364,6 +2376,7 @@ export const sr3514ExecutionGraph = {
         "text:63"
       ],
       "reasons": [],
+      "match_key": "query/QuerySumMemoryUsage",
       "state": "exact",
       "canonical_number": {
         "kind": "decimal",
@@ -2397,6 +2410,7 @@ export const sr3514ExecutionGraph = {
         "text:64"
       ],
       "reasons": [],
+      "match_key": "query/ResultDeliverTime",
       "state": "exact",
       "canonical_number": {
         "kind": "integer",
@@ -2417,6 +2431,7 @@ export const sr3514ExecutionGraph = {
         "text:19"
       ],
       "reasons": [],
+      "match_key": "query/Planner/Total",
       "state": "exact",
       "canonical_number": {
         "kind": "integer",
