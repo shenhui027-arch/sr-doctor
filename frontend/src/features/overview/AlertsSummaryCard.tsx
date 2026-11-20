@@ -1,22 +1,69 @@
-// Task 66 (board 2): the alerts card on the Overview page. It shows only what the
-// status poll already returned; an unknown count stays unknown (never 0).
+// Task 82 (boards/02-overview.html): the alerts summary card on the Overview page.
+// Shows only what the status poll already returned; an unknown count stays unknown (never 0).
 import type { JSX } from "react";
+import { AnimatedFigure, Button, Card, StateStamp } from "../../design";
 import { useLocale } from "../../i18n/locale";
-import { AnimatedFigure } from "../shell/motion-enhance";
 import "./overview.css";
 
-export function AlertsSummaryCard({ open, loadPaused, onOpen }: { open: string | null; loadPaused: number | null; onOpen(): void }): JSX.Element {
+export function AlertsSummaryCard({
+  open,
+  loadPaused,
+  onOpen,
+}: {
+  open: string | null;
+  loadPaused: number | null;
+  onOpen(): void;
+}): JSX.Element {
   const { text } = useLocale();
-  const count = open === null ? null : Number(open);
-  return <section aria-labelledby="overview-alerts-title" className="overview-alerts">
-    <div className="overview-alerts-head">
-      <h2 id="overview-alerts-title">{text("Alerts", "告警")}</h2>
-      <button className="button text" onClick={onOpen} type="button">{text("Open alerts", "去告警")}</button>
-    </div>
-    <dl className="overview-alerts-facts">
-      <div><dt>{text("New", "未处理")}</dt><dd className={count !== null && count > 0 ? "overview-alerts-hot" : undefined}>{count === null ? text("Unknown", "未知") : <AnimatedFigure value={String(count)} />}</dd></div>
-      {/* Known only after the load page read the jobs in this session; otherwise the row is left out. */}
-      {loadPaused !== null ? <div><dt>{text("Paused Routine Load", "Routine Load 暂停")}</dt><dd className={loadPaused > 0 ? "overview-alerts-hot" : undefined}>{loadPaused}</dd></div> : null}
-    </dl>
-  </section>;
+  const parsed = open === null ? null : Number(open);
+  const count = parsed !== null && Number.isFinite(parsed) ? parsed : null;
+
+  const alertDot = count === null
+    ? "status-dot status-dot--hollow"
+    : count > 0
+      ? "status-dot status-dot--critical"
+      : "status-dot status-dot--ok";
+
+  return (
+    <Card
+      actions={
+        <Button onClick={onOpen} size="sm" variant="secondary">
+          {text("Open alerts →", "前往告警处置 →")}
+        </Button>
+      }
+      className="overview-alerts-card"
+      scroll={false}
+      title={text("Alerts", "告警")}
+      variant="detail"
+    >
+      <div className="overview-alerts-stack">
+        <div className="overview-alerts-item">
+          <span className="status-inline">
+            <span aria-hidden="true" className={alertDot} />
+            <strong>{text("Unacknowledged alerts", "未确认新告警")}</strong>
+          </span>
+          {count === null ? (
+            <StateStamp state="missing" />
+          ) : (
+            <span className={count > 0 ? "mono overview-alerts-val overview-alerts-hot" : "mono overview-alerts-val"}>
+              <AnimatedFigure value={String(count)} />
+            </span>
+          )}
+        </div>
+
+        {/* Known only after the load page read the jobs in this session; otherwise left out. */}
+        {loadPaused !== null ? (
+          <div className="overview-alerts-item">
+            <span className="status-inline">
+              <span aria-hidden="true" className={loadPaused > 0 ? "status-dot status-dot--warn" : "status-dot status-dot--ok"} />
+              <span>{text("Paused Routine Load", "Routine Load 暂停")}</span>
+            </span>
+            <span className={loadPaused > 0 ? "mono overview-alerts-val overview-alerts-warn" : "mono overview-alerts-val"}>
+              <AnimatedFigure value={String(loadPaused)} />
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </Card>
+  );
 }

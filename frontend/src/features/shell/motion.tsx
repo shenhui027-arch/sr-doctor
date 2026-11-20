@@ -1,19 +1,18 @@
-// Task 63: one motion vocabulary for the app (design board 11). One ease-out
-// curve, no overshoot; layout follow-ups use a spring with bounce 0. Motion's
-// `reducedMotion="user"` turns transform animations off when the system asks.
+// Shared motion vocabulary (v1.1 spec §5.7): one ease-out curve, no bounce,
+// transform and opacity only, 160 / 200 / 240ms durations.
 import { animate, MotionConfig } from "motion/react";
 import { useEffect, useRef } from "react";
 import type { JSX, ReactNode, RefObject } from "react";
 
 export const EASE = [0.22, 1, 0.36, 1] as const;
-export const FAST = 0.15;
+export const FAST = 0.16;
 export const MEDIUM = 0.2;
-export const SLOW = 0.32;
-/** Layout follow-ups (nav indicator, list reflow): critically damped, no bounce. */
-export const LAYOUT_SPRING = { type: "spring", bounce: 0, visualDuration: 0.22 } as const;
+export const SLOW = 0.24;
+/** Layout transitions (sliding pills, surface indicators): single easing curve, zero bounce. */
+export const LAYOUT_SPRING = { duration: MEDIUM, ease: EASE } as const;
 
 export function AppMotion({ children }: { children: ReactNode }): JSX.Element {
-  return <MotionConfig reducedMotion="user" transition={{ duration: SLOW, ease: EASE }}>{children}</MotionConfig>;
+  return <MotionConfig reducedMotion="user" transition={{ duration: MEDIUM, ease: EASE }}>{children}</MotionConfig>;
 }
 
 function prefersReducedMotion(): boolean {
@@ -29,10 +28,9 @@ export function useEntrance(ref: RefObject<HTMLElement | null>, key: string): vo
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
-    // The first paint is the app itself appearing; only later switches animate.
     if (first.current) { first.current = false; return; }
     if (prefersReducedMotion()) return;
-    const controls = animate(element, { opacity: [0, 1], transform: ["translateY(8px)", "translateY(0px)"] }, { duration: SLOW, ease: EASE });
+    const controls = animate(element, { opacity: [0, 1], transform: ["translateY(6px)", "translateY(0px)"] }, { duration: MEDIUM, ease: EASE });
     return () => controls.stop();
   }, [ref, key]);
 }

@@ -207,7 +207,7 @@ test('F05 selects the family by its full digest accessible name, never its short
   // An exact attribute selector: a prefix or a one-character change cannot match.
   assert.match(source, /table\[aria-label="Audited query families"\] button\[aria-label="Select query family \$\{digest\}"\]/);
   assert.doesNotMatch(source, /aria-label\^="Select query family \$\{digest/);
-  assert.match(source, /\.audit-family-aside \.audit-family-members-more/);
+  assert.match(source, /\.audit-family-aside button\[aria-label\$="All members and distribution"\]/);
   assert.match(source, /clickButton\('Distribution and representatives'\)/);
 });
 
@@ -300,6 +300,7 @@ test("current display headers retain exact source metric identity and reject col
   }
   const ui = readFileSync(new URL("../../frontend/src/features/audit/AuditWorkloadWorkspace.tsx", import.meta.url), "utf8");
   for (let index = 4; index < 10; index++) {
-    assert.ok(ui.includes(`<th title="${observation.overview.column_titles[index]}">{text("${observation.overview.columns[index]}"`));
+    // v1.1: metric headers also carry the right-aligned "num" class; the source title and label are the contract.
+    assert.ok(ui.includes(`<th className="num" title="${observation.overview.column_titles[index]}">{text("${observation.overview.columns[index]}"`));
   }
 });

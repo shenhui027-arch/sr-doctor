@@ -175,7 +175,7 @@ export async function captureAuditReleaseOverview({ evaluate, assert: check, rec
         statement_cell: tr.cells[1]?.querySelector('.audit-value-tag') ? { tag: true } : { title_sha256: await exactHash(tr.cells[1]?.title ?? '') },
         metric_raw: Array.from(tr.querySelectorAll('td')).slice(4,10).map(td => td.title),
         metric_text: Array.from(tr.querySelectorAll('td')).slice(4,10).map(td => td.textContent.trim())
-      }))), counts: Array.from(document.querySelectorAll('.audit-kpi .audit-kpi-value')).map(n => n.textContent.trim().replaceAll(',', '')),
+      }))), counts: Array.from(document.querySelectorAll('.audit-kpi-strip .kpi-val')).map(n => n.textContent.trim().replaceAll(',', '')),
       statement_filter_dom: (() => { const node = document.querySelector('.audit-board-main-head [data-audit-statement-filter]'); return node ? { state: node.getAttribute('data-audit-statement-filter'), text: node.textContent + ' ' + (node.getAttribute('title') ?? '') } : null; })() };
   })()`);
   check(result.body && !result.body.sql_leak, "Audit overview batch leaked SQL or lacked real response evidence.");
@@ -216,8 +216,8 @@ export async function captureMissingProfileFamily({ evaluate, check, clickButton
   const counts = await Promise.all(['/audit/sql', '/profiles/fetch', '/runtime-profile'].map(async route => (await routeTelemetry(route)).length));
   const detailsBefore = await evaluate("window.__auditRelease.records.filter(row => row.route === 'family-detail').length");
   await clickElement(`document.querySelector('table[aria-label="Audited query families"] button[aria-label="Select query family ${digest}"]')`, 'F05 family row unavailable.');
-  await waitFor(async () => await evaluate("Boolean(document.querySelector('.audit-family-aside .audit-family-members-more'))"), 'F05 family members');
-  await clickElement('document.querySelector(".audit-family-aside .audit-family-members-more")', 'F05 family member-table entry unavailable.');
+  await waitFor(async () => await evaluate("Boolean(document.querySelector('.audit-family-aside button[aria-label$=\"All members and distribution\"]'))"), 'F05 family members');
+  await clickElement('document.querySelector(\'.audit-family-aside button[aria-label$="All members and distribution"]\')', 'F05 family member-table entry unavailable.');
   await waitFor(async () => await evaluate('Boolean(document.querySelector(\'.audit-board-main table[aria-label="Audited query rankings"]\'))'), 'F05 family members table');
   await clickButton('Distribution and representatives');
   await waitFor(async () => await evaluate(`window.__auditRelease.records.filter(row => row.route === 'family-detail').length > ${detailsBefore} && Boolean(document.querySelector('.audit-family-detail'))`), 'F05 unavailable Profile detail');

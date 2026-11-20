@@ -42,13 +42,39 @@ export function metricText(value: AuditMetricFact | null): string {
   return value.state === "exact" ? result : `${result} (${value.state})`;
 }
 
-/** Display tone only (Tokens board): an exact fact renders as a plain number;
- * a server-qualified number (e.g. precision_unsafe) and a fact without a
- * canonical number (missing, invalid, sentinel, overflow, unavailable) render
- * as dashed tags. The text itself always comes from metricText, never 0. */
-export function metricTone(value: AuditMetricFact | null): "exact" | "qualified" | "missing" {
-  if (value?.state === "exact" && value.canonical_number) return "exact";
-  return value?.canonical_number ? "qualified" : "missing";
+export type AuditMetricTone =
+  | "exact"
+  | "qualified"
+  | "missing"
+  | "invalid"
+  | "negative_sentinel"
+  | "overflow"
+  | "unavailable";
+
+/** Display tone only: an exact fact renders as a plain number; a server-qualified
+ * number (precision_unsafe) and each non-numeric audit state (missing, invalid,
+ * negative_sentinel, overflow, unavailable) keep their own honest state rather
+ * than collapsing into "missing" or 0. */
+export function metricTone(value: AuditMetricFact | null): AuditMetricTone {
+  if (!value) return "missing";
+  switch (value.state) {
+    case "exact":
+      return value.canonical_number ? "exact" : "missing";
+    case "precision_unsafe":
+      return "qualified";
+    case "missing":
+      return "missing";
+    case "invalid":
+      return "invalid";
+    case "negative_sentinel":
+      return "negative_sentinel";
+    case "overflow":
+      return "overflow";
+    case "unavailable":
+      return "unavailable";
+    default:
+      return value.canonical_number ? "qualified" : "unavailable";
+  }
 }
 
 export function auditMillisecondsText(value: string): string {

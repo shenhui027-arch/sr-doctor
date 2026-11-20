@@ -1,9 +1,22 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { NotifyDeliveriesResponse, NotifyOverviewResponse } from "../../../../contracts/generated/doctor-contracts";
+import { LocaleProvider } from "../../i18n/locale";
 import { NotifyDialog } from "./NotifyDialog";
 import { DeliveriesPanel, NotifyPanel } from "./NotifyPanel";
-import { channelStatus, notifyActionText, targetInput } from "./notify-text";
+import {
+  channelStatus,
+  defaultConfig,
+  deliveryStateText,
+  errorText,
+  eventText,
+  kindName,
+  notifyActionText,
+  severityText,
+  shortKindName,
+  targetInput,
+  targetNoun,
+} from "./notify-text";
 
 const english = (value: string): string => value;
 const chinese = (_english: string, value: string): string => value;
@@ -30,18 +43,22 @@ const overview: NotifyOverviewResponse = {
   limitations: [],
 };
 
-describe("notification channels (design board N1)", () => {
-  it("shows every channel as a card, every target in one list and the G1 notice", () => {
-    const html = renderToStaticMarkup(<NotifyPanel busy={false} onOpen={noop} onSaveSettings={noop} onTest={noop} overview={overview} tests={{}} text={chinese} />);
+describe("notification channels (boards/08-settings)", () => {
+  it("shows every channel in the channel list, every target in one table and the G1 notice", () => {
+    const html = renderToStaticMarkup(
+      <LocaleProvider initialLocale="zh">
+        <NotifyPanel busy={false} onOpen={noop} onSaveSettings={noop} onTest={noop} overview={overview} tests={{}} text={chinese} />
+      </LocaleProvider>,
+    );
     expect(html).toContain("远端集群在 G1 生产只读试点通过前不做后台采集");
-    expect(html.match(/aria-haspopup="dialog" class="notify-card"/g)).toHaveLength(5);
+    expect(html.match(/aria-haspopup="dialog" class="channel-item"/g)).toHaveLength(5);
     expect(html).toContain("2 个发送对象 · 启用 1");
     expect(html).toContain("1 个失败");
     expect(html).toContain("共 3 个 · 启用 2 个");
     expect(html).toContain("open.feishu.cn/…/****9f2c");
     expect(html).toContain("失败 · 10-29 09:00 · 认证失败 19021");
     expect(html).toContain("仅高");
-    expect(html).toContain("value=\"http://10.0.0.5:8080\"");
+    expect(html).toContain('value="http://10.0.0.5:8080"');
   });
 
   it("names the most urgent channel state first", () => {
@@ -64,20 +81,47 @@ describe("notification channels (design board N1)", () => {
     expect(targetInput(feishu, { enabled: false })).toEqual({ target_id: "3", kind: "feishu", name: "DBA 值班群", enabled: false, min_severity: "medium", address: null, webhook: null, signing_secret: null, clear_signing_secret: false });
     expect(targetInput(overview.targets[0]!).address).toBe("dba@example.com");
   });
+
+  it("falls back safely for unknown notification enum values without returning undefined (regression)", () => {
+    expect(kindName("future_pager" as never, english)).toBe("future_pager");
+    expect(shortKindName("future_pager" as never, chinese)).toBe("future_pager");
+    expect(targetNoun("future_pager" as never, english)).toBe("future_pager");
+    expect(severityText("extreme" as never, english)).toBe("extreme");
+    expect(errorText("provider_circuit_open" as never, chinese)).toBe("provider_circuit_open");
+    expect(deliveryStateText("queued_batch" as never, english)).toBe("queued_batch");
+    expect(eventText("digest_summary" as never, 3, "10.0.0.5:9030", english)).toBe("digest_summary · 10.0.0.5:9030");
+    expect(defaultConfig("future_pager" as never)).toEqual({ kind: "feishu" });
+  });
 });
 
-describe("channel dialog (design board N1 dialog)", () => {
-  const dialog = (kind: "email" | "feishu" | "dingtalk", edit: string | "new" | null) => renderToStaticMarkup(
-    <NotifyDialog busy={false} error={null} focus={{ kind, edit }} onClose={noop} onDeleteTarget={noop} onSaveChannel={yes} onSaveTarget={yes} onTest={noop} overview={overview} tests={{}} text={chinese} />,
-  );
+describe("channel dialog (Dialog primitive)", () => {
+  const dialog = (kind: "email" | "feishu" | "dingtalk", edit: string | "new" | null) =>
+    renderToStaticMarkup(
+      <LocaleProvider initialLocale="zh">
+        <NotifyDialog
+          busy={false}
+          error={null}
+          focus={{ kind, edit }}
+          onClose={noop}
+          onDeleteTarget={noop}
+          onSaveChannel={yes}
+          onSaveTarget={yes}
+          onTest={noop}
+          overview={overview}
+          tests={{}}
+          text={chinese}
+        />
+      </LocaleProvider>,
+    );
 
-  it("puts channel settings above the channel's targets and never fills a secret field", () => {
+  it("puts channel settings above the channel's targets using the Dialog primitive and never fills a secret field", () => {
     const html = dialog("email", null);
-    expect(html).toContain("role=\"dialog\"");
-    expect(html).toContain("aria-modal=\"true\"");
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain("modal-card modal-card--wide");
     expect(html.indexOf("渠道设置")).toBeLessThan(html.indexOf("发送对象"));
     expect(html).toContain("口令 / 授权码 · 只写");
-    expect(html).toContain("placeholder=\"已保存 · 留空表示不修改\" type=\"password\" value=\"\"");
+    expect(html).toContain('placeholder="已保存 · 留空表示不修改"');
+    expect(html).toContain('type="password" value=""');
     expect(html).toContain("dba@example.com");
     expect(html).toContain("清除渠道密钥");
     expect(html).not.toContain("notify-target-form");
@@ -100,7 +144,7 @@ describe("channel dialog (design board N1 dialog)", () => {
   });
 });
 
-describe("delivery log (design board N2)", () => {
+describe("delivery log (boards/08-settings)", () => {
   const deliveries: NotifyDeliveriesResponse = {
     deliveries: [
       { delivery_id: "9", at_seconds: 1_793_264_400, kind: "dingtalk", target_id: "4", target_name: "数据平台群", event: "new_alerts", cluster: "10.0.0.5:9030", alert_count: 2, state: "pending", attempts: 1, next_attempt_seconds: 1_793_264_460, error: "timeout", provider_code: null, duration_ms: 10_000 },
@@ -111,7 +155,9 @@ describe("delivery log (design board N2)", () => {
   };
 
   it("says what was sent to whom, what happened and when it retries", () => {
-    const html = renderToStaticMarkup(<DeliveriesPanel deliveries={deliveries} filters={{ kind: null, target_id: null, state: null }} onFilters={noop} targets={overview.targets} text={chinese} />);
+    const html = renderToStaticMarkup(
+      <DeliveriesPanel deliveries={deliveries} filters={{ kind: null, target_id: null, state: null }} onFilters={noop} targets={overview.targets} text={chinese} />,
+    );
     expect(html).toContain("保留 30 天");
     expect(html).toContain("3 / 10");
     expect(html).toContain("钉钉 · 数据平台群");
@@ -120,6 +166,6 @@ describe("delivery log (design board N2)", () => {
     expect(html).toContain("1.3 s");
     expect(html).toContain("超出频率上限");
     expect(html).toContain("测试消息");
-    expect(html).toContain("<option value=\"3\">DBA 值班群</option>");
+    expect(html).toContain('<option value="3">DBA 值班群</option>');
   });
 });

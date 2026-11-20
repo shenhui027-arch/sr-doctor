@@ -114,6 +114,9 @@ try {
   cdp = await connectCdp(chrome.debuggerBase);
   await cdp.send("Page.enable");
   await cdp.send("Runtime.enable");
+  // v1.1 dialogs and drawers unmount after their exit animation; headless timing makes that flaky,
+  // so the run asks for reduced motion (the design system then shortens every animation to 0.01 ms).
+  await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
   await cdp.send("Emulation.setDeviceMetricsOverride", {
     width: 1440,
     height: 1024,
@@ -225,16 +228,20 @@ async function keyboardLocaleAndWorkspaceCoverage() {
   // v1.0-63 (board 9): the language switch lives under Settings › Language, behind the header gear.
   await tabUntil((active) => ["Settings", "设置"].includes(active?.ariaLabel), "settings gear");
   await key("Enter");
-  await waitFor(() => has(".settings-page"), "settings page");
-  await tabUntil((active) => ["Language", "语言"].includes(active?.text), "settings language section");
-  await key("Enter");
-  await tabUntil((active) => active?.text === "中文", "Chinese language switch");
-  await key("Enter");
-  await waitFor(() => evaluate(`document.querySelector(".locale-switch button[aria-pressed=\\"true\\"]")?.textContent.trim() === "中文" && document.querySelector(".settings-nav h1")?.textContent.trim() === "设置"`), "Chinese locale");
+  await waitFor(() => has(".workspace-content.workspace-settings .settings-stage"), "settings page");
+  // v1.1 (board 08): the language sits under Settings › Connection and preferences. Both switches are
+  // tab lists: Tab reaches the selected tab and the arrow keys move (and apply) the selection.
+  const sectionLabels = ["History store and collection", "Alert notifications", "Connection and preferences", "历史库与采集", "告警通知", "连接与偏好"];
+  await tabUntil((active) => active?.role === "tab" && sectionLabels.includes(active.text), "settings sections");
+  await arrowUntil((active) => ["Connection and preferences", "连接与偏好"].includes(active?.text), "connection and preferences section");
+  await waitFor(() => has(".settings-locale-row [role=tab]"), "language switch");
+  await tabUntil((active) => active?.role === "tab" && ["中文", "English"].includes(active.text), "language switch");
+  const localeShown = (language, section) => evaluate(`document.querySelector('.settings-locale-row [role=tab][aria-selected="true"]')?.textContent.trim() === ${JSON.stringify(language)} && document.querySelector('.settings-stage [role=tab][aria-selected="true"]')?.textContent.trim() === ${JSON.stringify(section)}`);
+  await arrowUntil((active) => active?.text === "中文", "Chinese language switch");
+  await waitFor(() => localeShown("中文", "连接与偏好"), "Chinese locale");
   receipt.assertions.push("keyboard_tab_enter_locale:中文");
-  await tabUntil((active) => active?.text === "English", "English language switch");
-  await key("Enter");
-  await waitFor(() => evaluate(`document.querySelector(".locale-switch button[aria-pressed=\\"true\\"]")?.textContent.trim() === "English" && document.querySelector(".settings-nav h1")?.textContent.trim() === "Settings"`), "English locale");
+  await arrowUntil((active) => active?.text === "English", "English language switch");
+  await waitFor(() => localeShown("English", "Connection and preferences"), "English locale");
   receipt.assertions.push("keyboard_tab_enter_locale:English");
   // Keyboard reaches a workspace from the header again (Loads works without a connection).
   await tabUntil((active) => active?.text === "Loads", "Loads workspace");
@@ -306,7 +313,7 @@ async function offlineImportCoverage() {
     `({ mode: 'paste', byte_length: document.querySelector('.first-run .import-panel textarea')?.value.length ?? 0 })`,
   );
   const analysesBefore = (await projectionTelemetry("/analyses")).length;
-  await clickButton("Analyze Profile");
+  await clickButton("Analyze Profile →");
   await waitFor(
     () => has(".workspace-doctor .doctor-summary"),
     "offline import Doctor response",
@@ -318,7 +325,7 @@ async function offlineImportCoverage() {
   );
   receipt.offline_doctor = await assertDoctorGraph(projection, "Offline import");
   const summary = await evaluate(
-    `(() => { const facts = Array.from(document.querySelectorAll('.workspace-doctor .doctor-summary-facts > div')).map((item) => ({ label: item.querySelector('dt')?.textContent?.trim() ?? null, value: item.querySelector('dd')?.textContent?.trim() ?? null })); return { facts, actions: Array.from(document.querySelectorAll('.context-bar .context-actions button')).map((button) => button.textContent.trim()), findingsCount: document.querySelector('.doctor-findings-column .findings-count')?.textContent?.trim() ?? null }; })()`,
+    `(() => { const facts = Array.from(document.querySelectorAll('.workspace-doctor .doctor-summary .kpi-head')).map((head) => ({ label: head.querySelector('.metric-name > span:first-child')?.textContent?.trim() ?? null, value: head.parentElement?.querySelector('.kpi-val')?.textContent?.trim() ?? null })); return { facts, actions: Array.from(document.querySelectorAll('.context-bar [role=tab]')).map((tab) => tab.textContent.trim()), findingsCount: document.querySelector('.doctor-findings-column .findings-count')?.textContent?.trim() ?? null }; })()`,
   );
   const total = summary.facts.find((item) => item.label === "Total time");
   assert(
@@ -361,9 +368,11 @@ async function retainedComplexProfileCoverage(projection) {
     "Retained complex Profile hottest node drifted from the ExplainAnalyzer golden.",
   );
   const root = ".workspace-doctor .execution-graph";
-  const firstRow = (await doctorGraphDom(root)).first_table_row ?? "";
+  const domDoc = receipt.offline_doctor?.dom;
+  const firstRow = domDoc?.first_table_row ?? (await doctorGraphDom(root)).first_table_row ?? "";
+  const firstPlan = domDoc?.first_table_row_plan ?? (await doctorGraphDom(root)).first_table_row_plan;
   assert(
-    (await doctorGraphDom(root)).first_table_row_plan === "0" && firstRow.includes("17.28%"),
+    (firstPlan === "Plan 0" || firstPlan === "0") && firstRow.includes("17.28%"),
     "Plan-node table did not rank the hottest node first with its backend share.",
   );
   const viewportState = () =>
@@ -382,7 +391,7 @@ async function retainedComplexProfileCoverage(projection) {
   await waitFor(
     () =>
       evaluate(
-        `(() => {    const root = document.querySelector(${JSON.stringify(root)});    const node = root?.querySelector('.plan-card.selected');    const canvas = root?.querySelector('.execution-graph-canvas');    if (!node || node.dataset.nodeId !== '0' || canvas?.dataset.layoutState !== 'ready' || !root.querySelector('.node-inspector')) return false;    const n = node.getBoundingClientRect(), c = canvas.getBoundingClientRect();    return n.width > 0 && n.height > 0 && n.left >= Math.max(c.left, 0) && n.right <= Math.min(c.right, innerWidth)      && n.top >= Math.max(c.top, 0) && n.bottom <= Math.min(c.bottom, innerHeight);  })()`,
+        `(() => {    const root = document.querySelector(${JSON.stringify(root)});    const node = root?.querySelector('.exec-node.is-selected');    const canvas = root?.querySelector('.execution-graph-canvas');    if (!node || node.dataset.nodeId !== '0' || canvas?.dataset.layoutState !== 'ready' || !root.querySelector('.node-inspector')) return false;    const n = node.getBoundingClientRect(), c = canvas.getBoundingClientRect();    return n.width > 0 && n.height > 0 && n.left >= Math.max(c.left, 0) && n.right <= Math.min(c.right, innerWidth)      && n.top >= Math.max(c.top, 0) && n.bottom <= Math.min(c.bottom, innerHeight);  })()`,
       ),
     "Hottest node selected and centered in the viewport",
   );
@@ -396,7 +405,7 @@ async function retainedComplexProfileCoverage(projection) {
     "Node inspector lost the backend share or output rows.",
   );
   assert(
-    (await evaluate(`document.querySelector('.workspace-doctor .doctor-details [role="tab"][aria-selected="true"]')?.textContent?.startsWith('Operators') === true`)),
+    (await evaluate(`document.querySelector('.workspace-doctor .doctor-main-card [role="tab"][aria-selected="true"]')?.textContent?.trim() === 'Execution graph'`)),
     "Hottest node navigation unexpectedly opened the original Profile.",
   );
   receipt.complex_profile.hottest_located_in_viewport = true;
@@ -498,7 +507,7 @@ async function applyAuditFixtureWindowAfterOverview() {
     auditOverviewRoute,
     "Fixed Audit fixture Overview",
     true,
-    ".audit-kpi-grid",
+    ".audit-kpi-strip",
   );
   if (!applied) return null;
   receipt.audit_fixture_window = {
@@ -516,18 +525,22 @@ async function auditPerformanceOverviewCoverage() {
   await waitFor(async () => {
     const routes = await routeTelemetry("/audit/performance");
     return routes.at(-1)?.method === "POST" && routes.at(-1)?.status === 200 &&
-      (await has(".workspace-content.workspace-overview .audit-performance-chart svg rect.hit"));
+      (await has(".workspace-content.workspace-overview #audit-performance-chart svg rect.hit"));
   }, "Audit performance response");
   const coverage = (await projectionTelemetry(auditOverviewRoute)).at(-1)?.audit_coverage ?? null;
   receipt.audit_performance = await evaluate(
-    `(() => { const root = document.querySelector('.workspace-content.workspace-overview .audit-performance'); const cards = Array.from(root?.querySelectorAll('.audit-performance-card') ?? []); const executions = cards.find((card) => card.querySelector('.audit-performance-card-label')?.textContent === 'Executions'); return {
+    `(() => { const root = document.querySelector('.workspace-content.workspace-overview .audit-performance'); const cards = Array.from(root?.querySelectorAll('.kpi-grid--6 > .card--kpi') ?? []); const executions = cards.find((card) => card.querySelector('.kpi-head > span:first-child')?.textContent?.trim() === 'Executions'); return {
       card_count: cards.length,
-      // The figure counts up on entry (v1.0-69); its title carries the server value throughout.
-      executions: executions?.querySelector('.audit-performance-card-value > span')?.getAttribute('title')?.replaceAll(',', '') ?? null,
-      bucket_count: root?.querySelectorAll('.audit-performance-chart svg rect.hit').length ?? 0,
-      histogram_rows: root?.querySelectorAll('.audit-performance-histogram-row').length ?? 0,
-      panels: ['audit-performance-histogram', 'audit-performance-errors', 'audit-performance-dimensions', 'audit-performance-top'].filter((id) => document.getElementById(id)).length,
-      performance_tab_selected: Array.from(document.querySelectorAll('[role="tab"]')).find((tab) => tab.textContent.trim() === 'Performance')?.getAttribute('aria-selected') ?? null,
+      executions: executions?.querySelector('.kpi-val')?.textContent?.trim()?.replaceAll(',', '') ?? null,
+      bucket_count: root?.querySelectorAll('#audit-performance-chart svg rect.hit').length ?? 0,
+      histogram_rows: root?.querySelectorAll('.audit-histogram-row').length ?? 0,
+      panels: [
+        root?.querySelector('#audit-performance-chart'),
+        root?.querySelector('#audit-performance-bucket'),
+        root?.querySelector('[role="tablist"][aria-label="Distribution or failures"]'),
+        root?.querySelector('[role="tablist"][aria-label="Ranking or workload composition"]'),
+      ].filter(Boolean).length,
+      performance_tab_selected: Array.from(document.querySelectorAll('.overview-bar [role="tab"]')).find((tab) => tab.textContent.trim() === 'Performance overview')?.getAttribute('aria-selected') ?? null,
       sql_text_in_cards: cards.some((card) => /\\bSELECT\\b/i.test(card.textContent ?? '')),
     }; })()`,
   );
@@ -565,7 +578,7 @@ async function auditWorkloadCoverage() {
       routes.length > overviewRequestsBefore &&
       routes.at(-1)?.method === "POST" &&
       routes.at(-1)?.status === 200 &&
-      (await has(".workspace-queries .audit-kpi-grid"))
+      (await has(".workspace-queries .audit-kpi-strip"))
     );
   }, "Audit Overview response and repeated SQL board");
   // Both pages share one Audit instance: moving between them reuses the admitted read.
@@ -574,7 +587,7 @@ async function auditWorkloadCoverage() {
   await waitFor(() => has(".workspace-content.workspace-overview .audit-performance"), "Overview performance dashboard");
   await auditPerformanceOverviewCoverage();
   await clickButton("Queries");
-  await waitFor(() => has(".workspace-queries .audit-kpi-grid"), "Repeated SQL board after the Overview");
+  await waitFor(() => has(".workspace-queries .audit-kpi-strip"), "Repeated SQL board after the Overview");
   assert((await routeTelemetry(auditOverviewRoute)).length === overviewRequestsAtSwitch,
     "Moving between the Overview and Queries pages re-read the Audit overview.");
   const overviewProjection = (await projectionTelemetry(auditOverviewRoute)).at(-1);
@@ -589,8 +602,8 @@ async function auditWorkloadCoverage() {
     "Audit Overview response lost its exact full-window count and coverage facts.");
   receipt.audit_overview = await evaluate(
     `(() => { const root = document.querySelector('.workspace-queries .audit-workload-overview'); const foot = root?.querySelector('.audit-board-main-foot')?.textContent ?? ''; return {
-      summary_cards: root?.querySelectorAll('.audit-kpi-grid .audit-kpi').length ?? 0,
-      query_count: Array.from(root?.querySelectorAll('.audit-kpi') ?? []).find(card => card.querySelector('.audit-kpi-label')?.textContent === 'Query count')?.querySelector('.audit-kpi-value')?.textContent?.replaceAll(',', '') ?? null,
+      summary_cards: root?.querySelectorAll('.audit-kpi-strip > .card--kpi:not(.audit-inflight)').length ?? 0,
+      query_count: Array.from(root?.querySelectorAll('.audit-kpi-strip > .card--kpi') ?? []).find(card => card.querySelector('.kpi-head > span:first-child')?.textContent?.trim() === 'Query count')?.querySelector('.kpi-val')?.textContent?.trim()?.replaceAll(',', '') ?? null,
       has_time_range: (root?.querySelector('select[aria-label="Audit window"]')?.getAttribute('title') ?? '').includes(' → '),
       has_returned_count: foot.includes(${JSON.stringify(`${overviewCoverage.retained_family_count} query families`)}),
     }; })()`,
@@ -624,8 +637,8 @@ async function auditWorkloadCoverage() {
     `Array.from(document.querySelectorAll('button[aria-label^="Select audited query "]')).find((item) => !item.disabled)`,
     "No audited execution was available for explicit selection.",
   );
-  await waitFor(() => has(".audit-selection:not(.audit-selection-empty)"), "selected audited execution");
-  // With the detail panel open at 1440 wide, the 11-column table (with SQL) must not scroll sideways.
+  await waitFor(() => has('[role="dialog"] .audit-selection'), "selected audited execution");
+  // With the detail drawer open at 1440 wide, the 11-column table (with SQL) must not scroll sideways.
   receipt.audit_occurrence_layout = await evaluate(
     `(() => { const table = document.querySelector('.workspace-queries table[aria-label="Audited query rankings"]'); const wrap = table?.closest('.audit-table-wrap'); const cells = Array.from(table?.querySelectorAll('tbody td.audit-cell-sql') ?? []); return {
       viewport_width: window.innerWidth, page: [document.documentElement.clientWidth, document.documentElement.scrollWidth],
@@ -676,13 +689,16 @@ async function auditWorkloadCoverage() {
     "Explicit Audit SQL read returned no visible SQL.",
   );
   receipt.assertions.push("audit_queries_explicit_row_sql_read_no_execute");
+  // v1.1: close the occurrence drawer before switching views in the main card.
+  await key("Escape");
+  await waitFor(() => has('[role="dialog"]').then((present) => !present), "close occurrence drawer");
   // A window whose retained events all lack a native digest cannot form a
   // family; the product replaces the family entry with enable_sql_digest
   // guidance instead of an empty grouping panel.
   // The guidance is drawn only on the families view, and the steps above leave
   // the individual-executions view open, so digest absence is decided from the
   // backend's latest overview coverage rather than from what this view shows.
-  const familiesOffered = await evaluate(`Array.from(document.querySelectorAll(".audit-view-switch button")).some((button) => button.textContent.trim() === "Repeated SQL")`);
+  const familiesOffered = await evaluate(`Array.from(document.querySelectorAll('[role="tablist"][aria-label="View"] [role="tab"]')).some((tab) => tab.textContent.trim() === "Repeated SQL")`);
   const latestCoverage = (await projectionTelemetry(auditOverviewRoute)).at(-1)?.audit_coverage ?? null;
   const digestFree = /^[1-9][0-9]*$/.test(latestCoverage?.retained_event_count ?? "") &&
     latestCoverage.missing_digest_count === latestCoverage.retained_event_count;
@@ -810,6 +826,10 @@ async function auditWorkloadCoverage() {
       receipt.assertions.push("audit_family_slowest_sql_explicit_read_only");
       receipt.audit_release.representative_sql = (await has(".audit-sql-error")) ? "real_typed_unavailable_facts_retained" : "real_success_unavailability_not_exercised";
       assert((await textOf(".audit-family-detail")) === familyFactsBeforeEvidence, "Representative SQL action lost Audit family facts.");
+      if (await has('[role="dialog"]')) {
+        await key("Escape");
+        await waitFor(() => has('[role="dialog"]').then((present) => !present), "close representative SQL drawer");
+      }
     }
     if (detail.representative_states[2] === "selected") {
       const profileProjectionsBefore = (
@@ -824,11 +844,11 @@ async function auditWorkloadCoverage() {
         return (
           routes.length === profilesBeforeDetail + 1 &&
           ((routes.at(-1)?.status === 200 && (await has(".audit-profile-receipt"))) ||
-            (project === "connected-readonly-docker" && routes.length === profilesBeforeDetail + 1 && routes.at(-1)?.status >= 400 && (await has(".audit-error"))))
+            (project === "connected-readonly-docker" && routes.length === profilesBeforeDetail + 1 && routes.at(-1)?.status >= 400 && ((await has(".audit-selection .audit-sql-error")) || (await has('.audit-workload > [role="alert"]')))))
         );
       }, "explicit evidence representative retained Profile");
       assert((await textOf(".audit-family-detail")) === familyFactsBeforeEvidence, "Representative Profile action lost Audit family facts.");
-      const profileUnavailable = await has(".audit-error");
+      const profileUnavailable = (await has(".audit-selection .audit-sql-error")) || (await has('.audit-workload > [role="alert"]'));
       receipt.audit_release.representative_profile = profileUnavailable ? "real_typed_unavailable_facts_retained" : "real_success_unavailability_not_exercised";
       assert((await routeTelemetry("/audit/sql")).length === sqlBeforeProfile && (await routeTelemetry("/runtime-profile")).length === runtimeBeforeProfile, "Representative Profile failure triggered SQL or execution fallback.");
       if (!profileUnavailable) {
@@ -857,6 +877,10 @@ async function auditWorkloadCoverage() {
         "audit_family_evidence_profile_explicit_fetch_no_execution",
       );
       await capture("audit-family-profile-fetched-1440x1024");
+      }
+      if (await has('[role="dialog"]')) {
+        await key("Escape");
+        await waitFor(() => has('[role="dialog"]').then((present) => !present), "close representative Profile drawer");
       }
     } else {
       receipt.audit_release.representative_profile = "no_evidence_representative_unavailability_not_exercised";
@@ -929,18 +953,18 @@ async function applyAuditReleaseCohort(user) {
   await waitFor(async () => {
     const routes = await routeTelemetry(auditOverviewRoute);
     return routes.length === before + 1 && routes.at(-1)?.status === 200 &&
-      await evaluate(`document.querySelector('.workspace-queries .audit-workload')?.getAttribute('aria-busy') === 'false' && !document.querySelector('.audit-window-evidence')?.textContent.includes('Filters changed. Apply them to update the results.')`);
+      await evaluate(`document.querySelector('.workspace-queries .audit-workload')?.getAttribute('aria-busy') === 'false' && !document.querySelector('.audit-window-evidence')?.textContent.includes('Filters changed. Refresh to update the results.')`);
   }, "A05 explicit one-hour exact-user scope committed");
 }
 /** Select a family (one member read), then open its members and the distribution detail. */
 async function openFirstAuditFamilyDistribution(selectFamilyExpression, missingMessage) {
   await clickElement(selectFamilyExpression, missingMessage);
   await waitFor(
-    async () => (await has(".audit-family-aside .audit-family-members-more")) || (await has(".audit-family-aside-error")),
+    async () => (await has('.audit-family-aside button[aria-label$="All members and distribution"]')) || (await has('.audit-family-aside [role="alert"]')),
     "selected family member ranking",
   );
-  assert(!(await has(".audit-family-aside-error")), "Selected family member ranking failed.");
-  await clickElement('document.querySelector(".audit-family-aside .audit-family-members-more")', "Family member-table entry was unavailable.");
+  assert(!(await has('.audit-family-aside [role="alert"]')), "Selected family member ranking failed.");
+  await clickElement('document.querySelector(\'.audit-family-aside button[aria-label$="All members and distribution"]\')', "Family member-table entry was unavailable.");
   await waitFor(() => has('.audit-board-main table[aria-label="Audited query rankings"]'), "family members table");
   await clickButton("Distribution and representatives");
 }
@@ -970,7 +994,7 @@ async function auditFamilyDoctorCoverage() {
     const fallbackFamiliesBefore = (await routeTelemetry(auditOverviewRoute))
       .length;
     await setInputValue('select[aria-label="Audit window"]', "30d");
-    await clickButton("Apply filters");
+    await clickButton("Refresh");
     await waitFor(async () => {
       const routes = await routeTelemetry(auditOverviewRoute);
       return (
@@ -1086,7 +1110,7 @@ async function officialProfileCoverage() {
     await waitFor(
       () =>
         has(
-          ".workspace-doctor .execution-graph .plan-card.selected",
+          ".workspace-doctor .execution-graph .exec-node.is-selected",
         ).then((selected) => !selected),
       "selection cleared by actual React Flow pane click",
     );
@@ -1104,7 +1128,7 @@ async function officialProfileCoverage() {
     );
     result.assertions.push("open_zero_official_requests");
     const noSelection = await evaluate(
-      `(() => {      const selected = document.querySelector('.workspace-doctor .execution-graph .plan-card.selected');      const nodeScope = document.querySelector('.official-profile-scope button:nth-child(2)');      return { selected: Boolean(selected), node_disabled: nodeScope?.disabled ?? null };    })()`,
+      `(() => {      const selected = document.querySelector('.workspace-doctor .execution-graph .exec-node.is-selected');      const nodeScope = document.querySelector('[aria-label="Official reading scope"] [role="tab"]:nth-child(2)');      return { selected: Boolean(selected), node_disabled: nodeScope?.disabled ?? null };    })()`,
     );
     assert(
       !noSelection.selected && noSelection.node_disabled === true,
@@ -1189,9 +1213,9 @@ async function officialProfileCoverage() {
     // Select the DTO plan node through the backend node table when the
     // execution summary is available, otherwise through its graph card. The
     // graph, the table and the official node scope share one SelectionProvider.
-    const tableLink = `Array.from(document.querySelectorAll('.workspace-doctor .plan-node-table .plan-node-link')).find((button) => button.querySelector('small')?.textContent?.trim() === ${JSON.stringify(`${nodeCandidate.plan_node_id}`)})`;
+    const tableLink = `Array.from(document.querySelectorAll('.workspace-doctor .plan-node-table .plan-node-link')).find((button) => button.querySelector('small')?.textContent?.trim() === ${JSON.stringify(`Plan ${nodeCandidate.plan_node_id}`)})`;
     const graphCard = `document.querySelector(${JSON.stringify(`.workspace-doctor .execution-graph .react-flow__node[data-id="${nodeCandidate.node_id}"]`)})`;
-    const selectedCards = "Array.from(document.querySelectorAll('.workspace-doctor .execution-graph .plan-card.selected')).map((card) => card.dataset.nodeId).filter(Boolean)";
+    const selectedCards = "Array.from(document.querySelectorAll('.workspace-doctor .execution-graph .exec-node.is-selected')).map((card) => card.dataset.nodeId).filter(Boolean)";
     const viaTable = await evaluate(`Boolean(${tableLink})`);
     result.node_selection_diagnostic = {
       target_node_sha256: hashOpaque(nodeCandidate.node_id),
@@ -1199,7 +1223,7 @@ async function officialProfileCoverage() {
       selection_control: viaTable ? "plan_node_table" : "graph_card",
     };
     try {
-      if (viaTable) await openDoctorStructureTab("Operators and source");
+      if (viaTable) await openDoctorStructureTab("Operators");
       await clickElement(
         viaTable ? tableLink : graphCard,
         "Current DTO plan node could not be selected.",
@@ -1246,13 +1270,13 @@ async function officialProfileCoverage() {
       "official node-scope dialog",
     );
     const nodeScopeButton = await evaluate(
-      `document.querySelector('.official-profile-scope button:nth-child(2)')?.textContent?.trim() ?? ''`,
+      `document.querySelector('[aria-label="Official reading scope"] [role="tab"]:nth-child(2)')?.textContent?.trim() ?? ''`,
     );
     assert(
       nodeScopeButton === `Selected node [${nodeCandidate.plan_node_id}]`,
       "Official node scope label was not derived from the selected DTO plan node.",
     );
-    await clickSelector(".official-profile-scope button:nth-child(2)");
+    await clickSelector('[aria-label="Official reading scope"] [role="tab"]:nth-child(2)');
     assert(
       (await officialRequestLog()).length === wholeBefore + 1,
       "Changing official scope issued a hidden request.",
@@ -1374,7 +1398,7 @@ async function officialProfileCoverage() {
         action: "return_to_query_list",
       };
       result.assertions.push("typed_change_input_recovery_action");
-      await clickSelector(".official-profile-scope button:first-child");
+      await clickSelector('[aria-label="Official reading scope"] [role="tab"]:first-child');
       await waitFor(
         () =>
           has(".official-profile-action button") &&
@@ -1545,7 +1569,7 @@ async function identitySwitchLateReplyCoverage(result, oldProfileIdentity) {
     ),
     "Top limit control did not commit 500 before Apply filters.",
   );
-  await clickButton("Apply filters");
+  await clickButton("Refresh");
   await waitFor(async () => {
     const routes = await routeTelemetry(auditOverviewRoute);
     return (
@@ -1577,7 +1601,7 @@ async function identitySwitchLateReplyCoverage(result, oldProfileIdentity) {
     "Audit response omitted bounded returned/truncated/full-window evidence.",
   );
   const candidateRows = await evaluate(
-    `(async () => {    const previousQueryIdSha256 = ${JSON.stringify(oldProfileIdentity.query_id_sha256)};    const sha256 = async (value) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))), (byte) => byte.toString(16).padStart(2, '0')).join('');    return await Promise.all(Array.from(document.querySelectorAll('table[aria-label="Audited query rankings"] tbody tr')).map(async (row, index) => {      const button = row.querySelector('button[aria-label^="Select audited query "]');      const queryId = button?.getAttribute('aria-label')?.replace(/^Select audited query\\s+/, '') ?? '';      const profile = row.cells.item(row.cells.length - 1)?.textContent?.trim() ?? '';      const query_id_sha256 = queryId ? await sha256(queryId) : null;      return { index, query_id_sha256, available: Boolean(button && !button.disabled && queryId && query_id_sha256 !== previousQueryIdSha256 && profile === 'Available') };    })).then((candidates) => candidates.filter((candidate) => candidate.available));  })()`,
+    `(async () => {    const previousQueryIdSha256 = ${JSON.stringify(oldProfileIdentity.query_id_sha256)};    const sha256 = async (value) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))), (byte) => byte.toString(16).padStart(2, '0')).join('');    return await Promise.all(Array.from(document.querySelectorAll('table[aria-label="Audited query rankings"] tbody tr')).map(async (row, index) => {      const button = row.querySelector('button[aria-label^="Select audited query "]');      const queryId = button?.getAttribute('aria-label')?.replace(/^Select audited query\\s+/, '') ?? '';      const profile = row.cells.item(row.cells.length - 1)?.textContent?.trim() ?? '';      const query_id_sha256 = queryId ? await sha256(queryId) : null;      return { index, query_id_sha256, available: Boolean(button && !button.disabled && queryId && query_id_sha256 !== previousQueryIdSha256 && (profile === 'Can try' || profile === 'Available')) };    })).then((candidates) => candidates.filter((candidate) => candidate.available));  })()`,
   );
   const oldIdentityHash = oldProfileIdentity.query_id_sha256;
   const configuredAllowlist = retainedProfileHashAllowlist;
@@ -1622,7 +1646,7 @@ async function identitySwitchLateReplyCoverage(result, oldProfileIdentity) {
     await waitFor(
       () =>
         evaluate(
-          `(() => {      const row = document.querySelectorAll('table[aria-label="Audited query rankings"] tbody tr')[${candidate.index}];      const select = row?.querySelector('button[aria-label^="Select audited query "]');      const fetch = Array.from(document.querySelectorAll('.audit-selection-actions button')).find((button) => button.textContent.trim() === 'Diagnose');      return select?.getAttribute('aria-pressed') === 'true' && Boolean(fetch && !fetch.disabled);    })()`,
+          `(() => {      const row = document.querySelectorAll('table[aria-label="Audited query rankings"] tbody tr')[${candidate.index}];      const fetch = Array.from(document.querySelectorAll('.audit-selection-actions button')).find((button) => button.textContent.trim() === 'Diagnose');      return Boolean(row?.classList.contains('is-selected') && fetch && !fetch.disabled);    })()`,
         ),
       "selected available query identity with Profile available",
     );
@@ -1675,11 +1699,15 @@ async function identitySwitchLateReplyCoverage(result, oldProfileIdentity) {
       profileFetchProjection?.profile_fetch_state === "fetched"
     ) {
       await waitFor(
-        () => has(".audit-profile-receipt"),
-        "second query Profile fetch receipt",
+        () => has(".workspace-doctor"),
+        "second query Diagnose opened Doctor",
       );
       selectedCandidate = candidate;
       break;
+    }
+    if (await has('[role="dialog"]')) {
+      await key("Escape");
+      await waitFor(() => has('[role="dialog"]').then((present) => !present), "close failed candidate occurrence drawer");
     }
   }
   result.identity_switch_profile_fetch_attempts = profileFetchAttempts;
@@ -1876,14 +1904,22 @@ async function keyAndSummarize(keyName) {
 async function auditFilterCoverage() {
   const occurrenceBefore = (await projectionTelemetry(auditOverviewRoute))
     .length;
-  if (!(await evaluate(`Array.from(document.querySelectorAll(".audit-view-switch button")).some((button) => button.textContent.trim() === "Individual executions")`)))
+  if (!(await evaluate(`Array.from(document.querySelectorAll('[role="tablist"][aria-label="View"] [role="tab"]')).some((tab) => tab.textContent.trim() === "Individual executions")`)))
     await clickButton("Back to the list");
-  await clickButton("Individual executions");
-  const baseline = await projectionAfterRoute(
-    auditOverviewRoute,
-    occurrenceBefore,
-    "Audit filter baseline",
+  const alreadyIndividual = await evaluate(
+    `Array.from(document.querySelectorAll('[role="tablist"][aria-label="View"] [role="tab"]')).find((tab) => tab.textContent.trim() === "Individual executions")?.getAttribute("aria-selected") === "true"`,
   );
+  let baseline;
+  if (alreadyIndividual) {
+    baseline = (await projectionTelemetry(auditOverviewRoute)).at(-1);
+  } else {
+    await clickButton("Individual executions");
+    baseline = await projectionAfterRoute(
+      auditOverviewRoute,
+      occurrenceBefore,
+      "Audit filter baseline",
+    );
+  }
   const originalWindowPreset = await evaluate(
     "document.querySelector('select[aria-label=\"Audit window\"]')?.value ?? null",
   );
@@ -1926,12 +1962,22 @@ async function auditFilterCoverage() {
   const executionBefore = (await routeTelemetry("/runtime-profile")).length;
   const sqlBefore = (await routeTelemetry("/audit/sql")).length;
   const familyBefore = (await projectionTelemetry(auditOverviewRoute)).length;
-  // A digest-free window hides the family tab; switching back to individual
-  // executions reloads with the same applied scope and proves the same rule.
+  // A digest-free window hides the family tab; switching away to Similar SQL and
+  // back to Individual executions reloads with the same applied scope and proves the same rule.
   const familiesOffered = await evaluate(
-    `Array.from(document.querySelectorAll(".audit-view-switch button")).some((button) => button.textContent.trim() === "Repeated SQL")`,
+    `Array.from(document.querySelectorAll('[role="tablist"][aria-label="View"] [role="tab"]')).some((tab) => tab.textContent.trim() === "Repeated SQL")`,
   );
   const switchLabel = familiesOffered ? "Repeated SQL" : "Individual executions";
+  if (!familiesOffered) {
+    const similarBefore = (await routeTelemetry("/audit/similar-sql")).length;
+    await clickButton("Similar SQL");
+    await waitFor(
+      async () =>
+        (await routeTelemetry("/audit/similar-sql")).length > similarBefore &&
+        (await evaluate(`document.querySelector('.workspace-queries .audit-workload')?.getAttribute('aria-busy') === 'false'`)),
+      "Similar SQL tab before returning to Individual executions",
+    );
+  }
   await clickButton(switchLabel);
   const unapplied = await projectionAfterRoute(
     auditOverviewRoute,
@@ -1946,12 +1992,12 @@ async function auditFilterCoverage() {
   await waitFor(
     () =>
       textOf(".audit-window-evidence").then((text) =>
-        text.includes("Filters changed. Apply them to update the results."),
+        text.includes("Filters changed. Refresh to update the results."),
       ),
     "visible unapplied filter draft",
   );
   const applyBefore = (await projectionTelemetry(auditOverviewRoute)).length;
-  await clickButton("Apply filters");
+  await clickButton("Refresh");
   const applied = await projectionAfterRoute(
     auditOverviewRoute,
     applyBefore,
@@ -1966,7 +2012,7 @@ async function auditFilterCoverage() {
   await waitFor(
     () =>
       textOf(".audit-window-evidence").then(
-        (text) => !text.includes("Filters changed. Apply them to update the results."),
+        (text) => !text.includes("Filters changed. Refresh to update the results."),
       ),
     "applied filter result scope",
   );
@@ -1996,7 +2042,7 @@ async function auditFilterCoverage() {
     "Audit filter reset did not restore the captured fixture window control.",
   );
   const resetBefore = (await projectionTelemetry(auditOverviewRoute)).length;
-  await clickButton("Apply filters");
+  await clickButton("Refresh");
   const reset = await projectionAfterRoute(
     auditOverviewRoute,
     resetBefore,
@@ -2051,11 +2097,11 @@ async function connectFixtureCoverage() {
   await setInputAt('[role="dialog"] input', 3, password);
   await clickButton("Connect read-only");
   await waitFor(
-    () => has('[role="dialog"] .connection-state.success'),
+    () => has('[role="dialog"] .connection-state-banner .status-dot--ok'),
     "read-only connection",
   );
   const connectionState = await textOf(
-    '[role="dialog"] .connection-state.success',
+    '[role="dialog"] .connection-state-banner',
   );
   assert(
     connectionState.startsWith("Connected") && connectionState.includes("3.5.14"),
@@ -2066,7 +2112,7 @@ async function connectFixtureCoverage() {
   receipt.connected_connection_state = "ready";
   // The session remains live when an operator dismisses its successful probe;
   // do not click a background workspace through the modal backdrop.
-  await clickButton("Close");
+  await clickButton("Done");
   await waitFor(
     () => has('[role="dialog"]').then((present) => !present),
     "connected dialog close",
@@ -2147,13 +2193,13 @@ async function connectFixtureCoverage() {
 async function currentControlledFixtureConnectionId() {
   await clickButton("Manage connection");
   await waitFor(
-    () => has('[role="dialog"] .connection-state.success'),
+    () => has('[role="dialog"] .connection-state-banner .status-dot--ok'),
     "Task49 real fixture session state",
   );
   const connectionId = await evaluate(
-    `(() => {    const value = document.querySelector('[role="dialog"] .connection-state.success strong')?.textContent ?? '';    const match = /^ready:\\s*([^\\s]+)$/.exec(value.trim());    return match?.[1] ?? null;  })()`,
+    `(() => {    const value = document.querySelector('[role="dialog"] .connection-state-banner strong')?.textContent ?? '';    const match = /^ready:\\s*([^\\s]+)$/.exec(value.trim());    return match?.[1] ?? null;  })()`,
   );
-  await clickButton("Close");
+  await clickButton("Done");
   await waitFor(
     () => has('[role="dialog"]').then((present) => !present),
     "Task49 connection dialog close",
@@ -2175,7 +2221,7 @@ async function closeControlledFixtureSession() {
     `Array.from(document.querySelectorAll('[role="dialog"] button')).some((button) => button.textContent.trim() === 'Disconnect' && !button.disabled)`,
   );
   if (!closeAvailable) {
-    await clickButton("Close");
+    await clickButton("Close dialog");
     await waitFor(
       () => has('[role="dialog"]').then((present) => !present),
       "Task49 unavailable connection dialog close",
@@ -2185,14 +2231,14 @@ async function closeControlledFixtureSession() {
   await clickButton("Disconnect");
   await waitFor(
     () =>
-      textOf('[role="dialog"] .connection-state').then((text) =>
+      textOf('[role="dialog"] .connection-state-banner').then((text) =>
         text.includes(
           "Connection closed; credentials were removed from the server session.",
         ),
       ),
     "Task49 real fixture session close",
   );
-  await clickButton("Close");
+  await clickButton("Close dialog");
   await waitFor(
     () => has('[role="dialog"]').then((present) => !present),
     "Task49 closed session dialog close",
@@ -2378,13 +2424,13 @@ async function confirmStandardExecution(dispatch = true) {
   await waitFor(
     () =>
       has(
-        ".sql-analysis-confirmation [data-sql-analysis-action=confirm-execution]",
+        ".sql-analysis-workspace.is-confirm [data-sql-analysis-action=confirm-execution]",
       ),
     "Frozen SQL confirmation",
   );
   assert(
     (await evaluate(
-      `document.querySelector('.sql-analysis-confirmation [data-sql-analysis-input=sql]')?.value`,
+      `document.querySelector('.sql-analysis-workspace.is-confirm [data-sql-analysis-input=sql]')?.value`,
     )) === sql,
     "Confirmation changed the exact SQL draft.",
   );
@@ -2548,13 +2594,12 @@ async function connectedReadonlyCoverage() {
     "Browser comparison did not receive a successful connected Profile response.",
   );
   receipt.assertions.push("connected_two_profile_compare");
-  // The real comparison page (design board 04) for the self-review; later
+  // The real comparison page (design board 05) for the self-review; later
   // discovery changes retire it, so it is captured here.
-  await waitFor(() => has(".workspace-compare .compare-structure"), "connected comparison rendered");
+  await waitFor(() => has(".workspace-compare .compare-query-metrics"), "connected comparison rendered");
   await evaluate("window.scrollTo(0, 0)");
   await capture("connected-compare-1440x1024");
-  // v1.0-65: the raw evidence sits under Compare's Provenance tab.
-  await clickButton("Provenance");
+  // v1.1: the raw evidence sits under Compare's Raw / Provenance tab.
   await clickButton("Raw / Provenance");
   await waitFor(
     () => has(".compare-provenance-panel"),
@@ -2891,7 +2936,7 @@ async function topologyAndRuntimeCoverage() {
   await clickButton("Disconnect");
   await waitFor(
     () =>
-      textOf('[role="dialog"] .connection-state').then((text) =>
+      textOf('[role="dialog"] .connection-state-banner').then((text) =>
         text.includes(
           "Connection closed; credentials were removed from the server session.",
         ),
@@ -2913,7 +2958,7 @@ async function topologyAndRuntimeCoverage() {
     (await routeTelemetry("/runtime-profile")).length === runtimeRoutesBefore,
     "Closing the real session executed Runtime Top.",
   );
-  await clickButton("Close");
+  await clickButton("Close dialog");
   await waitFor(
     () => has('[role="dialog"]').then((present) => !present),
     "closed connection dialog after standard Runtime Top lifecycle",
@@ -2985,7 +3030,7 @@ async function runtimeTopNavigationCoverage(projection) {
   const root = ".workspace-doctor .execution-graph";
   const hottest = projection.graph.hottest;
   const firstRow = ".workspace-doctor .plan-node-table tbody tr:first-child";
-  await openDoctorStructureTab("Operators and source");
+  await openDoctorStructureTab("Operators");
   assert(
     hottest.display && (await textOf(firstRow)).includes(hottest.display),
     "Plan-node table did not rank the backend hottest node first.",
@@ -2994,7 +3039,7 @@ async function runtimeTopNavigationCoverage(projection) {
   await waitFor(
     () =>
       evaluate(
-        `(() => {    const root = document.querySelector(${JSON.stringify(root)});    const node = root?.querySelector('.plan-card.selected');    const canvas = root?.querySelector('.execution-graph-canvas');    if (!node || node.dataset.nodeId !== ${JSON.stringify(hottest.node_id)} || !root.querySelector('.node-inspector')) return false;    const n = node.getBoundingClientRect(), c = canvas.getBoundingClientRect();    return n.width > 0 && n.height > 0 && n.left >= Math.max(c.left, 0) && n.right <= Math.min(c.right, innerWidth)      && n.top >= Math.max(c.top, 0) && n.bottom <= Math.min(c.bottom, innerHeight);  })()`,
+        `(() => {    const root = document.querySelector(${JSON.stringify(root)});    const node = root?.querySelector('.exec-node.is-selected');    const canvas = root?.querySelector('.execution-graph-canvas');    if (!node || node.dataset.nodeId !== ${JSON.stringify(hottest.node_id)} || !root.querySelector('.node-inspector')) return false;    const n = node.getBoundingClientRect(), c = canvas.getBoundingClientRect();    return n.width > 0 && n.height > 0 && n.left >= Math.max(c.left, 0) && n.right <= Math.min(c.right, innerWidth)      && n.top >= Math.max(c.top, 0) && n.bottom <= Math.min(c.bottom, innerHeight);  })()`,
       ),
     "Runtime Top table row selects and reveals its graph node",
   );
@@ -3076,12 +3121,19 @@ async function assertDoctorGraph(projection, description, root = ".workspace-doc
     `${description} Fragment frames drifted from the DTO fragment set.`,
   );
   if (graph.summary_state === "available") {
+    // v1.1: the plan-node table is the Doctor page's Operators tab; read it there, then return to the graph.
+    if (root.startsWith(".workspace-doctor")) {
+      await openDoctorStructureTab("Operators");
+      await waitFor(() => has(".workspace-doctor .plan-node-table tbody tr"), `${description} plan-node table`);
+      Object.assign(dom, await evaluate(`({ table_rows: document.querySelectorAll('.workspace-doctor .plan-node-table tbody tr:not(.unmeasured)').length, table_all_rows: document.querySelectorAll('.workspace-doctor .plan-node-table tbody tr').length, first_table_row_plan: document.querySelector('.workspace-doctor .plan-node-table tbody tr .plan-node-link small')?.textContent?.trim() ?? null, first_table_row: document.querySelector('.workspace-doctor .plan-node-table tbody tr')?.textContent?.trim() ?? null })`));
+      await openDoctorStructureTab("Execution graph");
+    }
     assert(
       dom.table_rows === graph.summary_node_count &&
         dom.table_all_rows === graph.node_count &&
         dom.hot_most_count === graph.most_consuming_count &&
         dom.hot_second_count === graph.second_most_consuming_count,
-      `${description} plan-node table or hotspot marks drifted from execution_summary.`,
+      `${description} plan-node table or hotspot marks drifted from execution_summary (rows ${dom.table_rows}/${graph.summary_node_count}, all ${dom.table_all_rows}/${graph.node_count}, most ${dom.hot_most_count}/${graph.most_consuming_count}, second ${dom.hot_second_count}/${graph.second_most_consuming_count}).`,
     );
   }
   receipt.assertions.push(`doctor_graph_matches_dto:${description}`);
@@ -3089,7 +3141,7 @@ async function assertDoctorGraph(projection, description, root = ".workspace-doc
 }
 async function doctorGraphDom(root = ".workspace-doctor .execution-graph") {
   return evaluate(
-    `(() => {    const root = document.querySelector(${JSON.stringify(root)});    const canvas = root?.querySelector('.execution-graph-canvas');    const visible = (element) => { const rect = element.getBoundingClientRect(); return rect.width > 0 && rect.height > 0; };    const cards = Array.from(root?.querySelectorAll('.plan-card') ?? []);    return {      present: Boolean(root),      layout_state: canvas?.dataset.layoutState ?? null,      view: canvas?.dataset.view ?? null,      node_count: root?.querySelectorAll('.react-flow__node').length ?? 0,      card_count: cards.length,      visible_card_count: cards.filter(visible).length,      edge_count: root?.querySelectorAll('.react-flow__edge').length ?? 0,      fragment_frame_count: root?.querySelectorAll('.fragment-frame').length ?? 0,      fragment_frames_visible: Array.from(root?.querySelectorAll('.fragment-frame') ?? []).every(visible),      hot_most_count: root?.querySelectorAll('.plan-card.hot-most').length ?? 0,      hot_second_count: root?.querySelectorAll('.plan-card.hot-second').length ?? 0,      selected_node_ids: cards.filter((card) => card.classList.contains('selected')).map((card) => card.dataset.nodeId),      inspector_open: Boolean(root?.querySelector('.node-inspector')),      table_rows: document.querySelectorAll('.workspace-doctor .plan-node-table tbody tr:not(.unmeasured)').length,      table_all_rows: document.querySelectorAll('.workspace-doctor .plan-node-table tbody tr').length,      first_table_row_plan: document.querySelector('.workspace-doctor .plan-node-table tbody tr .plan-node-link small')?.textContent?.trim() ?? null,      first_table_row: document.querySelector('.workspace-doctor .plan-node-table tbody tr')?.textContent?.trim() ?? null,    };  })()`,
+    `(() => {    const root = document.querySelector(${JSON.stringify(root)});    const canvas = root?.querySelector('.execution-graph-canvas');    const visible = (element) => { const rect = element.getBoundingClientRect(); return rect.width > 0 && rect.height > 0; };    const cards = Array.from(root?.querySelectorAll('.exec-node') ?? []);    return {      present: Boolean(root),      layout_state: canvas?.dataset.layoutState ?? null,      view: canvas?.dataset.view ?? null,      node_count: root?.querySelectorAll('.react-flow__node').length ?? 0,      card_count: cards.length,      visible_card_count: cards.filter(visible).length,      edge_count: root?.querySelectorAll('.react-flow__edge').length ?? 0,      fragment_frame_count: root?.querySelectorAll('.fragment-frame').length ?? 0,      fragment_frames_visible: Array.from(root?.querySelectorAll('.fragment-frame') ?? []).every(visible),      hot_most_count: root?.querySelectorAll('.exec-node[data-hotspot=most_consuming]').length ?? 0,      hot_second_count: root?.querySelectorAll('.exec-node[data-hotspot=second_most_consuming]').length ?? 0,      selected_node_ids: cards.filter((card) => card.classList.contains('is-selected')).map((card) => card.dataset.nodeId),      inspector_open: Boolean(root?.querySelector('.node-inspector')),      table_rows: document.querySelectorAll('.workspace-doctor .plan-node-table tbody tr:not(.unmeasured)').length,      table_all_rows: document.querySelectorAll('.workspace-doctor .plan-node-table tbody tr').length,      first_table_row_plan: document.querySelector('.workspace-doctor .plan-node-table tbody tr .plan-node-link small')?.textContent?.trim() ?? null,      first_table_row: document.querySelector('.workspace-doctor .plan-node-table tbody tr')?.textContent?.trim() ?? null,    };  })()`,
   );
 }
 /**
@@ -3098,18 +3150,19 @@ async function doctorGraphDom(root = ".workspace-doctor .execution-graph") {
  */
 async function openDoctorMode(mode) {
   await clickButton("Doctor");
-  await waitFor(() => has(".doctor-modes"), "Doctor mode switch");
+  // v1.1: Diagnosis / Compare is a tab list in the context bar.
+  await waitFor(() => has('.context-bar [role="tablist"][aria-label="Doctor view"]'), "Doctor mode switch");
   await clickButton(mode);
   await waitFor(() => has(mode === "Compare" ? ".workspace-content.workspace-compare" : ".workspace-content.workspace-doctor"), `Doctor ${mode} mode`);
 }
 /** v1.0-65: Doctor's structure card shows the graph or the operator tables behind two tabs. */
 async function openDoctorStructureTab(label) {
   await clickElement(
-    `Array.from(document.querySelectorAll('.workspace-doctor [role="tab"]')).find((tab) => tab.textContent.trim() === ${JSON.stringify(label)})`,
+    `Array.from(document.querySelectorAll('.workspace-doctor [role="tab"]')).find((tab) => (tab.querySelector('.seg-tab-content > span:first-child')?.textContent ?? tab.textContent).trim() === ${JSON.stringify(label)})`,
     `Doctor structure tab ${label} is unavailable.`,
   );
   await waitFor(
-    () => evaluate(`Array.from(document.querySelectorAll('.workspace-doctor [role="tab"]')).some((tab) => tab.textContent.trim() === ${JSON.stringify(label)} && tab.getAttribute('aria-selected') === 'true')`),
+    () => evaluate(`Array.from(document.querySelectorAll('.workspace-doctor [role="tab"]')).some((tab) => (tab.querySelector('.seg-tab-content > span:first-child')?.textContent ?? tab.textContent).trim() === ${JSON.stringify(label)} && tab.getAttribute('aria-selected') === 'true')`),
     `Doctor structure tab ${label} selected`,
   );
 }
@@ -3177,7 +3230,7 @@ async function redactVisibleIdentifiersForEvidence({ redactSql = false } = {}) {
     `window.__doctorE2eRedactSqlForCapture = ${redactSql ? "true" : "false"}`,
   );
   const redaction = await evaluate(
-    `(() => {    const uuid = /\\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\\b/gi;    const aliases = window.__doctorE2eScreenshotAliases ??= new Map();    const connectionAliases = window.__doctorE2eScreenshotConnectionAliases ??= new Map();    const changed = window.__doctorE2eScreenshotText = [];    const aliasFor = (value) => {      const key = value.toLowerCase();      if (!aliases.has(key)) aliases.set(key, 'QID-' + String(aliases.size + 1).padStart(3, '0'));      return aliases.get(key);    };    const connectionAliasFor = (value) => {      const key = value.toLowerCase();      if (!connectionAliases.has(key)) connectionAliases.set(key, 'CID-' + String(connectionAliases.size + 1).padStart(3, '0'));      return connectionAliases.get(key);    };    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);    const nodes = [];    while (walker.nextNode()) nodes.push(walker.currentNode);    for (const node of nodes) {      if (node.parentElement?.closest('script,style')) continue;      const original = node.nodeValue ?? '';      const replacement = original.replace(uuid, aliasFor);      if (original !== replacement) {        changed.push({ node, original, replacement });        node.nodeValue = replacement;      }    }    const connectionIdLabels = new Set(['Connection ID', '连接 ID', '连接ID']);    const connectionIdPattern = /^[0-9a-f]{32}(?:[0-9a-f]{16})?$/i;    const connectionValueElements = [      ...Array.from(document.querySelectorAll('dt')).filter(label => connectionIdLabels.has(label.textContent.trim())).map(label => label.nextElementSibling),      ...document.querySelectorAll('.running-profile-connection code, .sql-analysis-connection code, .sql-analysis-locked code, .sql-analysis-confirm-action code, section[aria-label="Connected session"] code, section[aria-label="已连接会话"] code'),    ].filter(Boolean);    for (const valueElement of connectionValueElements) {      const connectionId = valueElement.textContent?.trim() ?? '';      if (!connectionIdPattern.test(connectionId)) continue;      const replacementValue = connectionAliasFor(connectionId);      const valueWalker = document.createTreeWalker(valueElement, NodeFilter.SHOW_TEXT);      const valueNodes = [];      while (valueWalker.nextNode()) valueNodes.push(valueWalker.currentNode);      for (const node of valueNodes) {        const original = node.nodeValue ?? '';        const replacement = original.split(connectionId).join(replacementValue);        if (original !== replacement) {          changed.push({ node, original, replacement });          node.nodeValue = replacement;        }      }    }    // Audit native digests share the 32-hex shape with session IDs. Redact remaining opaque hex identities too; keep the global leak guard.
+    `(() => {    const uuid = /\\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\\b/gi;    const aliases = window.__doctorE2eScreenshotAliases ??= new Map();    const connectionAliases = window.__doctorE2eScreenshotConnectionAliases ??= new Map();    const changed = window.__doctorE2eScreenshotText = [];    const aliasFor = (value) => {      const key = value.toLowerCase();      if (!aliases.has(key)) aliases.set(key, 'QID-' + String(aliases.size + 1).padStart(3, '0'));      return aliases.get(key);    };    const connectionAliasFor = (value) => {      const key = value.toLowerCase();      if (!connectionAliases.has(key)) connectionAliases.set(key, 'CID-' + String(connectionAliases.size + 1).padStart(3, '0'));      return connectionAliases.get(key);    };    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);    const nodes = [];    while (walker.nextNode()) nodes.push(walker.currentNode);    for (const node of nodes) {      if (node.parentElement?.closest('script,style')) continue;      const original = node.nodeValue ?? '';      const replacement = original.replace(uuid, aliasFor);      if (original !== replacement) {        changed.push({ node, original, replacement });        node.nodeValue = replacement;      }    }    const connectionIdLabels = new Set(['Connection ID', '连接 ID', '连接ID']);    const connectionIdPattern = /^[0-9a-f]{32}(?:[0-9a-f]{16})?$/i;    const connectionValueElements = [      ...Array.from(document.querySelectorAll('dt')).filter(label => connectionIdLabels.has(label.textContent.trim())).map(label => label.nextElementSibling),      ...document.querySelectorAll('.running-profile-entry code, .sql-analysis-locked code, .sql-analysis-workspace.is-confirm code, section[aria-label="Connected session"] code, section[aria-label="已连接会话"] code'),    ].filter(Boolean);    for (const valueElement of connectionValueElements) {      const connectionId = valueElement.textContent?.trim() ?? '';      if (!connectionIdPattern.test(connectionId)) continue;      const replacementValue = connectionAliasFor(connectionId);      const valueWalker = document.createTreeWalker(valueElement, NodeFilter.SHOW_TEXT);      const valueNodes = [];      while (valueWalker.nextNode()) valueNodes.push(valueWalker.currentNode);      for (const node of valueNodes) {        const original = node.nodeValue ?? '';        const replacement = original.split(connectionId).join(replacementValue);        if (original !== replacement) {          changed.push({ node, original, replacement });          node.nodeValue = replacement;        }      }    }    // Audit native digests share the 32-hex shape with session IDs. Redact remaining opaque hex identities too; keep the global leak guard.
     const opaqueAliases = window.__doctorE2eScreenshotOpaqueAliases ??= new Map();    for (const node of nodes) {      if (node.parentElement?.closest('script,style')) continue;      const original = node.nodeValue ?? '';      const replacement = original.replace(/\\b[0-9a-f]{32}(?:[0-9a-f]{16})?\\b/gi, value => {        const key = value.toLowerCase();        if (connectionAliases.has(key)) return connectionAliases.get(key);        if (!opaqueAliases.has(key)) opaqueAliases.set(key, 'OPAQUE-' + String(opaqueAliases.size + 1).padStart(3, '0'));        return opaqueAliases.get(key);      });      if (original !== replacement) { changed.push({ node, original, replacement }); node.nodeValue = replacement; }    }    const redactSql = window.__doctorE2eRedactSqlForCapture === true;    let sqlInputCount = 0;    let nativeOfficialTextCount = 0;    if (redactSql) {      for (const input of document.querySelectorAll('textarea[data-sql-analysis-input="sql"]')) {        const original = input.value;        if (!original) continue;        const replacement = '[SQL redacted for development evidence]';        changed.push({ node: input, original, replacement, kind: 'value' });        input.value = replacement;        sqlInputCount += 1;      }      for (const container of document.querySelectorAll('pre.sql-analysis-official-text, .running-profile-entry pre.official-profile-display-text')) {        const textWalker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);        const textNodes = [];        while (textWalker.nextNode()) textNodes.push(textWalker.currentNode);        for (const node of textNodes) {          const original = node.nodeValue ?? '';          if (!original) continue;          const replacement = '[Native official text redacted for development evidence]';          changed.push({ node, original, replacement });          node.nodeValue = replacement;          nativeOfficialTextCount += 1;        }      }    }    const visibleText = document.body.innerText;    const visibleConnectionIds = /\\b[0-9a-f]{32}(?:[0-9a-f]{16})?\\b/i.test(visibleText);    return {      aliases: aliases.size,      connection_aliases: connectionAliases.size,      sql_inputs_redacted: sqlInputCount,      native_official_text_nodes_redacted: nativeOfficialTextCount,      full_uuid_visible: /\\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\\b/i.test(visibleText),      full_connection_id_visible: visibleConnectionIds,    };  })()`,
   );
   assert(
@@ -3336,29 +3389,40 @@ async function tabUntil(predicate, description) {
   }
   fail(`Keyboard Tab could not reach ${description}.`);
 }
+async function arrowUntil(predicate, description) {
+  for (let index = 0; index < 6; index += 1) {
+    const active = await activeSummary();
+    receipt.keyboard_trace.push({ index, arrow: true, ...active });
+    if (predicate(active)) return active;
+    await key("ArrowRight");
+  }
+  fail(`Arrow keys could not reach ${description}.`);
+}
 async function key(keyName) {
-  const code = keyName === "Enter" ? "Enter" : "Tab";
+  const KEYS = { Enter: { code: "Enter", vk: 13, text: "\r" }, Tab: { code: "Tab", vk: 9 }, ArrowRight: { code: "ArrowRight", vk: 39 }, ArrowLeft: { code: "ArrowLeft", vk: 37 }, Escape: { code: "Escape", vk: 27 } };
+  const spec = KEYS[keyName] ?? KEYS.Tab;
+  // Keys without text (Tab, Escape, arrows) are raw key downs, as Chrome itself sends them.
   await cdp.send("Input.dispatchKeyEvent", {
-    type: "keyDown",
+    type: spec.text ? "keyDown" : "rawKeyDown",
     key: keyName,
-    code,
-    text: keyName === "Enter" ? "\r" : undefined,
-    unmodifiedText: keyName === "Enter" ? "\r" : undefined,
-    windowsVirtualKeyCode: keyName === "Enter" ? 13 : 9,
-    nativeVirtualKeyCode: keyName === "Enter" ? 13 : 9,
+    code: spec.code,
+    text: spec.text,
+    unmodifiedText: spec.text,
+    windowsVirtualKeyCode: spec.vk,
+    nativeVirtualKeyCode: spec.vk,
   });
   await cdp.send("Input.dispatchKeyEvent", {
     type: "keyUp",
     key: keyName,
-    code,
-    windowsVirtualKeyCode: keyName === "Enter" ? 13 : 9,
-    nativeVirtualKeyCode: keyName === "Enter" ? 13 : 9,
+    code: spec.code,
+    windowsVirtualKeyCode: spec.vk,
+    nativeVirtualKeyCode: spec.vk,
   });
   await wait(30);
 }
 async function activeSummary() {
   return evaluate(
-    `(() => { const element = document.activeElement; return element ? { tag: element.tagName, text: element.textContent.trim(), ariaLabel: element.getAttribute('aria-label'), value: element.value ?? null } : null; })()`,
+    `(() => { const element = document.activeElement; return element ? { tag: element.tagName, role: element.getAttribute('role'), text: element.textContent.trim(), ariaLabel: element.getAttribute('aria-label'), value: element.value ?? null } : null; })()`,
   );
 }
 async function has(selector) {

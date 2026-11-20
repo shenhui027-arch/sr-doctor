@@ -3,8 +3,11 @@ import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { sr3514ConnectedContractGolden } from "../../../contracts/generated/connected-contract-fixtures";
 import { sr3514JsonMinimal } from "../../../contracts/generated/contract-fixtures";
+import type { Comparison } from "../../../contracts/generated/doctor-contracts";
 import { CompareWorkspace } from "../features/compare/CompareWorkspace";
+import { ReportExportButton } from "../features/export/ReportExportButton";
 import { RecommendationsPanel } from "../features/recommendations/RecommendationsPanel";
+import { ContextBar } from "../features/shell/ContextBar";
 import { LocaleProvider } from "./locale";
 
 function renderChinese(node: ReactNode): string {
@@ -27,17 +30,26 @@ describe("bilingual production workspaces", () => {
   });
 
   it("renders Compare in Chinese and preserves the raw analysis state", () => {
-    const html = renderChinese(<CompareWorkspace comparison={{
+    const comparison: Comparison = {
       schema_version: "1.1", comparison_receipt: { components: [] }, comparison_key: "zh", baseline: { outcome: { report: sr3514JsonMinimal } }, candidate: { outcome: { report: sr3514JsonMinimal } },
       state: "comparable", reasons: [], compatibility_delta: [], structure_delta: { state: "unchanged", matches: [], added: [], removed: [], changed: [], edge_delta: [], unresolved: [] },
       metric_deltas: [], finding_delta: { added: [], resolved: [], persisting: [], changed: [], incomparable: [], algorithm_changed: [], measurement_changes: [] }, diagnostics: [], limitations: [],
-    }} />);
+    };
+    const html = renderChinese(<CompareWorkspace comparison={comparison} />);
+    const contextHtml = renderChinese(
+      <ContextBar
+        actions={<ReportExportButton label="导出对比报告" request={{ kind: "comparison", snapshot: comparison }} />}
+        comparison={comparison}
+        mode="compare"
+      />,
+    );
 
     expect(html).toContain("Profile 对比工作区");
     expect(html).toContain("优化前 · 基线");
     expect(html).toContain("可比");
     expect(html).toContain("分析不完整");
-    expect(html).toContain("导出对比报告");
+    expect(html).toContain("导出报告不含原始 Profile 文本、SQL 字面量或连接口令。");
+    expect(contextHtml).toContain("导出对比报告");
     expect(renderChinese(<CompareWorkspace comparison={null} />)).toBe("");
   });
 });

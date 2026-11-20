@@ -258,16 +258,16 @@ export class DoctorApi {
     return this.post<T>(path, body, {}, signal);
   }
 
-  async analyzeJson(body: unknown): Promise<AnalysisSnapshotReport> {
-    return analysisReport(await this.postJson<unknown>("/analyses", body));
+  async analyzeJson(body: unknown, signal?: AbortSignal): Promise<AnalysisSnapshotReport> {
+    return analysisReport(await this.postJson<unknown>("/analyses", body, signal));
   }
 
-  async analyzeForm(body: FormData): Promise<AnalysisSnapshotReport> {
-    return analysisReport(await this.postForm<unknown>("/analyses", body));
+  async analyzeForm(body: FormData, signal?: AbortSignal): Promise<AnalysisSnapshotReport> {
+    return analysisReport(await this.postForm<unknown>("/analyses", body, signal));
   }
 
-  async compareForm(body: FormData): Promise<Comparison> {
-    return comparisonSnapshot(await this.postForm<unknown>("/comparisons", body));
+  async compareForm(body: FormData, signal?: AbortSignal): Promise<Comparison> {
+    return comparisonSnapshot(await this.postForm<unknown>("/comparisons", body, signal));
   }
 
   async createConnection(request: ConnectionCreateRequest, signal?: AbortSignal): Promise<ConnectionSessionView> {

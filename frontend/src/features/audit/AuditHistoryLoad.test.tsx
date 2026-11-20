@@ -67,7 +67,7 @@ describe("AuditHistoryLoadView", () => {
     expect(html.match(/class="gap"/g)?.length).toBe(1);
     // The 0-execution day is a collected real zero: a bar, not a gap.
     expect(html).toContain('class="bar" height="98"');
-    expect(html).toContain("3.5.14 · not_comparable");
+    expect(html).toContain("3.5.14 · not comparable");
     expect(html).toContain("audit-history-before");
   });
 
@@ -76,7 +76,7 @@ describe("AuditHistoryLoadView", () => {
     expect(html.match(/<td class="missing"/g)?.length).toBe(1);
     expect(html).toContain("Mon 05:00 · not collected");
     expect(html).toContain("partial · not compared");
-    expect(html).toContain(">not_comparable<");
+    expect(html).toContain('data-honest-state="not_comparable"');
     expect(html).toContain("900 · no %");
     expect(html).toContain("−10.0%");
   });
@@ -86,5 +86,21 @@ describe("AuditHistoryLoadView", () => {
     expect(html).toContain("这个集群还没有历史数据");
     expect(html).toContain("G1，待验证");
     expect(source).not.toContain("innerHTML");
+  });
+
+  it("renders missing/empty state instead of inventing 1 segment or a fake bar width when segments and days are empty (correctness fix #2)", () => {
+    const emptyResponse: HistoryLoadResponse = {
+      ...response,
+      days: [],
+      segments: [],
+      week: [],
+      collected_hours: 0,
+    };
+    const html = renderToStaticMarkup(<AuditHistoryLoadView response={emptyResponse} text={english} />);
+    expect(html).toContain('data-honest-state="missing"');
+    expect(html).toContain("No daily aggregates recorded for this window.");
+    expect(html).not.toContain("audit-history-plot");
+    expect(source).not.toContain("Math.max(response.segments.length, 1)");
+    expect(source).not.toContain("Math.max(days.length, 1)");
   });
 });

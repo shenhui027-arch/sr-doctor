@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { monitorGeneration } from "./HistoryWorkspace";
-import workspaceSource from "./HistoryWorkspace.tsx?raw";
+import collectionSource from "./CollectionPanel.tsx?raw";
 import indexHtml from "../../../index.html?raw";
 import { monitorView } from "./monitor-read";
 import { blockedStore, HistoryOffState, RefreshBar, TargetPicker } from "./MonitorStates";
@@ -58,8 +58,8 @@ describe("history off (audit V1-17)", () => {
 
 describe("clearing history (audit V1-16)", () => {
   it("names alerts, governance items and pinned snapshots in the confirmation", () => {
-    expect(workspaceSource).toContain("全部告警、治理项及其处理记录和钉住的基线快照，以及已保存的 StarRocks 连接（后台采集随之停止），且无法恢复");
-    expect(workspaceSource).toContain("every alert, governance item with its record, and pinned baseline snapshot, and the saved StarRocks connection");
+    expect(collectionSource).toContain("全部告警、治理项及其处理记录和钉住的基线快照，以及已保存的 StarRocks 连接（后台采集随之停止），且无法恢复");
+    expect(collectionSource).toContain("every alert, governance item with its record, and pinned baseline snapshot, and the saved StarRocks connection");
   });
 });
 

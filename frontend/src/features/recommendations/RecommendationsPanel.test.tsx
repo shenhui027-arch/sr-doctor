@@ -74,12 +74,12 @@ function locatedReport(): AnalysisSnapshotReport {
 describe("RecommendationsPanel", () => {
   it("renders the page header with source pills counted from the DTO", () => {
     const html = renderToStaticMarkup(<RecommendationsPanel report={report} />);
-    expect(html).toContain("<h1 id=\"recommendations-title\">Optimization recommendations</h1>");
+    expect(html).toContain('<h1 class="card-title" id="recommendations-title">Optimization recommendations</h1>');
     expect(html).toContain("investigate first, then verify with before/after comparison");
-    expect(html).toMatch(/aria-pressed="true"[^>]*>All <span class="recommendation-pill-count">1<\/span>/);
-    expect(html).toContain("Product rules <span class=\"recommendation-pill-count\">1</span>");
+    expect(html).toMatch(/aria-pressed="true"[^>]*>All <span class="seg-count recommendation-pill-count">1<\/span>/);
+    expect(html).toContain('Product rules <span class="seg-count recommendation-pill-count">1</span>');
     // An empty source can still be chosen; it shows its own empty state.
-    expect(html).toMatch(/aria-pressed="false" type="button">Official Advisor · experimental <span class="recommendation-pill-count">0<\/span>/);
+    expect(html).toMatch(/aria-pressed="false"[^>]*type="button">Official Advisor · experimental <span class="seg-count recommendation-pill-count">0<\/span>/);
   });
 
   it("states an unlocated subject as a lead and asks to resolve the mapping before changing SQL", () => {
@@ -96,7 +96,7 @@ describe("RecommendationsPanel", () => {
     const html = renderToStaticMarkup(<RecommendationsPanel onLocateNode={() => {}} report={locatedReport()} />);
     expect(html).toContain("Actionable investigation");
     expect(html).not.toContain("Lead to investigate");
-    expect(html).toMatch(/<button class="button secondary" type="button">Locate operator<\/button>/);
+    expect(html).toMatch(/<button class="btn btn-secondary btn--sm" type="button">Locate operator<\/button>/);
     expect(html).not.toContain("Resolve the operator mapping");
     // The SQL position is located here, so the state chip carries no caveat.
     expect(html).not.toContain("subquery location has not been established");
@@ -121,14 +121,14 @@ describe("RecommendationsPanel", () => {
 
   it("disables operator location when the subject is not located", () => {
     const html = renderToStaticMarkup(<RecommendationsPanel onLocateNode={() => {}} report={report} />);
-    expect(html).toMatch(/<button class="button secondary" disabled="" title="Operator not located" type="button">Locate operator<\/button>/);
+    expect(html).toMatch(/<button class="btn btn-secondary btn--sm" type="button" disabled="" title="Operator not located">Locate operator<\/button>/);
   });
 
   it("selects the first card and renders the structured recommendation from the DTO", () => {
     const html = renderToStaticMarkup(<RecommendationsPanel onOpenCompare={() => {}} report={report} />);
     expect(html).toContain('aria-pressed="true" class="recommendation-card selected"');
     expect(html).toContain('<strong class="recommendation-card-title">Reduce what the scan reads</strong>');
-    expect(html).toContain("<code title=\"SR3514.SCAN_TIME_SHARE@0.1.0\">rec.scan.reduce_read@v1</code>");
+    expect(html).toContain('<code title="SR3514.SCAN_TIME_SHARE@0.1.0">rec.scan.reduce_read@v1</code>');
     expect(html).toContain("Linked finding · High");
     expect(html).toContain("Check partition pruning and predicate pushdown on this table before changing the query.");
     expect(html).toContain("Start before/after comparison");
@@ -140,8 +140,8 @@ describe("RecommendationsPanel", () => {
     expect(html).toContain('class="recommendation-step-evidence" title="metric:operator-0:OperatorTotalTime">OperatorTotalTime = 500000ns</code>');
     expect(html).toContain('<span class="recommendation-evidence-label" title="Operator active time">OperatorTotalTime</span>');
     // Expected change per metric, then the result effect.
-    expect(html).toContain("<span>ScanTime</span><span class=\"recommendation-direction\">↓ Down</span>");
-    expect(html).toContain("Query result</span><span class=\"recommendation-direction unchanged\">Unchanged</span>");
+    expect(html).toContain('<span>ScanTime</span><span class="recommendation-direction">↓ Down</span>');
+    expect(html).toContain('Query result</span><span class="recommendation-direction unchanged">Unchanged</span>');
     expect(html).toContain("Expected ↓ Scan time · ↓ Operator time");
     expect(html).toContain("<strong>Low</strong> · Scan time share needs manual investigation; it does not prove a pruning or I/O root cause.");
     expect(html).toContain("In Compare, review ScanTime and Operator time");
@@ -156,7 +156,7 @@ describe("RecommendationsPanel", () => {
     const html = renderToStaticMarkup(<RecommendationsPanel report={{ ...report, findings: [report.findings[0], second] }} />);
     expect(html.match(/class="recommendation-card( selected)?"/g)).toEqual(['class="recommendation-card selected"', 'class="recommendation-card"']);
     expect(html.match(/aria-pressed="true" class="recommendation-card/g)).toHaveLength(1);
-    expect(html).toContain('<span class="recommendation-severity warn severity-medium">');
+    expect(html).toContain('class="status-inline recommendation-severity warn severity-medium"');
     expect(html).toContain("<span>Whole query</span>");
     expect(html).toContain("rec.scan.reduce_read@v1</code>");
     expect(html).not.toContain("rec.join.reduce_input@v1");
@@ -232,17 +232,17 @@ describe("RecommendationsPanel", () => {
   it("folds the official Advisor and renders its provenance, guidance and validation from the DTO", () => {
     const html = renderToStaticMarkup(<RecommendationsPanel advisorResponse={sr3514ConnectedContractGolden.advisor_response} report={report} />);
 
-    expect(html).toContain('<details class="advisor-guide-panel"');
+    expect(html).toContain('class="disclosure advisor-guide-panel"');
     expect(html).toContain("<summary>Official Advisor · experimental · FE-local · volatile</summary>");
     expect(html).toContain("official_plan_advisor");
-    expect(html).toContain('class="official">Official</span>');
-    expect(html).toContain('class="experimental">Experimental</span>');
-    expect(html).toContain('class="fe-local">FE-local</span>');
-    expect(html).toContain('class="volatile">Volatile</span>');
+    expect(html).toContain('class="state-stamp official">Official</span>');
+    expect(html).toContain('class="state-stamp experimental">Experimental</span>');
+    expect(html).toContain('class="state-stamp fe-local">FE-local</span>');
+    expect(html).toContain('class="state-stamp volatile">Volatile</span>');
     expect(html).toContain("Review the Advisor guide before a controlled user-side rerun.");
     expect(html).toContain("Run EXPLAIN COSTS.");
     expect(html).toContain("Advisor is official, experimental, FE-local, and volatile");
-    expect(html).toContain("Official Advisor · experimental <span class=\"recommendation-pill-count\">1</span>");
+    expect(html).toContain('Official Advisor · experimental <span class="seg-count recommendation-pill-count">1</span>');
   });
 
   it("hides the Advisor block when there is no Advisor response", () => {
@@ -271,7 +271,7 @@ describe("RecommendationsPanel", () => {
   it("localizes the structured recommendation without changing exact evidence identifiers", () => {
     const html = renderToStaticMarkup(<LocaleProvider initialLocale="zh"><RecommendationsPanel advisorResponse={sr3514ConnectedContractGolden.advisor_response} report={report} /></LocaleProvider>);
     expect(html).toContain(">优化建议</h1>");
-    expect(html).toContain("全部来源 <span class=\"recommendation-pill-count\">2</span>");
+    expect(html).toContain('全部来源 <span class="seg-count recommendation-pill-count">2</span>');
     expect(html).toContain("减少扫描读取量");
     expect(html).toContain("确认过滤条件作用在分区列和分桶列上");
     expect(html).toContain("待排查线索");
@@ -280,7 +280,7 @@ describe("RecommendationsPanel", () => {
     expect(html).toContain("方向判断，不承诺幅度。");
     expect(html).toContain("未读取分区定义与表统计信息");
     expect(html).toContain("<summary>官方 Advisor · 实验性 · FE 本地 · 易变</summary>");
-    expect(html).toContain('class="official">官方</span>');
+    expect(html).toContain('class="state-stamp official">官方</span>');
     expect(html).toContain("在受控的用户侧重跑前检查 Advisor 指引。");
     expect(html).toContain("OperatorTotalTime");
   });

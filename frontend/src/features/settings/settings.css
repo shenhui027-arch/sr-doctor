@@ -1,37 +1,99 @@
-/* Task 63 (board 9): settings with its own section list; the page fills the screen and
-   only the section body scrolls. */
-.workspace-content.workspace-settings { overflow: hidden; padding-top: 32px; padding-bottom: 0; }
-.settings-page { height: 100%; display: grid; grid-template-columns: 200px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 32px; }
-.settings-nav { display: flex; flex-direction: column; gap: 2px; }
-.settings-nav h1 { margin: 0 0 16px; color: var(--text); font: 500 20px/28px var(--sans); }
-.settings-nav button { height: 36px; padding: 0 12px; color: var(--text-2); text-align: left; background: transparent; border: 0; border-radius: var(--radius-control); font: 400 14px/20px var(--sans); transition: background-color 150ms var(--ease), color 150ms var(--ease); }
-.settings-nav button:hover { color: var(--text); background: var(--hover); }
-.settings-nav button[aria-current="page"] { color: var(--text); background: var(--chip); font-weight: 500; }
-.settings-body { min-height: 0; overflow: auto; max-width: 1080px; padding-bottom: 32px; display: flex; flex-direction: column; gap: 32px; scrollbar-width: thin; }
-.settings-section { display: flex; flex-direction: column; gap: 12px; }
-.settings-section > h2 { margin: 0; color: var(--text); font: 500 16px/24px var(--sans); }
-.settings-card { padding: 16px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-1); }
-.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.settings-mono { color: var(--text-2); font: 400 12px/16px var(--mono); }
-/* Task 69: a settings section fills the screen; its cards show one at a time (card deck), each with
-   its title on top and its own scrolling body. */
-.settings-body { overflow: hidden; padding-bottom: 24px; }
-.settings-body > .settings-section { flex: 1 1 auto; min-height: 0; }
-.settings-body > .settings-section > * { flex: 0 0 auto; }
-.settings-body > .settings-section > .card-deck { flex: 1 1 auto; min-height: 0; }
-/* Task 72: the saved connection under Settings › Connection. */
-.saved-connection { display: flex; flex-direction: column; gap: 12px; }
-.saved-connection-head { display: flex; align-items: center; gap: 8px; }
-.saved-connection-head h3 { margin: 0; display: inline-flex; align-items: center; gap: 4px; color: var(--text); font: 500 14px/20px var(--sans); }
-.saved-connection-head .chip.warn { color: var(--warning); background: #fff3e0; }
-.saved-connection-note { margin: 0; color: var(--text-2); font: 400 13px/20px var(--sans); }
-.saved-connection-note.warn { color: var(--warning); }
-.saved-connection-facts { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; align-items: baseline; }
-.saved-connection-facts dt { color: var(--muted); font: 400 12px/18px var(--sans); }
-.saved-connection-facts dd { margin: 0; color: var(--text); font: 400 13px/20px var(--sans); }
-.saved-connection-bg.ok { color: var(--ok); }
-.saved-connection-bg.warn { color: var(--warning); }
-.saved-connection-bg.muted { color: var(--muted); }
-.saved-connection-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-.saved-connection-confirm { margin-right: auto; color: var(--text-2); font: 400 13px/20px var(--sans); }
-.saved-connection .button.danger { color: var(--critical); background: var(--surface); border: 1px solid #e8a29b; }
+/* Settings workspace (boards/08-settings.html): one-screen >=1280px, stacked <1280px. */
+.workspace-content.workspace-settings {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 1920px;
+  margin: 0 auto;
+  padding: var(--shell-pad-y) var(--shell-pad-x);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--grid-gap);
+  overflow: hidden;
+}
+
+.settings-conn-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.saved-connection-stack,
+.settings-pref-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.current-session-box {
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.current-session-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.saved-conn-footer-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.saved-conn-confirm-text {
+  color: var(--critical);
+  font-weight: var(--weight-medium);
+}
+
+.saved-conn-footer-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-locale-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.settings-pref-subblock {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+
+.settings-pref-subhead {
+  margin-bottom: var(--space-2);
+}
+
+@media (max-width: 1279px) {
+  .workspace-content.workspace-settings,
+  .settings-stage {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
+  .workspace-content.workspace-settings {
+    padding-bottom: var(--space-6);
+  }
+}

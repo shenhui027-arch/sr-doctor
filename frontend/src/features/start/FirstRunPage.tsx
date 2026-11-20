@@ -1,13 +1,21 @@
 import type { Dispatch, JSX } from "react";
 import type { AnalysisSnapshotReport } from "../../../../contracts/generated/doctor-contracts";
+import { Card, InfoTip, PageGrid } from "../../design";
 import { useLocale } from "../../i18n/locale";
 import { ConnectionForm } from "../connection/ConnectionForm";
 import type { ConnectionAction, ConnectionState } from "../connection/connection-state";
 import { ImportPanel } from "../import/ImportPanel";
 import "./first-run.css";
 
-/** Not connected yet: import a Profile offline, or connect read-only to pick one from history. */
-export function FirstRunPage({ connection, dispatch, maxInputBytes = null, onReport, onSessionEnded, onSessionExpired }: {
+/** Not connected yet (boards/01-connect.html): two equal card--form cards side by side. */
+export function FirstRunPage({
+  connection,
+  dispatch,
+  maxInputBytes = null,
+  onReport,
+  onSessionEnded,
+  onSessionExpired,
+}: {
   connection: ConnectionState;
   dispatch: Dispatch<ConnectionAction>;
   maxInputBytes?: number | null;
@@ -16,31 +24,52 @@ export function FirstRunPage({ connection, dispatch, maxInputBytes = null, onRep
   onSessionExpired?(): void;
 }): JSX.Element {
   const { text } = useLocale();
-  const steps: Array<[string, string]> = [
-    [text("Pick a query", "选择查询"), text("Audit history, Profile list, running queries or the SQL workspace", "审计历史、Profile 列表、运行中或 SQL 工作区")],
-    [text("Diagnose evidence", "诊断证据"), text("Findings, execution structure, operator metrics and source lines", "发现、执行结构、算子指标与原文溯源")],
-    [text("Investigation steps", "排查建议"), text("Evidence-linked steps; nothing is changed automatically", "关联证据的排查步骤，不自动修改")],
-    [text("Before / after", "前后对比"), text("Verify with measured changes; incomparable items are marked", "以实测变化验证收益，标出不可比项")],
-  ];
-  return <section aria-labelledby="first-run-title" className="first-run">
-    <header>
-      <h1 id="first-run-title">{text("Start diagnosing from a Profile", "从一个 Profile 开始诊断")}</h1>
-      <p>{text("Import a Profile file to analyze it offline, or connect StarRocks to pick slow queries from the audit history and fetch their Profiles. Read-only by default.", "离线导入 Profile 文件即可分析；连接 StarRocks 后可以从审计历史中挑选慢查询并拉取其 Profile。默认只读。")}</p>
-    </header>
-    <div className="first-run-cards">
-      <div className="first-run-card">
-        <ImportPanel idPrefix="start-profile" maxInputBytes={maxInputBytes} onReport={onReport} />
-      </div>
-      <section aria-labelledby="first-run-connect-title" className="first-run-card first-run-connect">
-        <div className="first-run-card-heading">
-          <h2 id="first-run-connect-title">{text("Connect StarRocks", "连接 StarRocks")}</h2>
-          <span className="chip accent">{text("Read-only connection", "只读连接")}</span>
-        </div>
-        <ConnectionForm dispatch={dispatch} idPrefix="start" onSessionEnded={onSessionEnded} onSessionExpired={onSessionExpired} showCapabilities state={connection} submitLabel={text("Connect and probe", "连接并探测能力")} />
-      </section>
-    </div>
-    <ol aria-label={text("Diagnosis flow", "诊断流程")} className="first-run-steps">
-      {steps.map(([title, detail], index) => <li key={title}><span>{String(index + 1).padStart(2, "0")}</span><strong>{title}</strong><small>{detail}</small></li>)}
-    </ol>
-  </section>;
+
+  return (
+    <PageGrid
+      aria-label={text("Connect StarRocks or import a Profile", "连接 StarRocks 或离线导入 Profile")}
+      className="first-run"
+    >
+      <ConnectionForm
+        dispatch={dispatch}
+        idPrefix="start"
+        onSessionEnded={onSessionEnded}
+        onSessionExpired={onSessionExpired}
+        renderLayout={({ body, footer }) => (
+          <Card
+            className="first-run-connect"
+            footer={
+              <>
+                <span className="mono">{text("Read-only session", "只读会话")}</span>
+                <div className="connection-footer-actions">{footer}</div>
+              </>
+            }
+            span={{ lg: 6, md: 8, sm: 4 }}
+            title={text("Connect StarRocks", "连接 StarRocks")}
+            titleExtra={
+              <InfoTip label={text("Read-only connection and session boundary", "只读连接与会话边界说明")}>
+                {text(
+                  "Read-only MySQL connection (multi-statements disabled, no DDL/DML). Credentials live in memory by default and are dropped on close or idle expiry.",
+                  "MySQL 协议只读连接（禁用多语句，不发 DDL/DML），口令默认内存驻留、关闭或空闲过期即销毁。",
+                )}
+              </InfoTip>
+            }
+            variant="form"
+          >
+            {body}
+          </Card>
+        )}
+        showCapabilities
+        state={connection}
+        submitLabel={text("Connect and probe", "连接并探测能力")}
+      />
+
+      <ImportPanel
+        idPrefix="start-profile"
+        maxInputBytes={maxInputBytes}
+        onReport={onReport}
+        span={{ lg: 6, md: 8, sm: 4 }}
+      />
+    </PageGrid>
+  );
 }

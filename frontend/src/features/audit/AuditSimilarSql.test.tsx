@@ -43,6 +43,11 @@ describe("design board A2 similar SQL", () => {
   it("names a cluster by its server basis and shows the basis, source mix and exclusions", () => {
     expect(similarClusterName(response.clusters[0], english)).toBe("customers ⋈ orders · customers.region, orders.dt");
     const html = renderToStaticMarkup(<AuditSimilarSqlList onSelect={() => undefined} response={response} selectedKey="similar-v1:aa" text={english} />);
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain('aria-label="Select cluster customers ⋈ orders · customers.region, orders.dt"');
+    expect(html).toContain('class="is-selected"');
+    expect(html).not.toContain("aria-pressed");
+    expect(html).not.toContain("aria-selected");
     expect(html).toContain("INNER JOIN customers.id = orders.cid");
     expect(html).toContain("1 official + 1 unofficial");
     expect(html).toContain("331");
@@ -50,13 +55,40 @@ describe("design board A2 similar SQL", () => {
     expect(html).toContain("the first 20 of 31");
   });
 
-  it("labels member sources, keeps a missing metric a tag, and offers refine only when predicates are off", () => {
+  it("renders the selected cluster in a right-side drawer, labels member sources, keeps a missing metric a tag, and offers refine only when predicates are off", () => {
     const html = renderToStaticMarkup(<AuditSimilarAside cluster={response.clusters[0]} dimensions={response.dimensions} loading={false} onClose={() => undefined} onDetach={() => undefined} onRefine={() => undefined} onUndo={() => undefined} splitCount={1} text={english} />);
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain("modal-card modal-card--sheet modal-card--wide");
+    expect(html).toContain("customers ⋈ orders · customers.region, orders.dt");
+    expect(html).toContain('aria-label="Close dialog"');
+    expect(html).not.toContain('role="complementary"');
     expect(html).toContain("Official digest");
     expect(html).toContain("Unofficial fingerprint");
     expect(html).toContain("1 template(s) split out (this view only).");
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Refine by predicate columns/);
-    expect(html).toContain("<span>Planned</span>Keeping splits for later windows is not available in this version");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Refine by predicate columns<\/button>/);
+    expect(html).toContain('<span class="badge-stamp badge-stamp--planned">Planned</span> Keeping splits for later windows is not available in this version');
+    expect(html.match(/badge-stamp--planned/g)).toHaveLength(1);
+
+    const closedHtml = renderToStaticMarkup(<AuditSimilarAside cluster={null} dimensions={response.dimensions} loading={false} onClose={() => undefined} onDetach={() => undefined} onRefine={() => undefined} onUndo={() => undefined} open={false} splitCount={0} text={english} />);
+    expect(closedHtml).toBe("");
+  });
+
+  it("handles unknown unavailable reasons and unknown member source kinds without throwing or rendering undefined (correctness fix #6)", () => {
+    const unknownReasonResponse: AuditSimilarSqlResponse = {
+      ...response,
+      unavailable: [{ ...response.unavailable[0], structure: { state: "unavailable", reason: "future_structure_reason" as never } }],
+    };
+    const listHtml = renderToStaticMarkup(<AuditSimilarSqlList onSelect={() => undefined} response={unknownReasonResponse} selectedKey={null} text={english} />);
+    expect(listHtml).toContain("future_structure_reason 1");
+    expect(listHtml).not.toContain("undefined");
+
+    const unknownSourceCluster = {
+      ...response.clusters[0],
+      members: [{ ...response.clusters[0].members[0], source: { kind: "future_source_kind" } as never }],
+    };
+    const asideHtml = renderToStaticMarkup(<AuditSimilarAside cluster={unknownSourceCluster} dimensions={response.dimensions} loading={false} onClose={() => undefined} onDetach={() => undefined} onRefine={() => undefined} onUndo={() => undefined} splitCount={0} text={english} />);
+    expect(asideHtml).toContain("future_source_kind");
+    expect(asideHtml).not.toContain("undefined");
   });
 });
 

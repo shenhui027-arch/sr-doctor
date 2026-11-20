@@ -41,10 +41,15 @@ describe("ExplainGraphPanel", () => {
     expect(html).toContain("隐藏计划文本");
   });
 
-  it("opens the plan text only when no graph is available", () => {
+  it("opens the plan text only and shows unavailable instead of zero counts when no graph is available (correctness fix #4)", () => {
     const snapshot = { ...graphSnapshot(), graph_view: { ...graphSnapshot().graph_view, state: "unavailable" as const, nodes: [], root_node_ids: [] } };
     const html = renderToStaticMarkup(<LocaleProvider initialLocale="zh"><ExplainGraphPanel onClose={() => undefined} snapshot={snapshot} /></LocaleProvider>);
     expect(html).not.toContain("execution-graph-canvas");
     expect(html).not.toContain("隐藏计划文本");
+    expect(html).toContain('data-honest-state="unavailable"');
+    expect(html).toContain("计划图不可用 · 仅文本");
+    expect(html).not.toContain("0 Fragment");
+    expect(html).not.toContain("0 个节点");
+    expect(html).not.toContain("0 个片段");
   });
 });

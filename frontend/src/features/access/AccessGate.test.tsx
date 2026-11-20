@@ -15,13 +15,15 @@ function fakeApi(responses: Array<[number, unknown]>) {
 }
 
 describe("account sign-in (network deployments)", () => {
-  it("asks for the user name and password, with admin filled in", () => {
+  it("asks for the user name and password in a card--form with fixed footer button, with admin filled in", () => {
     const { api } = fakeApi([]);
     const html = renderToStaticMarkup(<LocaleProvider initialLocale="zh"><AccessForm api={api} defaultAccount onOpen={() => undefined} /></LocaleProvider>);
+    expect(html).toContain("card--form");
     expect(html).toContain("用户名");
     expect(html).toContain('value="admin"');
     expect(html).toContain('type="password"');
     expect(html).toContain("admin / 123456");
+    expect(html).toContain(">登录</button>");
   });
 
   it("shows the default account only while the server still uses it", () => {

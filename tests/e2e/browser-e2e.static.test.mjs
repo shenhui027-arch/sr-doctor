@@ -81,7 +81,7 @@ test("browser runner verifies Overview through its current endpoint, not the old
   assert.match(runnerSource, /audit_overview_http200_full_window_cards_coverage/);
   // The Overview part ends where it records its cards; the family drill that follows owns the member read.
   const overviewPart = overviewOnly.split("audit_overview_http200_full_window_cards_coverage")[0];
-  assert.ok(overviewPart.includes("root?.querySelectorAll('.audit-kpi-grid .audit-kpi').length"));
+  assert.ok(overviewPart.includes("root?.querySelectorAll('.audit-kpi-strip > .card--kpi:not(.audit-inflight)').length"));
   assert.ok(overviewPart.includes('overviewTop.full_window_count === overviewCoverage.retained_family_count'));
   assert.ok(overviewPart.includes('receipt.audit_overview.query_count === overviewCoverage.retained_event_count'));
   assert.doesNotMatch(overviewPart, /routeTelemetry\("\/audit\/occurrences"\)/, "Overview coverage used the member-ranking endpoint");
@@ -314,7 +314,7 @@ test("family representative Profile acceptance requires explicit retained fetch 
 
 test("SQL session summaries participate in screenshot redaction and its visibility check", () => {
   const source = runnerSource.slice(runnerSource.indexOf("async function redactVisibleIdentifiersForEvidence"), runnerSource.indexOf("async function capture("));
-  assert.match(source, /sql-analysis-connection code, \.sql-analysis-locked code, \.sql-analysis-confirm-action code, section\[aria-label="Connected session"\] code, section\[aria-label="已连接会话"\] code/);
+  assert.match(source, /running-profile-entry code, \.sql-analysis-locked code, \.sql-analysis-workspace\.is-confirm code, section\[aria-label="Connected session"\] code, section\[aria-label="已连接会话"\] code/);
   assert.ok(source.includes("connectionIdPattern = /^[0-9a-f]{32}(?:[0-9a-f]{16})?$/i"));
   const sessionIdPattern = /^[0-9a-f]{32}(?:[0-9a-f]{16})?$/i;
   assert.equal(sessionIdPattern.test("a".repeat(48)), true);
@@ -364,7 +364,7 @@ test("32-hex Audit digest and real session ID are separately redacted without we
   const document = { body,
     createTreeWalker(root) { const nodes = root === body ? [digestNode, sessionNode] : [sessionNode]; let index = -1;
       return { nextNode() { return ++index < nodes.length; }, get currentNode() { return nodes[index]; } }; },
-    querySelectorAll(selector) { return selector.includes('.running-profile-connection code') ? [sessionElement] : []; },
+    querySelectorAll(selector) { return selector.includes('.running-profile-entry code') ? [sessionElement] : []; },
   };
   const window = {};
   const result = new Script(expression).runInNewContext({ document, window, NodeFilter: { SHOW_TEXT: 4 } });
@@ -428,7 +428,8 @@ test("every literal browser button label exists in current production UI sources
   assert.ok(auditUi.includes('useEffect(() => {\n    setOverviewShown(surface === "overview");'));
   assert.ok(runnerSource.includes('await clickButton("Overview");\n  await waitFor(() => has(".workspace-content.workspace-overview .audit-performance"), "Overview performance dashboard");'));
   for (const [mode, label] of [["occurrences", "Individual executions"], ["families", "Repeated SQL"]]) {
-    assert.ok(auditUi.includes(`chooseMode("${mode}"); }} type="button">{text("${label}"`));
+    // v1.1: the views are SegTabs items.
+    assert.ok(auditUi.includes(`{ value: "${mode}" as const, label: text("${label}"`));
     assert.ok(runnerSource.includes(`clickButton("${label}")`));
   }
 });
@@ -476,7 +477,7 @@ test("retained complex Profile is hash-pinned and verifies the DTO graph, summar
     assert.doesNotThrow(() => new Script(expression), `${anchor} CDP expression must compile`);
   }
   const ui = readFileSync(resolve("frontend/src/features/execution/ExecutionGraph.tsx"), "utf8");
-  for (const label of ['text("Show the hottest node"', 'text("Fit all"', 'text("Full screen"', 'text("Exit full screen"']) assert.ok(ui.includes(label));
+  for (const label of ['text("Focus hottest node"', 'text("Fit all"', 'text("Full screen"', 'text("Exit full screen"']) assert.ok(ui.includes(label));
 });
 
 test("Doctor graph assertion compares the rendered canvas with backend DTO counts only", () => {
@@ -486,7 +487,7 @@ test("Doctor graph assertion compares the rendered canvas with backend DTO count
   assertLayoutContains(helper, "dom.table_rows === graph.summary_node_count && dom.table_all_rows === graph.node_count && dom.hot_most_count === graph.most_consuming_count && dom.hot_second_count === graph.second_most_consuming_count");
   const dom = emittedEvaluateTemplateAfter("async function doctorGraphDom", { root: ".workspace-doctor .execution-graph" });
   assert.doesNotThrow(() => new Script(dom));
-  for (const selector of [".plan-card", ".react-flow__edge", ".fragment-frame", ".plan-node-table tbody tr", ".node-inspector"]) assert.ok(dom.includes(selector));
+  for (const selector of [".exec-node", ".react-flow__edge", ".fragment-frame", ".plan-node-table tbody tr", ".node-inspector"]) assert.ok(dom.includes(selector));
   const telemetry = runnerSource.slice(runnerSource.indexOf("const summarizeGraph"), runnerSource.indexOf("const captureProjection"));
   assert.match(telemetry, /summary\?\.state === 'available'/);
   assert.match(telemetry, /fragmentByNode\.get\(node\.node_id\) \?\? node\.fragment_id/);
@@ -549,12 +550,12 @@ test("offline navigation uses the CDP runner and keeps Doctor-first coverage", (
   const offline = runnerSource.slice(runnerSource.indexOf("async function offlineImportCoverage"), runnerSource.indexOf("async function retainedComplexProfileCoverage"));
   // First run (design board 05) imports from its own card; the header has no import button there.
   assert.match(offline, /setInputValue\("\.first-run \.import-panel textarea", profile\)/);
-  assert.match(offline, /clickButton\("Analyze Profile"\)/);
+  assert.match(offline, /clickButton\("Analyze Profile →"\)/);
   assert.doesNotMatch(offline, /clickButton\("Import profile"\)/);
   assert.ok(offline.includes("first_run_import_and_connect_without_demo_data"));
   assert.match(offline, /\.workspace-doctor \.doctor-summary/);
   assert.match(offline, /assertDoctorGraph\(projection, "Offline import"\)/);
-  assert.ok(offline.includes(".context-bar .context-actions button"));
+  assert.ok(offline.includes(".context-bar [role=tab]"));
   assert.ok(offline.includes('summary.actions.includes("Diagnosis") && summary.actions.includes("Compare")'));
   // `.workspace-overview` is the v1.0-66 Overview page (the Audit dashboard), not the retired Profile overview.
   assert.doesNotMatch(runnerSource, /Profile overview|doctor-grid-ready/);
@@ -729,7 +730,7 @@ test("Runtime Top table row reveals the backend hottest node inside canvas and p
   const canvas = { left: 10, right: 800, top: 0, bottom: 500 };
   let node = { width: 200, height: 120, left: 200, right: 400, top: 900, bottom: 1020 };
   const card = { dataset: { nodeId: "0" }, getBoundingClientRect: () => node };
-  const root = { querySelector: (selector) => selector === ".plan-card.selected" ? card : selector === ".execution-graph-canvas" ? { getBoundingClientRect: () => canvas } : selector === ".node-inspector" ? {} : null };
+  const root = { querySelector: (selector) => selector === ".exec-node.is-selected" ? card : selector === ".execution-graph-canvas" ? { getBoundingClientRect: () => canvas } : selector === ".node-inspector" ? {} : null };
   const context = { innerWidth: 1440, innerHeight: 1024, Math, JSON, document: { querySelector: () => root } };
   assert.equal(script.runInNewContext(context), false, "selected node outside the canvas is not visible");
   node = { ...node, top: 180, bottom: 300 };
@@ -749,12 +750,12 @@ test("current user-facing connection and Audit copy preserves semantic and DTO c
   const doctorUi = readFileSync(resolve("frontend/src/features/doctor/DoctorWorkspace.tsx"), "utf8");
   assert.ok(connectionUi.includes('text("Connected",'));
   assert.ok(runnerSource.includes('connectionState.startsWith("Connected") && connectionState.includes("3.5.14")'));
-  const draft = "Filters changed. Apply them to update the results.";
+  const draft = "Filters changed. Refresh to update the results.";
   assert.ok(auditUi.includes(draft)); assert.ok(runnerSource.includes(draft));
   const appUi = readFileSync(resolve("frontend/src/App.tsx"), "utf8");
   assert.ok(doctorUi.includes('text("Total time"')); assert.ok(runnerSource.includes("Total time"));
   // v1.0-65: Compare is a Doctor mode beside Diagnosis; recommendations moved into the findings and their count.
-  assert.ok(appUi.includes('{ id: "compare", label: text("Compare", "对比"), disabled: false }')); assert.ok(runnerSource.includes('summary.actions.includes("Diagnosis") && summary.actions.includes("Compare")'));
+  assert.ok(readFileSync(resolve("frontend/src/features/shell/ContextBar.tsx"), "utf8").includes('{ value: "compare", label: text("Compare", "对比") }')); assert.ok(runnerSource.includes('summary.actions.includes("Diagnosis") && summary.actions.includes("Compare")'));
   const findingsUi = readFileSync(resolve("frontend/src/features/findings/FindingsPanel.tsx"), "utf8");
   assert.ok(findingsUi.includes('<span className="findings-count">')); assert.ok(runnerSource.includes("findingsCount"));
   assert.ok(!runnerSource.includes('text.includes("Pending draft")'));
@@ -776,39 +777,24 @@ test("Queries modes are entered explicitly and SQL workspace opens without execu
   assert.match(runnerSource, /openQueryMode\("Audit history"\)/);
 });
 
-test("Audit individual-execution table fits beside the selection panel at 1440 wide", () => {
+test("Audit individual-execution table keeps a readable SQL column at full card width (v1.1 drawer)", () => {
   const css = readFileSync(resolve("frontend/src/features/audit/audit-workload.css"), "utf8");
   const auditUi = readFileSync(resolve("frontend/src/features/audit/AuditWorkloadWorkspace.tsx"), "utf8");
-  // 1440 - page scrollbar - shell padding - 12px gap - 400px detail panel - card border, as measured
-  // in the release E2E with real audit rows (956px; 986px without a page scrollbar).
-  const budget = 956;
-  // SQL (column 2) has no width: it takes what the other columns leave, and must keep a readable prefix.
-  // With the detail panel open, the three metrics the panel repeats (6, 7, 10) leave the table, and a
-  // fixed minimum width makes the table scroll inside its card instead of clipping a number's unit.
+  // v1.1: the selected execution opens in a right-side drawer, so the table has the card's full width.
+  assert.ok(!auditUi.includes("workbench-split"));
+  assert.ok(auditUi.includes("className={activeAt ? \"data-table\" : \"data-table audit-occurrence-table\"}"));
+  // SQL (column 2) has no width: it takes what the fixed columns leave and must keep a readable prefix.
   const sqlMinimum = 150;
-  const fullMinimum = 1100;
-  const besidePanelMinimum = 824;
-  const repeatedInPanel = [6, 7, 10];
-  assert.ok(css.includes(".audit-table-wrap { min-height: 180px; max-height: 560px; overflow: auto; }"));
-  assert.ok(css.includes(".audit-results-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px;"));
-  assert.ok(css.includes(`.audit-table-wrap table.audit-occurrence-table { min-width: ${fullMinimum}px; table-layout: fixed; }`));
-  assert.ok(css.includes(`.audit-board-layout:has(> .audit-selection) table.audit-occurrence-table { min-width: ${besidePanelMinimum}px; }`));
-  assert.ok(css.includes(".audit-board-layout:has(> .audit-selection) .audit-occurrence-table :is(th, td):is(:nth-child(6), :nth-child(7), :nth-child(10)) { display: none; }"));
-  assert.ok(css.includes(".audit-occurrence-table td.audit-cell-num { text-overflow: clip; }"));
-  assert.ok(auditUi.includes('className={activeAt ? undefined : "audit-occurrence-table"}'));
+  const tableMinimum = Number(css.match(/\.audit-occurrence-table \{[^}]*min-width: (\d+)px;/)[1]);
+  assert.match(css, /\.audit-occurrence-table \{[^}]*table-layout: fixed;/);
+  assert.match(css, /\.audit-table-wrap \{[^}]*overflow: auto;/);
   const widths = new Map();
-  for (const [, selectors, value, unit] of css.matchAll(/^(\.audit-occurrence-table th:nth-child[^{]+)\{ width: ([\d.]+)(px|%); \}$/gm)) {
-    for (const selector of selectors.split(",")) {
-      const range = selector.match(/nth-child\(n\+(\d+)\):nth-child\(-n\+(\d+)\)/);
-      const columns = range ? Array.from({ length: Number(range[2]) - Number(range[1]) + 1 }, (_, index) => Number(range[1]) + index) : [Number(selector.match(/nth-child\((\d+)\)/)[1])];
-      for (const column of columns) widths.set(column, unit === "px" ? Number(value) : Number(value) / 100 * budget);
-    }
+  for (const [, selectors, value] of css.matchAll(/((?:\.audit-occurrence-table (?:th|td):nth-child\(\d+\),?\s*)+)\{ width: (\d+)px; \}/g)) {
+    for (const [, column] of selectors.matchAll(/nth-child\((\d+)\)/g)) widths.set(Number(column), Number(value));
   }
-  assert.deepEqual([...widths.keys()].sort((a, b) => a - b), [1, 3, 4, 5, 6, 7, 8, 9, 10, 11], "every column but SQL has a width");
-  assert.ok([...widths.entries()].every(([, width]) => Number.isFinite(width)), "every width is a fixed px value");
-  const total = [...widths.values()].reduce((sum, width) => sum + width, 0);
-  const besidePanel = [...widths.entries()].filter(([column]) => !repeatedInPanel.includes(column)).reduce((sum, [, width]) => sum + width, 0);
-  assert.ok(total + sqlMinimum <= fullMinimum, `columns need ${total}px, leaving SQL less than ${sqlMinimum}px of the ${fullMinimum}px table`);
-  assert.ok(besidePanel + sqlMinimum <= besidePanelMinimum, `columns beside the panel need ${besidePanel}px, leaving SQL less than ${sqlMinimum}px`);
-  assert.ok(besidePanelMinimum <= budget, `the table beside the panel needs ${besidePanelMinimum}px of the ${budget}px at 1440 wide`);
+  assert.deepEqual([...widths.keys()].sort((x, y) => x - y), [1, 3, 4, 5, 6, 7, 8, 9, 10, 11], "every column but SQL has a fixed px width");
+  const fixed = [...widths.values()].reduce((sum, width) => sum + width, 0);
+  assert.ok(fixed + sqlMinimum <= tableMinimum, `fixed columns need ${fixed}px, leaving SQL less than ${sqlMinimum}px of the ${tableMinimum}px table`);
+  // At 1280 wide (the narrowest one-screen width) the card still holds the whole table: 1280 - 2 x 20px shell padding - borders.
+  assert.ok(tableMinimum <= 1280 - 40 - 2, `the table needs ${tableMinimum}px, more than the card has at 1280 wide`);
 });

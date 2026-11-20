@@ -10,11 +10,21 @@ const render = (node: Parameters<typeof DoctorWorkspace>[0]) => renderToStaticMa
 const renderContext = (node: Parameters<typeof ContextBar>[0]) => renderToStaticMarkup(<LocaleProvider initialLocale="zh"><ContextBar {...node} /></LocaleProvider>);
 
 describe("Doctor workspace", () => {
-  it("reads top-down: query summary, findings, one execution graph, node table, original Profile", () => {
+  it("reads top-down: query summary, one execution graph, node table, original Profile, and findings list", () => {
     const html = render({ report: sr3514ExecutionGraph, onReport: () => undefined });
-    const order = ["查询概要", 'id="findings-title"', "执行结构", 'class="doctor-details"', "Profile 原文"].map((marker) => html.indexOf(marker));
+    const order = [
+      "查询概要",
+      'class="card card--table doctor-main-card"',
+      "执行结构图",
+      // The tab label, not the "算子累计耗时" metric in the summary strip above.
+      ">算子<",
+      "Profile 原文",
+      'id="findings-title"',
+    ].map((marker) => html.indexOf(marker));
     expect(order.every((position) => position >= 0)).toBe(true);
     expect([...order].sort((left, right) => left - right)).toEqual(order);
+    expect(html).not.toContain("finding-inspector");
+    expect(html).not.toContain('role="dialog"');
     expect(html).toContain("总耗时");
     expect(html).toContain("8.099 s");
     expect(html).toContain("算子累计耗时");
@@ -37,8 +47,9 @@ describe("Doctor workspace", () => {
     const html = render({ report: sr3514TextMinimal, onReport: () => undefined });
     expect(html).toContain("无法按节点汇总耗时");
     expect(html).not.toContain("plan-node-link");
-    expect(html).toContain('class="metric-state-badge"');
-    expect(html).not.toMatch(/<dd>0<\/dd>/);
+    expect(html).toContain('data-honest-state="missing"');
+    expect(html).toContain("∅ 缺失 · 非 0");
+    expect(html).not.toMatch(/<dd>0<\/dd>|class="kpi-val">0</);
   });
 
   it("can reopen the importer without discarding the current report", () => {

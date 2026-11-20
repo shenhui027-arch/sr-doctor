@@ -1,5 +1,6 @@
 import type { ExplainSnapshot } from "../../../../contracts/generated/doctor-contracts";
 import { useEffect, useState, type JSX } from "react";
+import { Button } from "../../design";
 import { useLocale } from "../../i18n/locale";
 import { ExecutionGraph } from "../execution/ExecutionGraph";
 import { SelectionProvider } from "../selection/selection-store";
@@ -19,7 +20,9 @@ export type ExplainGraphPanelProps = {
 export function ExplainGraphPanel({ snapshot, initialSourceOpen = false, onClose }: ExplainGraphPanelProps): JSX.Element {
   const { text } = useLocale();
   const hasGraph = snapshot.graph_view.state !== "unavailable";
+  const fragments = new Set(snapshot.graph_view.nodes.map((node) => node.fragment_id).filter((fragment) => fragment !== null)).size;
   const [sourceOpen, setSourceOpen] = useState(initialSourceOpen || !hasGraph);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -29,19 +32,41 @@ export function ExplainGraphPanel({ snapshot, initialSourceOpen = false, onClose
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
-  return <SelectionProvider key={snapshot.snapshot_id}>
-    <aside className="explain-plan-overlay" role="dialog" aria-label={text("Explain plan", "Explain 计划")}>
-      <header className="explain-plan-overlay-header">
-        <div><strong>{text("Readonly plan", "只读计划")} · {snapshot.explain_level.toUpperCase()}</strong><span>{text("Estimates only; nothing was executed.", "仅为估算，未执行任何查询。")}</span></div>
-        <div className="execution-graph-tools">
-          {hasGraph ? <button className="graph-tool" aria-pressed={sourceOpen} onClick={() => setSourceOpen((open) => !open)} type="button">{sourceOpen ? text("Hide plan text", "隐藏计划文本") : text("Plan text", "计划文本")}</button> : null}
-          <button className="graph-tool" onClick={onClose} type="button">{text("Close", "关闭")}</button>
+
+  return (
+    <SelectionProvider key={snapshot.snapshot_id}>
+      <aside aria-label={text("Explain plan", "Explain 计划")} className="explain-plan-overlay" role="dialog">
+        <header className="explain-plan-overlay-header">
+          <div className="explain-plan-overlay-title">
+            <strong>{text("Readonly plan", "只读计划")} · {snapshot.explain_level.toUpperCase()}</strong>
+            <span className="muted">{text("Estimates only; nothing was executed.", "仅为估算，未执行任何查询。")}</span>
+            {hasGraph ? (
+              <span className="badge-stamp">
+                {fragments} Fragment · {snapshot.graph_view.nodes.length} {text("nodes", "个节点")}
+              </span>
+            ) : (
+              <span className="state-stamp" data-honest-state="unavailable">
+                <span aria-hidden="true" className="state-stamp-sym">—</span>
+                <span>{text("Plan graph unavailable · text only", "计划图不可用 · 仅文本")}</span>
+              </span>
+            )}
+          </div>
+          <div className="execution-graph-tools">
+            {hasGraph ? (
+              <Button aria-pressed={sourceOpen} onClick={() => setSourceOpen((open) => !open)} size="sm" variant="secondary">
+                {sourceOpen ? text("Hide plan text", "隐藏计划文本") : text("Plan text", "计划文本")}
+              </Button>
+            ) : null}
+            <Button onClick={onClose} size="sm" variant="secondary">
+              {text("Close", "关闭")}
+            </Button>
+          </div>
+        </header>
+        <div className={`explain-plan-overlay-body${sourceOpen && hasGraph ? " with-source" : ""}`}>
+          {hasGraph ? <ExecutionGraph factSets={snapshot.plan_node_fact_sets} graph={snapshot.graph_view} graphKey={snapshot.snapshot_id} /> : null}
+          {sourceOpen ? <ExplainSourcePanel onClose={() => (hasGraph ? setSourceOpen(false) : onClose())} snapshot={snapshot} /> : null}
         </div>
-      </header>
-      <div className={`explain-plan-overlay-body${sourceOpen && hasGraph ? " with-source" : ""}`}>
-        {hasGraph ? <ExecutionGraph factSets={snapshot.plan_node_fact_sets} graph={snapshot.graph_view} graphKey={snapshot.snapshot_id} /> : null}
-        {sourceOpen ? <ExplainSourcePanel onClose={() => (hasGraph ? setSourceOpen(false) : onClose())} snapshot={snapshot} /> : null}
-      </div>
-    </aside>
-  </SelectionProvider>;
+      </aside>
+    </SelectionProvider>
+  );
 }

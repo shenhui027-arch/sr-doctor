@@ -91,8 +91,8 @@ export const BOARDS: Record<BoardName, Board> = {
     drive: async (document) => {
       await connect(document);
       // The audit view opens on its performance overview (task 45); the board shows repeated SQL.
-      await waitFor(document, ".audit-view-switch button:not(:disabled)");
-      Array.from(document.querySelectorAll<HTMLButtonElement>(".audit-view-switch button")).find((button) => button.textContent?.trim() === "同类 SQL")?.click();
+      await waitFor(document, ".audit-workload [role='tablist'][aria-label='视图'] button:not(:disabled)");
+      Array.from(document.querySelectorAll<HTMLButtonElement>(".audit-workload [role='tablist'][aria-label='视图'] button")).find((button) => button.textContent?.trim() === "同类 SQL")?.click();
       await waitFor(document, ".audit-family-list tbody tr");
       setValue(document.querySelector(".audit-filter-database") as HTMLInputElement, "demo");
       await new Promise((done) => setTimeout(done, 50));
@@ -113,7 +113,7 @@ export const BOARDS: Record<BoardName, Board> = {
     drive: async (document) => {
       await connect(document);
       Array.from(document.querySelectorAll<HTMLButtonElement>(".workspace-nav button")).find((button) => button.textContent?.trim() === "总览")?.click();
-      await waitFor(document, ".audit-dashboard");
+      await waitFor(document, ".audit-perf-deck");
     },
   },
   // 02 诊断 · 证据工作台: the slowest member of the Main family, pulled from the Demo cluster.
@@ -132,11 +132,12 @@ export const BOARDS: Record<BoardName, Board> = {
     }),
     drive: async (document) => {
       await BOARDS.Main.drive(document);
-      (await waitFor(document, ".audit-family-aside .button.accent.primary:not(:disabled)") as HTMLButtonElement).click();
+      // v1.1 drawer: the family actions sit in the drawer footer.
+      (await waitFor(document, ".audit-family-aside-actions .btn-primary:not(:disabled)") as HTMLButtonElement).click();
       await waitFor(document, ".workspace-doctor .doctor-summary");
       await waitFor(document, ".workspace-doctor .execution-graph-canvas[data-layout-state=\"ready\"]");
       // The data-flow tree settles at 1:1 once the canvas is measured.
-      await waitFor(document, ".workspace-doctor .react-flow__viewport[style*=\"scale(1)\"]:not([style*=\"translate(0px, 0px)\"])");
+      await waitFor(document, ".workspace-doctor .react-flow__viewport:not([style*=\"translate(0px, 0px)\"])");
     },
   },
   // 03 优化建议: since task 65 the first finding's recommendation sits in its detail on the Doctor page.
@@ -177,7 +178,7 @@ export const BOARDS: Record<BoardName, Board> = {
       (document.querySelector(`.audit-family-members button[title="${CANDIDATE_QUERY_ID}"]`) as HTMLButtonElement).click();
       await waitForText(document, ".audit-family-aside-actions", "与基线对比");
       button("与基线对比")?.click();
-      await waitFor(document, ".workspace-compare .compare-structure-table");
+      await waitFor(document, ".workspace-compare .cmp-metric-table");
     },
   },
 };

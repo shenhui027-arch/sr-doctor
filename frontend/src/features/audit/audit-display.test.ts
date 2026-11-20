@@ -1,5 +1,8 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { AuditMetricFact, AuditMetricId, AuditMetricState } from "../../../../contracts/generated/doctor-contracts";
+import { AuditMetricValue } from "./AuditMetricValue";
 import { auditDigestUnavailable, auditMillisecondsText, auditScientific, metricRawText, metricText, metricTone, positiveCount } from "./audit-display";
 
 function fact(metric_id: AuditMetricId, state: AuditMetricState, value: string | null, unit: string | null, canonical = value): AuditMetricFact {
@@ -75,13 +78,34 @@ describe("audit coverage counters", () => {
   });
 });
 
-describe("audit metric display tone", () => {
-  it("keeps an exact zero as a plain value and every non-exact state as a tagged value", () => {
-    expect(metricTone(fact("query_time", "exact", "0", "ns"))).toBe("exact");
+describe("audit metric display tone and StateStamp rendering (correctness fix #1)", () => {
+  it("keeps exact zero plain and gives missing, invalid, negative_sentinel, overflow and unavailable distinct StateStamps", () => {
+    const exactZero = fact("query_time", "exact", "0", "ns");
+    const missing = fact("cpu_cost", "missing", null, null);
+    const invalid = fact("query_time", "invalid", "not-a-number", null, null);
+    const sentinel = fact("scan_rows", "negative_sentinel", "-1", null, null);
+    const overflow = fact("memory_cost", "overflow", "999999999999999999999", null, null);
+    const unavailable: AuditMetricFact = { metric_id: "scan_bytes", input: { state: "unavailable", reason: "source_column_absent" }, state: "unavailable", parser_state: null, canonical_number: null, canonical_unit: null };
+
+    expect(metricTone(exactZero)).toBe("exact");
     expect(metricTone(fact("scan_bytes", "precision_unsafe", "9007199254740993", "byte"))).toBe("qualified");
-    expect(metricTone(fact("cpu_cost", "missing", null, null))).toBe("missing");
-    expect(metricTone(fact("scan_rows", "negative_sentinel", "-1", null, null))).toBe("missing");
-    expect(metricTone(fact("memory_cost", "overflow", "999999999999999999999", null, null))).toBe("missing");
+    expect(metricTone(missing)).toBe("missing");
     expect(metricTone(null)).toBe("missing");
+    expect(metricTone(invalid)).toBe("invalid");
+    expect(metricTone(sentinel)).toBe("negative_sentinel");
+    expect(metricTone(overflow)).toBe("overflow");
+    expect(metricTone(unavailable)).toBe("unavailable");
+
+    const renderValue = (value: AuditMetricFact | null) => renderToStaticMarkup(createElement(AuditMetricValue, { value }));
+    expect(renderValue(exactZero)).toBe("0 ns");
+    expect(renderValue(missing)).toContain('data-honest-state="missing"');
+    expect(renderValue(invalid)).toContain('data-honest-state="invalid"');
+    expect(renderValue(invalid)).not.toContain(">Missing<");
+    expect(renderValue(sentinel)).toContain('data-honest-state="negative_sentinel"');
+    expect(renderValue(sentinel)).not.toContain(">Missing<");
+    expect(renderValue(overflow)).toContain('data-honest-state="overflow"');
+    expect(renderValue(overflow)).not.toContain(">Missing<");
+    expect(renderValue(unavailable)).toContain('data-honest-state="unavailable"');
+    expect(renderValue(unavailable)).not.toContain(">Missing<");
   });
 });

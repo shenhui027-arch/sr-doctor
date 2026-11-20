@@ -1,5 +1,6 @@
 import { focusQueryWorkspaceHeading } from "./App";
 import appSource from "./App.tsx?raw";
+import topBarSource from "./features/shell/TopBar.tsx?raw";
 import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -231,9 +232,10 @@ describe("Running Doctor retained artifact admission", () => {
 });
 it("preserves connected evidence when opening Import Profile (source wiring guard)", async () => {
   const source = (await import("./App.tsx?raw")).default;
-  // Task 63: the import opens Doctor's diagnosis view; it still clears nothing connected.
+  // Task 63 / Task 80: the import opens Doctor's diagnosis view via TopBar; it still clears nothing connected.
   expect(source).toContain('const openImport = () => { setImporting(true); openDoctor("diagnosis"); };');
-  expect(source).toMatch(/<button className="button secondary header-import" onClick=\{openImport\}[^\n]*\{text\("Import profile"/);
+  expect(source).toContain("onImport={openImport}");
+  expect(topBarSource).toMatch(/className="btn btn-secondary btn-import-top"[\s\S]*?onClick=\{onImport\}[\s\S]*?\{text\("Import profile"/);
 });
 
 
@@ -279,7 +281,8 @@ it("keeps the connection across a reload by remembering only the session ID as t
   expect(appSource).toContain("void doctorApi.closeConnection(session.connection_id).catch(() => undefined);");
   // Unmount supersedes automatic connects; collection entries open the history settings.
   expect(appSource).toContain("// Unmounting supersedes every automatic connect still in flight");
-  expect(appSource).toContain("<CollectionCapsule onOpen={() => openSettings(\"history\")}");
+  expect(appSource).toContain('onOpenCollection={() => openSettings("history")}');
+  expect(topBarSource).toContain("<CollectionCapsule onOpen={onOpenCollection} status={historyStatus} />");
   expect(appSource).toContain("if (reconnectingRef.current) return;");
   expect(appSource).toContain("doctorApi.connectSaved().then(accept).catch(failed);");
 });
@@ -321,4 +324,10 @@ describe("Official Advisor ownership", () => {
     expect(appSource.match(/advisorResponse=/g)).toHaveLength(1);
     expect(appSource).not.toMatch(/<(?:DoctorWorkspace|CompareWorkspace)[^>]*advisor/);
   });
+});
+
+it("mounts TrendsWorkspace directly on Overview and CollectionPanel via SettingsWorkspace without a HistoryWorkspace wrapper", () => {
+  expect(appSource).toContain("<TrendsWorkspace connectionId={readySessionId}");
+  expect(appSource).toContain("history={history}");
+  expect(appSource).not.toContain("<HistoryWorkspace");
 });

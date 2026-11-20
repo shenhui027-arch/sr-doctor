@@ -3,7 +3,8 @@
 // apart so the trends, alerts and governance pages can load on demand.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import type { HistoryStatusResponse } from "../../../../contracts/generated/doctor-contracts";
+import type { CollectionStoppedReason, HistoryStatusResponse } from "../../../../contracts/generated/doctor-contracts";
+import { lookupEnumLabel } from "../../i18n/enum-label";
 import { useLocale, type LocalizedText } from "../../i18n/locale";
 import { doctorApi } from "../../lib/api";
 import { HeaderStatusText } from "../shell/HeaderStatusText";
@@ -15,18 +16,24 @@ export function clockText(seconds: number | null | undefined): string {
   return new Date(seconds * 1000).toISOString().slice(0, 19).replace("T", " ");
 }
 
+const STOPPED_REASON_LABELS: Record<CollectionStoppedReason, readonly [string, string]> = {
+  not_connected: ["Not collecting · reconnect to continue", "未采集 · 重新连接后继续"],
+  history_disabled: ["History off", "历史已关闭"],
+  production_gate: ["Remote collection not enabled yet", "远端采集尚未启用"],
+  audit_unavailable: ["Not collecting · no audit table", "未采集 · 无审计表"],
+  another_session_collecting: ["Not collecting · another session collects", "未采集 · 另一会话正在采集"],
+};
+
 export function collectionLabel(status: HistoryStatusResponse, text: LocalizedText): string {
   const state = status.collection;
+  if (!state || typeof state !== "object") return lookupEnumLabel(STOPPED_REASON_LABELS, "", text);
   if (state.state === "running") return text("Collecting", "采集中");
   if (state.state === "paused") return text("Paused", "已暂停");
   if (state.state === "backoff") return text("Retrying shortly", "稍后自动重试");
-  return {
-    not_connected: text("Not collecting · reconnect to continue", "未采集 · 重新连接后继续"),
-    history_disabled: text("History off", "历史已关闭"),
-    production_gate: text("Remote collection not enabled yet", "远端采集尚未启用"),
-    audit_unavailable: text("Not collecting · no audit table", "未采集 · 无审计表"),
-    another_session_collecting: text("Not collecting · another session collects", "未采集 · 另一会话正在采集"),
-  }[state.reason];
+  if (state.state === "stopped") {
+    return lookupEnumLabel(STOPPED_REASON_LABELS, state.reason, text);
+  }
+  return lookupEnumLabel(STOPPED_REASON_LABELS, String((state as { state?: unknown }).state ?? ""), text);
 }
 
 export const HISTORY_POLL_MS = 15_000;
@@ -61,11 +68,28 @@ export function monitorGeneration(status: HistoryStatusResponse | null): string 
 export function CollectionCapsule({ status, onOpen }: { status: HistoryStatusResponse | null; onOpen(): void }): JSX.Element | null {
   const { text } = useLocale();
   if (!status || status.store.state !== "available") return null;
-  const state = status.collection.state;
-  return <button className={`collection-capsule ${state}`} onClick={onOpen} title={`${text("Collection and history", "采集与历史")} · ${collectionLabel(status, text)}`} type="button">
-    <HeaderStatusText value={collectionLabel(status, text)} />
-    {status.watermark_seconds !== null && <span className="collection-watermark header-detail">{text("watermark", "水位")} {clockText(status.watermark_seconds).slice(11, 16)}</span>}
-  </button>;
+  const state = status.collection?.state ?? "stopped";
+  const label = collectionLabel(status, text);
+  const dotClass = state === "running"
+    ? "status-dot status-dot--ok"
+    : state === "backoff"
+      ? "status-dot status-dot--warn"
+      : "status-dot";
+  const watermark = status.watermark_seconds !== null
+    ? ` · ${text("watermark", "水位")} ${clockText(status.watermark_seconds).slice(11, 16)}`
+    : "";
+  return (
+    <button
+      className="collector-status hide-lt-1024"
+      onClick={onOpen}
+      title={`${text("Collection and history", "采集与历史")} · ${label}${watermark}`}
+      type="button"
+    >
+      <span aria-hidden="true" className={dotClass} />
+      <span className="hide-lt-1440">{text("Collector · ", "后台采集 · ")}</span>
+      <span><HeaderStatusText value={label} /></span>
+    </button>
+  );
 }
 
 export type MonitoringTab = "trends" | "collection";

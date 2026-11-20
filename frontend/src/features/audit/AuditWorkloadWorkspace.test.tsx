@@ -1,4 +1,17 @@
-import { auditStatusLabel, familyMemberSqlRequest, sessionEndReason } from "./AuditWorkloadWorkspace";
+import {
+  auditStatusLabel,
+  closeDrawerForNavigation,
+  closeFamilyDrawer,
+  closeOccurrenceDrawer,
+  familyDrawerMemberRows,
+  familyMemberSqlRequest,
+  openFamilyDrawer,
+  selectFamilyMember,
+  selectOccurrenceRow,
+  sessionEndReason,
+  sortLabel,
+  windowPresetLabel,
+} from "./AuditWorkloadWorkspace";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Children, isValidElement, type ReactNode } from "react";
 import workspaceSource from "./AuditWorkloadWorkspace.tsx?raw";
@@ -8,7 +21,7 @@ import type { AuditActiveAtResponse, AuditFamilyDetailResponse, AuditFamilyPrese
 import { LocaleProvider, type LocalizedText } from "../../i18n/locale";
 import { AuditFamilyDetail } from "./AuditFamilyDetail";
 import { AuditFamilyList, AuditKpiStrip } from "./AuditOverviewPanels";
-import { FamilySummary, OccurrenceStatementCell, SelectedAuditOccurrence } from "./AuditWorkloadWorkspace";
+import { AuditFamilyDrawer, FamilySummary, OccurrenceStatementCell, SelectedAuditOccurrence } from "./AuditWorkloadWorkspace";
 import { doctorApi } from "../../lib/api";
 import { errorProportionText } from "./audit-display";
 import { AuditOccurrenceTable, AuditWindowEvidence, AuditWorkloadWorkspace, auditErrorLabel, profileFetchFailureText, auditFamilyDetailDiscoveryGeneration, auditFamilyDetailRequest, auditFamilyDetailSqlRequest, auditFamilyMemberBrowseState, auditModeSwitchScopes, auditParentScopeAfterFamilyEdits, auditProfileForSelectedOccurrence, auditReportForSelectedOccurrence, auditResponseForConnection, auditScopeForFamily, auditScopeForWindowPreset, auditTerminalStateFromControl, auditStatementFilterNote, auditUserFilterNote, defaultAuditScope, familyDetailRepresentativeRows, familyRowKey, isAuditFamilyDetailBound, isAuditRequestCurrentForConnection, isCurrentAuditRequest, metricText, occurrenceRowKey, visibleSql } from "./AuditWorkloadWorkspace";
@@ -111,10 +124,10 @@ describe("AuditWorkloadWorkspace", () => {
   it("shows optional facts from the DTO with adaptive durations and exact source text, without loading SQL", () => {
     const pending = { ...fact("pending_time", "exact", "125000000", "ns"), input: { state: "text", value: "125" } as const };
     const html = selectedMarkup(pending, { state: "text", value: "" });
-    expect(html).toContain('<details class="audit-optional-facts"><summary>Raw audit details</summary>');
+    expect(html).toContain('<details class="disclosure audit-optional-facts"><summary>Raw audit details</summary>');
     expect(html).toContain("125 ms · exact");
     expect(html).toContain("pendingTimeMs=&quot;125&quot; → 125000000 ns");
-    expect(html).toContain("<dd>&quot;&quot;</dd>");
+    expect(html).toContain('<dd class="mono">&quot;&quot;</dd>');
     expect(html).toContain("empty errorCode does not mean success");
     expect(html).toContain("pending time alone does not prove blocking");
     expect(html).not.toContain('<pre');
@@ -123,18 +136,18 @@ describe("AuditWorkloadWorkspace", () => {
   it.each(["source_column_absent", "conflicting_source_rows"] as const)("preserves optional unavailable reason %s without losing the selected event", (reason) => {
     const pending: AuditMetricFact = { ...fact("pending_time", "unavailable", null, null), input: { state: "unavailable", reason } };
     const html = selectedMarkup(pending, { state: "unavailable", reason });
-    expect(html).toContain(`Source: unavailable · ${reason}</dd>`);
-    expect(html).toContain(`<dd>unavailable · ${reason}</dd>`);
+    expect(html).toContain(`Source: unavailable · ${reason}</div>`);
+    expect(html).toContain(`<dd class="mono">unavailable · ${reason}</dd>`);
     expect(html).toContain("audit-query-1");
     expect(html).not.toContain("0 ns");
   });
 
   it("keeps SQL NULL, absent DTO, negative sentinel and true zero separate", () => {
     const missing = selectedMarkup(fact("pending_time", "missing", null, null), { state: "sql_null" });
-    expect(missing).toContain("Source: sql_null</dd>");
-    expect(missing).toContain("<dd>sql_null</dd>");
+    expect(missing).toContain("Source: sql_null</div>");
+    expect(missing).toContain('<dd class="mono">sql_null</dd>');
     expect(missing).toContain("— (missing)");
-    expect(selectedMarkup(null, { state: "sql_null" })).toContain("Source: not_returned</dd>");
+    expect(selectedMarkup(null, { state: "sql_null" })).toContain("Source: not_returned</div>");
     const negative = selectedMarkup(fact("pending_time", "negative_sentinel", "-1", null), { state: "text", value: "0" });
     expect(negative).toContain("-1 (negative_sentinel)");
     expect(negative).not.toContain("0 ns");
@@ -157,11 +170,11 @@ describe("AuditWorkloadWorkspace", () => {
   it("renders return rows separately and keeps exact zero and missing return rows distinct", () => {
     const response = { ...occurrenceResponse, rows: occurrenceResponse.rows.map((row, index) => ({ ...row, metrics: [...row.metrics, fact("return_rows", index === 0 ? "exact" : "missing", index === 0 ? "0" : null, index === 0 ? "item" : null)] })) };
     const html = renderToStaticMarkup(<AuditOccurrenceTable occurrences={response} onSelect={() => undefined} selectedKey={null} text={english} />);
-    expect(html).toContain('<th title="scanRows">Scanned rows</th><th title="returnRows">Returned rows</th>');
+    expect(html).toContain('<th class="num" title="scanRows">Scanned rows</th><th class="num" title="returnRows">Returned rows</th>');
     expect(html).toContain('title="0 item">0</td>');
-    // Missing keeps its own text and renders as a dashed tag; the exact zero stays a bare number.
-    expect(html).toContain('title="— (missing)"><span class="audit-value-tag audit-value-missing">— (missing)</span></td>');
-    expect(html).not.toContain('<span class="audit-value-tag audit-value-missing">0</span>');
+    // Missing renders via StateStamp(state="missing") while exact zero stays a bare number.
+    expect(html).toContain('title="— (missing)"><span class="state-stamp" data-honest-state="missing"');
+    expect(html).not.toContain('data-honest-state="missing">0</span>');
   });
 
   it("keeps the full exact family digest in its accessible name while visible text stays shortened", () => {
@@ -389,7 +402,7 @@ describe("AuditWorkloadWorkspace", () => {
     expect(occurrenceSwitch.requestScope).toStrictEqual(occurrenceResponse.scope);
     expect(occurrenceSwitch.draftScope).toStrictEqual(unAppliedDraft);
     const evidence = renderToStaticMarkup(<AuditWindowEvidence response={occurrenceResponse} scope={occurrenceSwitch.draftScope} windowPreset="12h" text={english} />);
-    expect(evidence).toContain("Filters changed. Apply them to update the results.");
+    expect(evidence).toContain("Filters changed. Refresh to update the results.");
     expect(evidence).toContain("2023-11-14T22:13:20.000Z → 2023-11-14T23:13:20.000Z");
     expect(evidence).not.toContain("draft-user");
 
@@ -430,7 +443,7 @@ describe("AuditWorkloadWorkspace", () => {
     expect(auditTerminalStateFromControl("finished")).toBe("finished");
     expect(auditTerminalStateFromControl("error")).toBe("error");
     const html = renderToStaticMarkup(<AuditWindowEvidence response={occurrenceResponse} scope={draft} windowPreset="12h" text={english} />);
-    expect(html).toContain("Filters changed. Apply them to update the results.");
+    expect(html).toContain("Filters changed. Refresh to update the results.");
   });
 
   it("disables exact user filtering when the source-column capability is unknown instead of omitting a requested filter", () => {
@@ -466,13 +479,13 @@ describe("AuditWorkloadWorkspace", () => {
     expect(workspaceSource).toContain("Hidden: ${statementFilter.hidden_non_query_row_count} non-query and ${statementFilter.hidden_doctor_row_count} tool statements");
     expect(workspaceSource).toContain("statementFilter?.state === \"applied\" ? text(\"this tool's and non-query statements hidden\"");
     const pending = renderToStaticMarkup(<AuditWindowEvidence response={occurrenceResponse} scope={{ ...scope, statement_filter: "all" }} text={english} />);
-    expect(pending).toContain("Filters changed. Apply them to update the results.");
+    expect(pending).toContain("Filters changed. Refresh to update the results.");
   });
 
   it("marks only the 11-column individual-execution table for the fixed-width layout", () => {
     // Column widths live in audit-workload.css (guarded by tests/e2e/browser-e2e.static.test.mjs).
     const html = renderToStaticMarkup(<AuditOccurrenceTable occurrences={occurrenceResponse} onSelect={() => undefined} selectedKey={null} text={english} />);
-    expect(html).toContain('<table aria-label="Audited query rankings" class="audit-occurrence-table">');
+    expect(html).toContain('<table aria-label="Audited query rankings" class="data-table audit-occurrence-table">');
     expect(html.match(/<th[ >]/g)).toHaveLength(11);
     expect(html).toContain("<th>Query ID</th><th>SQL</th><th>Start / reader zone</th>");
     // The 13-column historical in-flight view keeps the scrollable minimum and its own layout.
@@ -483,11 +496,11 @@ describe("AuditWorkloadWorkspace", () => {
     expect(participants.match(/<th[ >]/g)).toHaveLength(13);
   });
 
-  it("shows each execution's own SQL on one line with the full prefix in title, and every missing state as a dashed tag", () => {
+  it("shows each execution's own SQL on one line with the full prefix in title, and every missing state as a stamp tag", () => {
     const html = renderToStaticMarkup(<AuditOccurrenceTable occurrences={occurrenceResponse} onSelect={() => undefined} selectedKey={null} text={english} />);
     // The returned prefix is shown as is (CSS keeps it on one line); truncation adds the ellipsis.
-    expect(html).toContain('<td class="audit-cell-sql" title="SELECT customer_id,\n  SUM(amount)\nFROM orders…">SELECT customer_id,\n  SUM(amount)\nFROM orders…</td>');
-    expect(html).toContain('<td class="audit-cell-sql" title="The audited stmt is SQL NULL."><span class="audit-value-tag">stmt NULL</span></td>');
+    expect(html).toContain('<td class="audit-cell-sql mono" title="SELECT customer_id,\n  SUM(amount)\nFROM orders…">SELECT customer_id,\n  SUM(amount)\nFROM orders…</td>');
+    expect(html).toContain('<td class="audit-cell-sql" title="The audited stmt is SQL NULL."><span class="state-stamp audit-value-tag">stmt NULL</span></td>');
     const cell = (sample: AuditStatementSample, locale: LocalizedText = english) => renderToStaticMarkup(<table><tbody><tr><OccurrenceStatementCell sample={sample} text={locale} /></tr></tbody></table>);
     const cases: [AuditStatementSample, string][] = [
       [{ state: "text", value: "", truncated: false }, "Empty stmt"],
@@ -498,22 +511,36 @@ describe("AuditWorkloadWorkspace", () => {
     ];
     for (const [sample, label] of cases) {
       const rendered = cell(sample);
-      expect(rendered).toContain(`<span class="audit-value-tag">${label}</span>`);
+      expect(rendered).toContain(`<span class="state-stamp audit-value-tag">${label}</span>`);
       expect(rendered).not.toMatch(/<td class="audit-cell-sql"[^>]*><\/td>/);
     }
     expect(cell({ state: "text", value: "SELECT 1", truncated: false })).toContain('title="SELECT 1">SELECT 1</td>');
     expect(cell({ state: "unavailable", reason: "conflicting_source_rows" }, chinese)).toContain("重复行不一致");
   });
 
-  it("says the table is being read while a refresh has no rows yet, and opens a closable details panel", () => {
+  it("says the table is being read while a refresh has no rows yet, and opens a closable details drawer", () => {
     const reading = renderToStaticMarkup(<AuditOccurrenceTable disabled occurrences={null} onSelect={() => undefined} selectedKey={null} text={english} />);
-    expect(reading).toContain('<p class="audit-empty" role="status">Reading audit records…</p>');
+    expect(reading).toContain('<p class="audit-empty state-box" role="status">Reading audit records…</p>');
     expect(reading).not.toContain("No occurrences were returned");
     const occurrence = occurrenceResponse.rows[0];
     const panel = renderToStaticMarkup(<SelectedAuditOccurrence occurrence={occurrence} doctorProfile={null} onClose={() => undefined} onDiagnose={() => undefined} onViewSql={() => undefined} profile={null} profileLoading={false} sql={null} sqlError={null} sqlLoading={false} text={english} />);
-    expect(panel).toContain('aria-label="Close details" class="audit-selection-close"');
+    expect(panel).toContain('role="dialog"');
+    expect(panel).toContain("modal-card modal-card--sheet modal-card--wide");
+    expect(panel).toContain('aria-label="Close dialog"');
+    expect(panel).toContain("Execution details");
+    expect(panel).not.toContain("card--detail");
     // The full query ID stays on the shortened one.
-    expect(panel).toContain(`<code title="${occurrence.query.query_id}">`);
+    expect(panel).toContain(`<code class="mono" title="${occurrence.query.query_id}">`);
+
+    const zhPanel = renderToStaticMarkup(
+      <LocaleProvider initialLocale="zh">
+        <SelectedAuditOccurrence occurrence={occurrence} doctorProfile={null} onClose={() => undefined} onDiagnose={() => undefined} onOpenDoctor={() => undefined} onViewSql={() => undefined} profile={null} profileLoading={false} sql={null} sqlError={null} sqlLoading={false} text={chinese} />
+      </LocaleProvider>,
+    );
+    expect(zhPanel).toContain("执行详情");
+    expect(zhPanel).toContain('aria-label="关闭弹窗"');
+    expect(zhPanel).toContain(">诊断<");
+    expect(zhPanel).toContain(">查看 SQL<");
   });
 
   it("renders every returned row inside the scrollable table and exposes an accessible row selector", () => {
@@ -522,7 +549,7 @@ describe("AuditWorkloadWorkspace", () => {
     expect(html).toContain("audit-query-1");
     expect(html).toContain("audit-query-2");
     expect(html).toContain("Source state");
-    expect(html).toContain('title="finished">Finished</td>');
+    expect(html).toContain('title="finished"><span class="status-inline"><span class="status-dot status-dot--ok"></span>Finished</span></td>');
     expect(html.match(/aria-label="Select audited query/g)).toHaveLength(2);
     expect(html).toContain("9007199254740993 byte (precision_unsafe)");
   });
@@ -533,7 +560,9 @@ describe("AuditWorkloadWorkspace", () => {
     expect(html).toContain("123.456 μs");
     expect(html).toContain("8 PB (precision_unsafe)");
     expect(html).toContain('title="9007199254740993 byte (precision_unsafe)"');
-    expect(html).toMatch(/aria-pressed="false" disabled="" type="button">Not grouped</);
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).not.toContain("aria-pressed");
+    expect(html).toMatch(/<button[^>]*class="row-pick-btn mono"[^>]*disabled=""[^>]*>Not grouped</);
   });
 
   it("binds on-demand SQL to its connection, discovery generation, fixed scope, and current query while stale or aborted responses fail closed", () => {
@@ -565,7 +594,8 @@ describe("AuditWorkloadWorkspace", () => {
     const chineseHtml = renderToStaticMarkup(<LocaleProvider initialLocale="zh"><AuditOccurrenceTable occurrences={occurrenceResponse} onSelect={() => undefined} selectedKey={null} text={(en, zh) => zh} /></LocaleProvider>);
     expect(englishHtml).toContain('aria-label="Audited query rankings"');
     expect(chineseHtml).toContain('aria-label="审计查询排行"');
-    expect(englishHtml).not.toContain('aria-pressed="true"');
+    expect(englishHtml).toContain('aria-haspopup="dialog"');
+    expect(englishHtml).not.toContain("aria-pressed");
   });
 
   it("shows the performance overview on the Overview page, and repeated SQL on the query page", () => {
@@ -579,34 +609,109 @@ describe("AuditWorkloadWorkspace", () => {
     const html = renderToStaticMarkup(<AuditWorkloadWorkspace api={withoutPerformance} onConnect={() => undefined} session={connection} />);
     expect(html).toContain('class="audit-workload audit-workload-overview"');
     expect(html).not.toContain(">Overview<");
-    expect(html).toContain('<h1 id="audit-board-title">Repeated SQL</h1>');
-    expect(html).toMatch(/aria-pressed="true"[^>]*>Repeated SQL</);
-    // No detail panel until a row is chosen: the list keeps the full width.
+    expect(html).toContain('<h1 class="card-title" id="audit-board-title">Repeated SQL</h1>');
+    expect(html).toMatch(/role="tab" aria-selected="true"[^>]*><span aria-hidden="true" class="seg-tab-pill"><\/span><span class="seg-tab-content"><span>Repeated SQL<\/span><\/span><\/button>/);
+    expect(html).toContain('<div class="filter-chip-input"><label for="audit-filter-window">Window</label>');
+    expect(html).toContain('<div class="filter-chip-input"><label for="audit-filter-database">DB</label>');
+    expect(html).toContain('<div class="filter-chip-input"><label for="audit-filter-user">User</label>');
+    expect(html).not.toContain("Apply filters");
+    // No side panel or drawer until a row is chosen: the list keeps the full width.
     expect(html).not.toContain("audit-selection");
     expect(html).not.toContain("audit-family-aside");
-    expect(html).not.toContain('aria-selected="true"');
+    expect(html).not.toContain('role="dialog"');
+    expect(html).not.toContain("workbench-split");
+    expect(html).toContain('class="audit-board-layout"');
+  });
+
+  it("renders the repeated-SQL family details in a right-side drawer with digest title, latest SQL, member ranking, and footer actions", () => {
+    const family: AuditFamilyPresentation = {
+      ...familyRows[0],
+      statement_sample: { state: "text", value: "SELECT customer_id, SUM(amount) FROM orders", truncated: false },
+    };
+    const closed = renderToStaticMarkup(
+      <AuditFamilyDrawer
+        canDiagnose={false}
+        canPlanCheck={false}
+        error={null}
+        family={null}
+        fetchedQueryIds={new Set()}
+        loading={false}
+        members={null}
+        onClose={() => undefined}
+        onDiagnose={() => undefined}
+        onSelectMember={() => undefined}
+        onShowMembers={() => undefined}
+        open={false}
+        profileLoading={false}
+        selectedMemberKey={null}
+        text={chinese}
+      />,
+    );
+    expect(closed).toBe("");
+
+    const open = renderToStaticMarkup(
+      <LocaleProvider initialLocale="zh">
+        <AuditFamilyDrawer
+          baseline="comparable"
+          canDiagnose
+          canPlanCheck
+          error={null}
+          family={family}
+          fetchedQueryIds={new Set()}
+          loading={false}
+          members={occurrenceResponse}
+          onClose={() => undefined}
+          onCompareWithBaseline={() => undefined}
+          onDiagnose={() => undefined}
+          onPlanCheck={() => undefined}
+          onSelectMember={() => undefined}
+          onSetBaseline={() => undefined}
+          onShowMembers={() => undefined}
+          onViewMemberSql={() => undefined}
+          open
+          profileLoading={false}
+          selectedMemberKey="audit-query-1:audit:row:1"
+          text={chinese}
+        />
+      </LocaleProvider>,
+    );
+    expect(open).toContain('role="dialog"');
+    expect(open).toContain("modal-card modal-card--sheet modal-card--wide");
+    expect(open).toContain("已选查询族 · digest");
+    expect(open).toContain(">aabb<");
+    expect(open).toContain("SELECT customer_id, SUM(amount) FROM orders");
+    expect(open).toContain("900 次中前 2");
+    expect(open).toContain(">拉取 Profile 并诊断<");
+    expect(open).toContain(">与基线对比<");
+    expect(open).toContain(">计划检查<");
+    expect(open).toContain(">查看成员完整 SQL<");
+    expect(open).toContain('aria-label="关闭弹窗"');
+    expect(open).toContain('aria-current="true"');
+    expect(open).toContain('class="item-btn is-selected"');
+    expect(open).not.toContain("aria-pressed");
   });
 
   it("offers one Diagnose action, switches to Open diagnosis once fetched, and names why a row has no Profile", () => {
     const occurrence = occurrenceResponse.rows[0];
     const props = { onDiagnose: () => undefined, onViewSql: () => undefined, profile: null, profileLoading: false, sql: null, sqlError: null, sqlLoading: false, text: english };
     const unfetched = renderToStaticMarkup(<SelectedAuditOccurrence {...props} doctorProfile={null} occurrence={occurrence} onOpenDoctor={() => undefined} />);
-    expect(unfetched).toContain(">Diagnose</button>");
+    expect(unfetched).toContain(">Diagnose<");
     expect(unfetched).not.toContain("Open diagnosis");
     expect(unfetched).toContain("the SQL is never rerun");
 
     const fetched = { ...sr3514ConnectedContractGolden.profile_fetch_response, query: occurrence.query };
     const ready = renderToStaticMarkup(<SelectedAuditOccurrence {...props} doctorProfile={fetched} occurrence={occurrence} onOpenDoctor={() => undefined} />);
-    expect(ready).toContain(">Open diagnosis</button>");
-    expect(ready).not.toContain(">Diagnose</button>");
+    expect(ready).toContain(">Open diagnosis<");
+    expect(ready).not.toContain(">Diagnose<");
 
     const noProfile = { ...occurrence, query: { ...occurrence.query, profile_fetch: { state: "unavailable" as const, reason: "query_not_finished" as const } } };
     const unavailable = renderToStaticMarkup(<SelectedAuditOccurrence {...props} doctorProfile={null} occurrence={noProfile} onOpenDoctor={() => undefined} />);
-    expect(unavailable).toMatch(/<button class="button accent" disabled=""[^>]*>Diagnose<\/button>/);
+    expect(unavailable).toMatch(/<button class="btn btn-primary btn--sm" type="button" disabled=""[^>]*>Diagnose<\/button>/);
     expect(unavailable).toContain("No Profile to diagnose: Query not finished");
 
     const empty = renderToStaticMarkup(<SelectedAuditOccurrence {...props} doctorProfile={null} occurrence={null} />);
-    expect(empty).toContain("audit-selection-empty");
+    expect(empty).toBe("");
+    expect(empty).not.toContain('role="dialog"');
     expect(empty).not.toContain("<button");
   });
 
@@ -666,9 +771,9 @@ it("invalidates Audit navigation admission without aborting the shared session r
 
 it("uses Chinese metric labels while retaining source keys and collapses input diagnostics", () => {
   const html = renderToStaticMarkup(<AuditOccurrenceTable occurrences={null} selectedKey={null} onSelect={() => undefined} text={(_en, zh) => zh} />);
-  expect(html).toContain('<th title="queryTime">查询耗时</th>');
-  expect(html).toContain('<th title="returnRows">返回行数</th>');
-  expect(html).toContain('<details class="audit-coverage"><summary>指标覆盖详情</summary>');
+  expect(html).toContain('<th class="num" title="queryTime">查询耗时</th>');
+  expect(html).toContain('<th class="num" title="returnRows">返回行数</th>');
+  expect(html).toContain('<details class="disclosure audit-coverage"><summary>指标覆盖详情</summary>');
 });
 
 
@@ -695,15 +800,19 @@ it("guides investigation by existing server sorts and a one-step Profile diagnos
 });
 
 
-it("distinguishes readable terminal statuses and preserves unknown future states", () => {
+it("distinguishes readable terminal statuses and preserves unknown future states (including enum lookups, correctness fix #6)", () => {
   const zh = (_en: string, chinese: string) => chinese;
   expect(auditStatusLabel("finished", zh)).toBe("已完成");
   expect(auditStatusLabel("error", zh)).toBe("执行失败");
   expect(auditStatusLabel("unknown", zh)).toBe("状态未知");
   expect(auditStatusLabel("future_state", zh)).toBe("future_state");
+  expect(auditUserFilterNote("future_capability" as never, english)).toBe("future_capability");
+  expect(auditStatementFilterNote("future_capability" as never, english)).toBe("future_capability");
+  expect(windowPresetLabel("90d" as never, english)).toBe("90d");
+  expect(sortLabel("future_sort_desc" as never, english)).toBe("future_sort_desc");
   const response = { ...occurrenceResponse, rows: [{ ...occurrenceResponse.rows[0], query: { ...baseQuery, profile_fetch: { state: "unavailable" as const, reason: "query_not_finished" as const } } }] };
   const html = renderToStaticMarkup(<AuditOccurrenceTable occurrences={response} selectedKey={null} onSelect={() => undefined} text={zh} />);
-  expect(html).toContain('title="query_not_finished">查询尚未结束</td>');
+  expect(html).toContain('title="query_not_finished"><span class="state-stamp">查询尚未结束</span></td>');
 });
 
 describe("session end reason and family member SQL binding", () => {
@@ -718,5 +827,223 @@ describe("session end reason and family member SQL binding", () => {
     expect(familyMemberSqlRequest("c1", occurrenceResponse, row)).toEqual({ connection_id: "c1", discovery_generation: occurrenceResponse.discovery_generation, scope: occurrenceResponse.scope, query_id: row.query.query_id });
     expect(familyMemberSqlRequest("c1", occurrenceResponse, { ...row })).toBeNull();
     expect(familyMemberSqlRequest("c1", null, row)).toBeNull();
+  });
+});
+
+function firstRowOnClick(node: ReactNode): ((event: unknown) => void) | undefined {
+  for (const child of Children.toArray(node)) {
+    if (!isValidElement<{ children?: ReactNode; onClick?: (event: unknown) => void }>(child)) continue;
+    if (child.type === "tr" && typeof child.props.onClick === "function") return child.props.onClick;
+    const found = firstRowOnClick(child.props.children);
+    if (found) return found;
+  }
+}
+
+describe("drawer lifecycle, navigation closing, and member selection", () => {
+  it("keeps drawers closed on initial render and when closed state is passed even with retained data", () => {
+    const initialHtml = renderToStaticMarkup(<AuditWorkloadWorkspace onConnect={() => undefined} session={connection} />);
+    expect(initialHtml).not.toContain('role="dialog"');
+
+    const initialOccurrence = closeOccurrenceDrawer({ key: null, drawerOpen: false, restoreFocus: true });
+    expect(initialOccurrence).toStrictEqual({ key: null, drawerOpen: false, restoreFocus: true });
+
+    const family: AuditFamilyPresentation = {
+      ...familyRows[0],
+      statement_sample: { state: "text", value: "SELECT 1", truncated: false },
+    };
+    const closedFamilyHtml = renderToStaticMarkup(
+      <AuditFamilyDrawer
+        canDiagnose
+        canPlanCheck
+        error={null}
+        family={family}
+        fetchedQueryIds={new Set()}
+        loading={false}
+        members={occurrenceResponse}
+        onClose={() => undefined}
+        onDiagnose={() => undefined}
+        onSelectMember={() => undefined}
+        open={false}
+        profileLoading={false}
+        selectedMemberKey="audit-query-1:audit:row:1"
+        text={english}
+      />,
+    );
+    expect(closedFamilyHtml).toBe("");
+
+    const closedOccurrenceHtml = renderToStaticMarkup(
+      <SelectedAuditOccurrence
+        doctorProfile={null}
+        occurrence={occurrenceResponse.rows[0]}
+        onDiagnose={() => undefined}
+        onViewSql={() => undefined}
+        open={false}
+        profile={null}
+        profileLoading={false}
+        sql={null}
+        sqlError={null}
+        sqlLoading={false}
+        text={english}
+      />,
+    );
+    expect(closedOccurrenceHtml).toBe("");
+  });
+
+  it("closes AuditFamilyDrawer without restoring focus on navigation actions, keeps Set as baseline open, and restores focus on dismiss", () => {
+    const opened = openFamilyDrawer(familyRows[0]);
+    expect(opened).toMatchObject({ drawerOpen: true, restoreFocus: true, showAll: false, error: null });
+
+    const withError = {
+      ...opened,
+      members: occurrenceResponse,
+      loading: false,
+      memberKey: "audit-query-1:audit:row:1",
+      error: "This query left no Profile",
+    };
+
+    const switched = selectFamilyMember(withError, "audit-query-2:audit:row:2");
+    expect(switched).toMatchObject({
+      memberKey: "audit-query-2:audit:row:2",
+      error: null,
+      drawerOpen: true,
+      restoreFocus: true,
+    });
+
+    const afterBaseline = closeFamilyDrawer(switched, "baseline");
+    expect(afterBaseline).toMatchObject({ drawerOpen: true, restoreFocus: true });
+    expect(closeFamilyDrawer(switched, "diagnose", false)).toMatchObject({ drawerOpen: true, restoreFocus: true });
+
+    for (const reason of ["diagnose", "compare", "plan_check", "show_members"] as const) {
+      const navigated = closeFamilyDrawer(switched, reason);
+      expect(navigated).toMatchObject({ drawerOpen: false, restoreFocus: false });
+      if (reason === "show_members") expect(navigated?.showAll).toBe(true);
+    }
+
+    expect(closeDrawerForNavigation(switched)).toMatchObject({ drawerOpen: false, restoreFocus: false });
+    expect(closeDrawerForNavigation(null)).toBeNull();
+    expect(closeFamilyDrawer(switched, "dismiss")).toBeNull();
+
+    const membersView = closeFamilyDrawer(switched, "show_members")!;
+    const reopenedInMembers = selectFamilyMember(membersView, "audit-query-2:audit:row:2")!;
+    expect(reopenedInMembers).toMatchObject({ showAll: true, drawerOpen: true, restoreFocus: true });
+    expect(closeFamilyDrawer(reopenedInMembers, "dismiss")).toMatchObject({ showAll: true, drawerOpen: false, restoreFocus: true });
+  });
+
+  it("closes SelectedAuditOccurrence on Diagnose and Open diagnosis while retaining the row key and bound profile for reopening", () => {
+    const initial = closeOccurrenceDrawer({ key: null, drawerOpen: false, restoreFocus: true });
+    const selected = selectOccurrenceRow(initial, "audit-query-1:audit:row:1");
+    expect(selected).toStrictEqual({
+      resetEvidence: true,
+      selection: { key: "audit-query-1:audit:row:1", drawerOpen: true, restoreFocus: true },
+    });
+
+    expect(closeOccurrenceDrawer(selected.selection, "diagnose", false)).toStrictEqual({
+      key: "audit-query-1:audit:row:1",
+      drawerOpen: true,
+      restoreFocus: true,
+    });
+
+    for (const reason of ["diagnose", "open_doctor"] as const) {
+      const navigated = closeOccurrenceDrawer(selected.selection, reason);
+      expect(navigated).toStrictEqual({
+        key: "audit-query-1:audit:row:1",
+        drawerOpen: false,
+        restoreFocus: false,
+      });
+    }
+
+    const afterDiagnose = closeOccurrenceDrawer(selected.selection, "diagnose");
+    const reopenedSame = selectOccurrenceRow(afterDiagnose, "audit-query-1:audit:row:1");
+    expect(reopenedSame).toStrictEqual({
+      resetEvidence: false,
+      selection: { key: "audit-query-1:audit:row:1", drawerOpen: true, restoreFocus: true },
+    });
+
+    const selectedOther = selectOccurrenceRow(afterDiagnose, "audit-query-2:audit:row:2");
+    expect(selectedOther).toStrictEqual({
+      resetEvidence: true,
+      selection: { key: "audit-query-2:audit:row:2", drawerOpen: true, restoreFocus: true },
+    });
+
+    expect(closeOccurrenceDrawer(selected.selection, "dismiss")).toStrictEqual({
+      key: null,
+      drawerOpen: false,
+      restoreFocus: true,
+    });
+  });
+
+  it("focuses the row button before selecting when clicking a table row, and appends a 5th+ selected member in AuditFamilyDrawer", () => {
+    const events: string[] = [];
+    const tableElement = AuditOccurrenceTable({
+      occurrences: occurrenceResponse,
+      onSelect: (key) => events.push(`select:${key}`),
+      selectedKey: null,
+      text: english,
+    });
+    const onRowClick = firstRowOnClick(tableElement);
+    expect(onRowClick).toBeTypeOf("function");
+    onRowClick!({
+      currentTarget: {
+        querySelector: (selector: string) => {
+          expect(selector).toBe(".row-pick-btn");
+          return { focus: () => events.push("focus") };
+        },
+      },
+    });
+    expect(events).toStrictEqual(["focus", "select:audit-query-1:audit:row:1"]);
+
+    const sixMembers: AuditOccurrenceResponse = {
+      ...occurrenceResponse,
+      rows: Array.from({ length: 6 }, (_, index) => ({
+        ...occurrenceResponse.rows[0],
+        query: {
+          ...baseQuery,
+          query_id: `audit-query-${index + 1}`,
+          source_refs: [`audit:row:${index + 1}`],
+        },
+      })),
+    };
+    expect(familyDrawerMemberRows(sixMembers, "audit-query-1:audit:row:1").map((item) => item.key)).toStrictEqual([
+      "audit-query-1:audit:row:1",
+      "audit-query-2:audit:row:2",
+      "audit-query-3:audit:row:3",
+      "audit-query-4:audit:row:4",
+    ]);
+    expect(familyDrawerMemberRows(sixMembers, "audit-query-6:audit:row:6").map((item) => item.key)).toStrictEqual([
+      "audit-query-1:audit:row:1",
+      "audit-query-2:audit:row:2",
+      "audit-query-3:audit:row:3",
+      "audit-query-4:audit:row:4",
+      "audit-query-6:audit:row:6",
+    ]);
+
+    const family: AuditFamilyPresentation = {
+      ...familyRows[0],
+      statement_sample: { state: "text", value: "SELECT 1", truncated: false },
+    };
+    const sixthSelectedHtml = renderToStaticMarkup(
+      <LocaleProvider initialLocale="zh">
+        <AuditFamilyDrawer
+          canDiagnose
+          canPlanCheck
+          error={null}
+          family={family}
+          fetchedQueryIds={new Set()}
+          loading={false}
+          members={sixMembers}
+          onClose={() => undefined}
+          onDiagnose={() => undefined}
+          onSelectMember={() => undefined}
+          open
+          profileLoading={false}
+          selectedMemberKey="audit-query-6:audit:row:6"
+          text={chinese}
+        />
+      </LocaleProvider>,
+    );
+    expect(sixthSelectedHtml).toContain('title="audit-query-6"');
+    expect(sixthSelectedHtml).toMatch(/aria-current="true" class="item-btn is-selected" title="audit-query-6"/);
+    expect(sixthSelectedHtml).toContain('<span class="muted">900 次中前 4</span>');
+    expect(sixthSelectedHtml).not.toContain("全部成员与耗时分布");
   });
 });

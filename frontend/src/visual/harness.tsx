@@ -1,15 +1,17 @@
-// Development-only pixel-parity harness (v0.7). Renders the real App, in
+// Development-only visual harness. Renders the real App, in
 // Chinese, with a fetch double that answers the product API from Demo
 // fixtures for one design board, drives the same clicks a user would, then
-// raises `window.__visualReady` for tests/visual/pixel-parity.mjs. The Demo
-// data exists only here, to compare pixels with the design; it never reaches
+// raises `window.__visualReady` for tests/visual/capture-boards.mjs. The Demo
+// data exists only here, to compare the product with the design; it never reaches
 // the production bundle (vite build follows index.html only).
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "../App";
 import { LocaleProvider } from "../i18n/locale";
 import { BOARDS, type BoardName } from "./boards";
-import "../styles.css";
+import { TooltipProvider } from "../design";
+import "../design/tokens.css";
+import "../design/base.css";
 
 declare global {
   interface Window { __visualReady?: boolean; __visualError?: string; __visualMisses?: string[] }
@@ -31,7 +33,7 @@ async function run(): Promise<void> {
   };
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
-      <LocaleProvider initialLocale="zh"><App /></LocaleProvider>
+      <LocaleProvider initialLocale="zh"><TooltipProvider><App /></TooltipProvider></LocaleProvider>
     </StrictMode>,
   );
   await board.drive(document);

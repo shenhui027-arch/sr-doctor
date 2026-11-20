@@ -13,8 +13,9 @@ import type {
   ProfileFetchResponse,
   QueryListStatementFilterCoverage,
 } from "../../../../contracts/generated/doctor-contracts";
+import { Button, InfoTip } from "../../design";
 import { useLocale, type LocalizedText } from "../../i18n/locale";
-import { localizedEnum } from "../../i18n/enum-label";
+import { localizedEnum, lookupEnumLabel } from "../../i18n/enum-label";
 import { limitationSummary } from "../../i18n/limitation-text";
 import { LimitationNotes } from "../shell/LimitationNotes";
 import { SqlText, SqlToggleButton } from "../shell/SqlText";
@@ -254,13 +255,14 @@ export function QueriesWorkspace({
   }
 
   if (!session) {
-    return <section className="queries-empty panel">
-      <p className="eyebrow">{text("Query discovery", "查询发现")}</p>
-      <h2>{text("Connect to list recent queries and their Profiles", "连接 StarRocks 后可列出最近的查询及其 Profile")}</h2>
-      <p>{text("Only fixed, limited list reads are sent; no SQL is accepted here.", "这里只发送固定且有上限的列表读取，不接受任何 SQL。")}</p>
-      <div className="row actions">
-        <button className="button accent" onClick={onConnect} type="button">{text("Connect StarRocks", "连接 StarRocks")}</button>
-        {onImportProfile && <button className="button secondary" onClick={onImportProfile} type="button">{text("Or import a Profile file", "或导入 Profile 文件")}</button>}
+    return <section className="card card--detail queries-empty">
+      <div className="card-bd state-box">
+        <strong>{text("Connect to list recent queries and their Profiles", "连接 StarRocks 后可列出最近的查询及其 Profile")}</strong>
+        <p>{text("Only fixed, limited list reads are sent; no SQL is accepted here.", "这里只发送固定且有上限的列表读取，不接受任何 SQL。")}</p>
+        <div className="queries-empty-actions">
+          <Button onClick={onConnect} size="sm" variant="primary">{text("Connect StarRocks", "连接 StarRocks")}</Button>
+          {onImportProfile && <Button onClick={onImportProfile} size="sm" variant="secondary">{text("Or import a Profile file", "或导入 Profile 文件")}</Button>}
+        </div>
       </div>
     </section>;
   }
@@ -269,49 +271,55 @@ export function QueriesWorkspace({
   return <div className="queries-workspace">
     <ConnectionEvidence session={session} />
 
-    <section aria-busy={loading} className="query-browser" aria-labelledby="query-browser-title">
-      <form className="query-filters" onSubmit={(event) => { event.preventDefault(); void load(); }}>
-        <h2 id="query-browser-title">{text("Query discovery", "查询发现")}</h2>
-        <label>{text("Source", "来源")}<strong>{sourceLabel(response?.source, text)}</strong></label>
-        <label>{text("Status", "状态")}<input disabled={!ready || loading} onChange={(event) => setStatus(event.target.value)} value={status} /></label>
-        <label>Digest<input disabled={!ready || loading} onChange={(event) => setDigest(event.target.value)} placeholder={text("prefix or contains", "前缀或包含")} value={digest} /></label>
-        <label className="query-statement-filter"><input checked={hideOwnStatements} disabled={!ready || loading} onChange={(event) => setHideOwnStatements(event.target.checked)} type="checkbox" />{text("Hide this tool's queries and non-query statements", "隐藏本工具查询与非查询语句")}</label>
-        <button className="button secondary" disabled={!ready || loading} onClick={() => { setStatus("finished"); setDigest(""); setHideOwnStatements(true); }} type="button">{text("Clear", "清除")}</button>
-        <button className="button accent" disabled={!ready || loading} type="submit">{loading ? text("Refreshing…", "刷新中…") : text("Refresh", "刷新")}</button>
-      </form>
-      {response && <StatementFilterEvidence coverage={response.statement_filter} text={text} />}
-      {error && <p className="query-error" role="alert">{error}</p>}
-      <QueryTable onSelect={(rowKey) => { invalidateRequests(); setLoading(false); setSelectedKey(rowKey); setFetchResult(null); setFetchingId(null); setComparing(false); setCompareError(null); clearQuerySql(); }} queries={response?.queries ?? []} selectedKey={selected ? queryRowKey(selected, response?.queries.indexOf(selected) ?? 0) : null} />
-      {!loading && response && response.queries.length === 0 && <p className="queries-empty-row">{text("No matching queries were returned.", "没有返回匹配的查询。")}</p>}
-      {!ready && <p className="queries-empty-row">{text("Version-sensitive query discovery is unavailable for this connection state:", "当前连接状态无法执行版本敏感的查询发现：")} {session.state}</p>}
-    </section>
+    <div className="workbench-split queries-split">
+      <section aria-busy={loading} className="card card--table query-browser" aria-labelledby="query-browser-title">
+        <header className="card-hd query-filters-head">
+          <div className="card-title-group">
+            <h2 className="card-title" id="query-browser-title">{text("Query discovery", "查询发现")}</h2>
+            <span className="card-subtitle">{text("Source", "来源")} · {sourceLabel(response?.source, text)}</span>
+          </div>
+          <form className="card-hd-actions query-filters" onSubmit={(event) => { event.preventDefault(); void load(); }}>
+            <div className="filter-chip-input"><label htmlFor="q-filter-status">{text("Status", "状态")}</label><input disabled={!ready || loading} id="q-filter-status" onChange={(event) => setStatus(event.target.value)} size={8} value={status} /></div>
+            <div className="filter-chip-input"><label htmlFor="q-filter-digest">{text("Digest", "指纹")}</label><input disabled={!ready || loading} id="q-filter-digest" onChange={(event) => setDigest(event.target.value)} placeholder={text("prefix or contains", "前缀或包含")} size={9} value={digest} /></div>
+            <label className="check-inline query-statement-filter"><input checked={hideOwnStatements} disabled={!ready || loading} onChange={(event) => setHideOwnStatements(event.target.checked)} type="checkbox" /><span>{text("Hide this tool's queries and non-query statements", "隐藏本工具查询与非查询语句")}</span></label>
+            <Button disabled={!ready || loading} onClick={() => { setStatus("finished"); setDigest(""); setHideOwnStatements(true); }} size="sm" variant="ghost">{text("Clear", "清除")}</Button>
+            <Button disabled={!ready || loading} size="sm" type="submit" variant="secondary">{loading ? text("Refreshing…", "刷新中…") : text("Refresh", "刷新")}</Button>
+          </form>
+        </header>
+        <div className="card-bd card-bd--flush query-browser-body">
+          {response && <StatementFilterEvidence coverage={response.statement_filter} text={text} />}
+          {error && <div className="notice-banner notice-banner--danger query-error" role="alert">{error}</div>}
+          <QueryTable onSelect={(rowKey) => { invalidateRequests(); setLoading(false); setSelectedKey(rowKey); setFetchResult(null); setFetchingId(null); setComparing(false); setCompareError(null); clearQuerySql(); }} queries={response?.queries ?? []} selectedKey={selected ? queryRowKey(selected, response?.queries.indexOf(selected) ?? 0) : null} />
+          {!loading && response && response.queries.length === 0 && <p className="state-box queries-empty-row">{text("No matching queries were returned.", "没有返回匹配的查询。")}</p>}
+          {!ready && <p className="state-box queries-empty-row">{text("Version-sensitive query discovery is unavailable for this connection state:", "当前连接状态无法执行版本敏感的查询发现：")} {localizedEnum(session.state, text)}</p>}
+        </div>
+        <footer className="card-ft query-receipt">
+          <span>{text("100 by default · up to 500", "默认 100 条 · 最多 500 条")} · {text("Actual source / scope:", "实际来源 / 范围：")} {sourceLabel(response?.source, text)} · {response ? localizedEnum(response.filter_scope, text) : text("not loaded", "未加载")}</span>
+          {response?.limitations.length ? <LimitationNotes codes={response.limitations} label={text("Source limitations", "来源限制")} text={text} /> : <span>{text("No source limitation reported", "未报告来源限制")}</span>}
+        </footer>
+      </section>
 
-    <SelectedQuery
-      fetchResult={fetchResult}
-      fetching={fetchingId === selected?.query_id}
-      baselineQuery={baselineQuery}
-      candidateQuery={candidateQuery}
-      compareError={compareError}
-      comparing={comparing}
-      onFetch={() => void fetchProfile()}
-      onViewSql={() => void viewQuerySql()}
-      onCompare={() => void compareSelectedProfiles()}
-      onOpenDoctor={onOpenDoctor}
-      onOpenPlanCheck={onOpenPlanCheck}
-      query={selected}
-      querySql={querySql}
-      querySqlError={querySqlError}
-      querySqlLoading={querySqlLoading}
-      ready={ready}
-      onSetSlot={setComparisonSlot}
-      canCompare={Boolean(onOpenCompare) && connectedComparisonRequest(session, baselineQuery, candidateQuery) !== null}
-    />
-
-    <footer className="query-receipt">
-      <span>{text("100 by default · up to 500", "默认 100 条 · 最多 500 条")}</span>
-      <span>{text("Actual source / scope:", "实际来源 / 范围：")} {sourceLabel(response?.source, text)} · {response ? localizedEnum(response.filter_scope, text) : text("not loaded", "未加载")}</span>
-      {response?.limitations.length ? <LimitationNotes codes={response.limitations} label={text("Source limitations", "来源限制")} text={text} /> : <span>{text("No source limitation reported", "未报告来源限制")}</span>}
-    </footer>
+      <SelectedQuery
+        fetchResult={fetchResult}
+        fetching={fetchingId === selected?.query_id}
+        baselineQuery={baselineQuery}
+        candidateQuery={candidateQuery}
+        compareError={compareError}
+        comparing={comparing}
+        onFetch={() => void fetchProfile()}
+        onViewSql={() => void viewQuerySql()}
+        onCompare={() => void compareSelectedProfiles()}
+        onOpenDoctor={onOpenDoctor}
+        onOpenPlanCheck={onOpenPlanCheck}
+        query={selected}
+        querySql={querySql}
+        querySqlError={querySqlError}
+        querySqlLoading={querySqlLoading}
+        ready={ready}
+        onSetSlot={setComparisonSlot}
+        canCompare={Boolean(onOpenCompare) && connectedComparisonRequest(session, baselineQuery, candidateQuery) !== null}
+      />
+    </div>
   </div>;
 }
 
@@ -322,9 +330,11 @@ function ConnectionEvidence({ session }: { session: ConnectionSessionView }): JS
     [text("Detected", "检测版本"), session.detected_version?.value ?? "unknown", localizedEnum(session.state, text)],
     [text("Database time zone", "数据库时区"), session.time_zone?.effective_time_zone ?? "unknown", session.time_zone ? formatUtcOffset(session.time_zone.current_utc_offset_seconds) : text("probe unavailable", "探测不可用")],
   ];
-  return <details className="connection-details"><summary>{text("Connection details", "连接详情")} · {session.detected_version?.value ?? text("version unknown", "版本未知")} · {session.time_zone?.effective_time_zone ?? text("time zone unknown", "时区未知")}</summary><section className="connection-evidence" aria-label={text("Connection capability evidence", "连接能力证据")}>
-    {facts.map(([label, value, detail]) => <div key={label}><span>{label}</span><strong>{value}</strong><small>{detail}</small></div>)}
-    {Object.entries(session.capabilities).map(([name, state]) => <div key={name}><span title={name}>{capabilityLabel(name, text)}</span><strong className={`capability-${state}`}>{localizedEnum(state, text)}</strong></div>)}
+  return <details className="disclosure connection-details"><summary>{text("Connection details", "连接详情")} · {session.detected_version?.value ?? text("version unknown", "版本未知")} · {session.time_zone?.effective_time_zone ?? text("time zone unknown", "时区未知")}</summary><section className="disclosure-body connection-evidence" aria-label={text("Connection capability evidence", "连接能力证据")}>
+    <div className="connection-evidence-grid">
+      {facts.map(([label, value, detail]) => <div key={label}><span className="muted">{label}</span> <strong className="mono">{value}</strong> <small className="muted">{detail}</small></div>)}
+      {Object.entries(session.capabilities).map(([name, state]) => <div key={name}><span className="muted" title={name}>{capabilityLabel(name, text)}</span> <span className="status-inline"><span className={state === "available" ? "status-dot status-dot--ok" : state === "forbidden" ? "status-dot status-dot--critical" : "status-dot status-dot--hollow"} /><strong>{localizedEnum(state, text)}</strong></span></div>)}
+    </div>
     <LimitationNotes codes={session.limitations} text={text} />
   </section></details>;
 }
@@ -366,21 +376,22 @@ function formatUtcOffset(offsetSeconds: number): string {
 
 function QueryTable({ onSelect, queries, selectedKey }: { onSelect(rowKey: string): void; queries: ConnectedQueryRef[]; selectedKey: string | null }): JSX.Element {
   const { text } = useLocale();
-  return <div className="query-table-wrap"><table aria-label={text("Available queries", "可用查询")} className="query-table">
+  return <div className="query-table-wrap"><table aria-label={text("Available queries", "可用查询")} className="data-table query-table">
     <thead><tr><th>{text("Started", "开始时间")}</th><th>{text("Query ID", "查询 ID")}</th><th>{text("Source", "来源")}</th><th>{text("State", "状态")}</th><th>{text("Database", "数据库")}</th><th>Digest</th><th>{text("Duration", "耗时")}</th><th>{text("Resource group", "资源组")}</th><th>Profile</th></tr></thead>
     <tbody>{queries.map((query, index) => {
       const rowKey = queryRowKey(query, index);
       const selected = rowKey === selectedKey;
-      return <tr className={`query-row${selected ? " selected" : ""}`} key={rowKey} onClick={() => { if (!selected) onSelect(rowKey); }}>
-      <td><button aria-pressed={selected} aria-label={`${text("Select query", "选择查询")} ${query.query_id}`} onClick={(event) => { event.stopPropagation(); onSelect(rowKey); }} title={localizedEnum(query.timestamp_state, text)} type="button">{observedTimeLabel(query)}</button></td>
+      const dotClass = query.status === "finished" ? "status-dot status-dot--ok" : query.status === "error" ? "status-dot status-dot--critical" : query.status === "running" ? "status-dot status-dot--warn" : "status-dot status-dot--hollow";
+      return <tr className={`query-row${selected ? " is-selected" : ""}`} key={rowKey} onClick={() => { if (!selected) onSelect(rowKey); }}>
+      <td><button aria-pressed={selected} aria-label={`${text("Select query", "选择查询")} ${query.query_id}`} className="row-pick-btn mono" onClick={(event) => { event.stopPropagation(); onSelect(rowKey); }} title={localizedEnum(query.timestamp_state, text)} type="button">{observedTimeLabel(query)}</button></td>
       <td title={query.query_id}>{compactQueryId(query.query_id)}</td>
       <td>{sourceLabel(query.discovery_source, text)}</td>
-      <td className="tone-success">{localizedEnum(query.status, text)}</td>
+      <td><span className="status-inline"><span className={dotClass} />{localizedEnum(query.status, text)}</span></td>
       <td>{query.database ?? "—"}</td>
       <td title={query.digest ?? "unavailable"}>{query.digest ? shortId(query.digest) : "—"}</td>
       <td>{queryDurationText(query.query_time_ms)}</td>
       <td>{query.resource_group ?? "—"}</td>
-      <td className={query.profile_fetch.state === "available" ? "tone-success" : "muted"}>{profileAvailabilityLabel(query, text)}</td>
+      <td>{query.profile_fetch.state === "available" ? <span className="status-inline"><span className="status-dot status-dot--ok" />{profileAvailabilityLabel(query, text)}</span> : <span className="state-stamp">{profileAvailabilityLabel(query, text)}</span>}</td>
     </tr>;
     })}</tbody>
   </table></div>;
@@ -441,18 +452,25 @@ function SelectedQuery({ baselineQuery, candidateQuery, canCompare, compareError
     fact(text("Baseline slot", "基线槽位"), baselineQuery ? compactQueryId(baselineQuery.query_id) : null, text("not selected", "未选择")),
     fact(text("Candidate slot", "候选槽位"), candidateQuery ? compactQueryId(candidateQuery.query_id) : null, text("not selected", "未选择")),
   ];
-  return <section className="selected-query" aria-labelledby="selected-query-title">
+  return <section className="card card--detail selected-query" aria-labelledby="selected-query-title">
     {/* Task 69: a fixed title, one scrolling body (facts and SQL), the actions fixed at the bottom. */}
-    <header className="selected-query-head"><h2 id="selected-query-title">{text("Selected query evidence", "已选查询证据")}</h2></header>
-    <div className="selected-query-body">
-    <EvidenceFacts facts={queryFacts} />
-    <div><h2>{text("Profile evidence", "Profile 证据")}</h2><EvidenceFacts facts={profileFacts} /></div>
-    {visibleSql !== null && <SqlText className="query-sql" copyLabel={text("Copy SQL", "复制 SQL")} id="selected-query-sql" label={text("Selected query SQL", "已选查询 SQL")} value={visibleSql} />}
+    <header className="card-hd selected-query-head">
+      <h2 className="card-title" id="selected-query-title">{text("Selected query evidence", "已选查询证据")}</h2>
+      <InfoTip label={text("Comparison boundary", "对比边界")} side="bottom">{text("Candidate Profile must come from a user-side controlled rerun. The product sends only query references and does not execute SQL.", "候选 Profile 必须来自用户侧受控重跑。产品只发送查询引用，不执行 SQL。")}</InfoTip>
+    </header>
+    <div className="card-bd selected-query-body">
+      <EvidenceFacts facts={queryFacts} />
+      <div className="selected-query-section"><span className="field-label">{text("Profile evidence", "Profile 证据")}</span><EvidenceFacts facts={profileFacts} /></div>
+      {visibleSql !== null && <SqlText className="query-sql" copyLabel={text("Copy SQL", "复制 SQL")} id="selected-query-sql" label={text("Selected query SQL", "已选查询 SQL")} value={visibleSql} />}
+      {query?.plan_check.state === "unavailable" ? <p className="connected-action-reason muted">{planAvailabilityLabel(query, text)}</p> : null}
+      <p className="connected-compare-boundary muted" role={compareError ? "alert" : undefined}>{compareError ? comparisonErrorLabel(compareError, text) : text("Candidate Profile must come from a user-side controlled rerun. The product sends only query references and does not execute SQL.", "候选 Profile 必须来自用户侧受控重跑。产品只发送查询引用，不执行 SQL。")}</p>
+      {querySqlError && <div className="notice-banner notice-banner--danger query-sql-error" role="alert">{querySqlError}</div>}
     </div>
-    <div aria-busy={fetching || comparing || querySqlLoading} className="selected-query-actions">
-      <SqlToggleButton controls="selected-query-sql" disabled={!ready || !query || query.discovery_generation === null} expanded={visibleSql !== null} loading={querySqlLoading} onToggle={onViewSql} />
-      <button className="button accent" disabled={!ready || !fetchAvailable || fetching} onClick={onFetch} title={query ? profileAvailabilityLabel(query, text) : undefined} type="button">{fetching ? text("Fetching…", "拉取中…") : text("Fetch profile", "拉取 Profile")}</button>
-      <button className="button secondary" disabled={!ready || !planAvailable || !onOpenPlanCheck} title={query ? planAvailabilityLabel(query, text) : undefined} onClick={() => {
+    <footer aria-busy={fetching || comparing || querySqlLoading} className="card-ft selected-query-actions">
+      <Button disabled={!ready || !fetchAvailable || fetching} onClick={onFetch} size="sm" title={query ? profileAvailabilityLabel(query, text) : undefined} variant="primary">{fetching ? text("Fetching…", "拉取中…") : text("Fetch profile", "拉取 Profile")}</Button>
+      <Button disabled={!doctorProfile || !onOpenDoctor} onClick={() => { if (doctorProfile) onOpenDoctor?.(doctorProfile); }} size="sm" title={doctorProfile && onOpenDoctor ? undefined : text("A fetched report payload for the selected query is required before Doctor can open.", "打开诊断前需要当前所选查询的已拉取报告载荷。")} variant="secondary">{text("Open Doctor", "打开诊断")}</Button>
+      <SqlToggleButton className="btn btn-secondary btn--sm" controls="selected-query-sql" disabled={!ready || !query || query.discovery_generation === null} expanded={visibleSql !== null} loading={querySqlLoading} onToggle={onViewSql} />
+      <Button disabled={!ready || !planAvailable || !onOpenPlanCheck} onClick={() => {
         if (query && query.discovery_generation !== null && query.plan_check.state === "available") onOpenPlanCheck?.({
           input_kind: "plan_sql_reference",
           connection_id: query.connection_id,
@@ -461,23 +479,19 @@ function SelectedQuery({ baselineQuery, candidateQuery, canCompare, compareError
           discovery_generation: query.discovery_generation,
           plan_sql_ref: query.plan_check.plan_sql_ref,
         });
-      }} type="button">{text("Plan Check", "计划检查")}</button>
-      {query?.plan_check.state === "unavailable" ? <p className="connected-action-reason">{planAvailabilityLabel(query, text)}</p> : null}
-      <button className="button secondary" disabled={!doctorProfile || !onOpenDoctor} onClick={() => { if (doctorProfile) onOpenDoctor?.(doctorProfile); }} title={doctorProfile && onOpenDoctor ? undefined : text("A fetched report payload for the selected query is required before Doctor can open.", "打开诊断前需要当前所选查询的已拉取报告载荷。") } type="button">{text("Open Doctor", "打开诊断")}</button>
-      <button className="button secondary" disabled={!ready || !fetchAvailable || comparing || Boolean(candidateQuery && query && sameQueryId(candidateQuery.query_id, query.query_id))} onClick={() => onSetSlot("baseline")} type="button">{baselineQuery && query && sameQueryId(baselineQuery.query_id, query.query_id) ? text("Baseline selected", "已设为基线") : text("Set baseline", "设为基线")}</button>
-      <button className="button secondary" disabled={!ready || !fetchAvailable || comparing || Boolean(baselineQuery && query && sameQueryId(baselineQuery.query_id, query.query_id))} onClick={() => onSetSlot("candidate")} type="button">{candidateQuery && query && sameQueryId(candidateQuery.query_id, query.query_id) ? text("Candidate selected", "已设为候选项") : text("Set candidate", "设为候选项")}</button>
-      <button className="button accent" disabled={!canCompare || comparing} onClick={onCompare} type="button">{comparing ? text("Comparing…", "对比中…") : text("Compare selected Profiles", "对比已选 Profile")}</button>
-      <p className="connected-compare-boundary" role={compareError ? "alert" : undefined}>{compareError ? comparisonErrorLabel(compareError, text) : text("Candidate Profile must come from a user-side controlled rerun. The product sends only query references and does not execute SQL.", "候选 Profile 必须来自用户侧受控重跑。产品只发送查询引用，不执行 SQL。")}</p>
-      {querySqlError && <p className="query-sql-error" role="alert">{querySqlError}</p>}
-    </div>
+      }} size="sm" title={query ? planAvailabilityLabel(query, text) : undefined} variant="secondary">{text("Plan Check", "计划检查")}</Button>
+      <Button disabled={!ready || !fetchAvailable || comparing || Boolean(candidateQuery && query && sameQueryId(candidateQuery.query_id, query.query_id))} onClick={() => onSetSlot("baseline")} size="sm" variant="secondary">{baselineQuery && query && sameQueryId(baselineQuery.query_id, query.query_id) ? text("Baseline selected", "已设为基线") : text("Set baseline", "设为基线")}</Button>
+      <Button disabled={!ready || !fetchAvailable || comparing || Boolean(baselineQuery && query && sameQueryId(baselineQuery.query_id, query.query_id))} onClick={() => onSetSlot("candidate")} size="sm" variant="secondary">{candidateQuery && query && sameQueryId(candidateQuery.query_id, query.query_id) ? text("Candidate selected", "已设为候选项") : text("Set candidate", "设为候选项")}</Button>
+      <Button disabled={!canCompare || comparing} onClick={onCompare} size="sm" variant="primary">{comparing ? text("Comparing…", "对比中…") : text("Compare selected Profiles", "对比已选 Profile")}</Button>
+    </footer>
   </section>;
 }
 
 type EvidenceFact = readonly [label: string, value: string, kind: "mono" | "text" | "missing"];
 
-/** dd textContent stays the plain value; the kind only picks mono, sans or a dashed missing tag. */
+/** dd textContent stays the plain value; the kind only picks mono, sans or a stamp missing tag. */
 function EvidenceFacts({ facts }: { facts: readonly EvidenceFact[] }): JSX.Element {
-  return <dl>{facts.map(([label, value, kind]) => <div key={label}><dt>{label}</dt><dd className={`fact-${kind}`}>{kind === "missing" ? <span className="fact-missing-tag">{value}</span> : value}</dd></div>)}</dl>;
+  return <dl className="kv-grid">{facts.map(([label, value, kind]) => <div className="selected-query-fact-row" key={label}><dt>{label}</dt><dd className={`fact-${kind}${kind === "mono" ? " mono" : ""}`}>{kind === "missing" ? <span className="state-stamp fact-missing-tag">{value}</span> : value}</dd></div>)}</dl>;
 }
 
 export function reportForSelectedQuery(
@@ -542,27 +556,27 @@ function observedTimeLabel(query: ConnectedQueryRef): string {
   return query.observed_at_local ?? "—";
 }
 
+const PROFILE_AVAILABILITY_REASONS: Record<string, readonly [string, string]> = {
+  query_id_invalid: ["Invalid query ID", "查询 ID 无效"],
+  query_id_duplicate: ["Duplicate query ID", "查询 ID 重复"],
+  query_not_finished: ["Query not finished", "查询尚未完成"],
+};
+
 function profileAvailabilityLabel(query: ConnectedQueryRef, text: LocalizedText): string {
   if (query.profile_fetch.state === "available") return text("Available to fetch", "可尝试拉取");
-  const reasons: Record<string, [string, string]> = {
-    query_id_invalid: ["Invalid query ID", "查询 ID 无效"],
-    query_id_duplicate: ["Duplicate query ID", "查询 ID 重复"],
-    query_not_finished: ["Query not finished", "查询尚未完成"],
-  };
-  const copy = reasons[query.profile_fetch.reason];
-  return copy ? text(...copy) : localizedEnum(query.profile_fetch.reason, text);
+  return lookupEnumLabel(PROFILE_AVAILABILITY_REASONS, query.profile_fetch.reason, text);
 }
+
+const PLAN_AVAILABILITY_REASONS: Record<string, readonly [string, string]> = {
+  statement_missing_or_not_select: ["Statement is missing or is not a single SELECT/WITH", "语句缺失或不是单条 SELECT/WITH"],
+  query_metadata_unavailable: ["Query metadata is unavailable", "查询元数据不可用"],
+  query_id_invalid: ["Invalid query ID", "查询 ID 无效"],
+  query_id_duplicate: ["Duplicate query ID", "查询 ID 重复"],
+};
 
 function planAvailabilityLabel(query: ConnectedQueryRef, text: LocalizedText): string {
   if (query.plan_check.state === "available") return text("Available for Plan Check", "可执行计划检查");
-  const reasons: Record<string, [string, string]> = {
-    statement_missing_or_not_select: ["Statement is missing or is not a single SELECT/WITH", "语句缺失或不是单条 SELECT/WITH"],
-    query_metadata_unavailable: ["Query metadata is unavailable", "查询元数据不可用"],
-    query_id_invalid: ["Invalid query ID", "查询 ID 无效"],
-    query_id_duplicate: ["Duplicate query ID", "查询 ID 重复"],
-  };
-  const copy = reasons[query.plan_check.reason];
-  return copy ? text(...copy) : localizedEnum(query.plan_check.reason, text);
+  return lookupEnumLabel(PLAN_AVAILABILITY_REASONS, query.plan_check.reason, text);
 }
 
 function shortId(value: string): string {
@@ -590,7 +604,7 @@ export function isConnectionExpiredFailure(cause: unknown): boolean {
     && (cause.message === "connection_expired" || cause.message === "connection_session_expired");
 }
 
-const capabilityLabels: Record<string, [string, string]> = {
+const capabilityLabels: Record<string, readonly [string, string]> = {
   version_probe: ["Version check", "版本探测"],
   time_zone: ["Time zone", "时区"],
   audit: ["Audit log", "审计日志"],
@@ -603,6 +617,5 @@ const capabilityLabels: Record<string, [string, string]> = {
 };
 
 function capabilityLabel(name: string, text: LocalizedText): string {
-  const label = capabilityLabels[name];
-  return label ? text(...label) : name;
+  return lookupEnumLabel(capabilityLabels, name, text);
 }

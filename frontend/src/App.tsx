@@ -6,8 +6,9 @@ import { forgetResumableSession, readResumableSession, rememberResumableSession 
 import { connectionReducer, initialConnectionState, type ConnectionAction } from "./features/connection/connection-state";
 import { DoctorWorkspace } from "./features/doctor/DoctorWorkspace";
 import { ReportExportButton } from "./features/export/ReportExportButton";
+import { Button, Card, Icon, SegTabs } from "./design";
 import { ContextBar } from "./features/shell/ContextBar";
-import { HeaderStatusText } from "./features/shell/HeaderStatusText";
+import { TopBar, localizedSessionStatus } from "./features/shell/TopBar";
 import { FirstRunPage } from "./features/start/FirstRunPage";
 import { runningSnapshotMatchesBinding } from "./features/execution/running-official-binding";
 import { OfficialAdvisorGuides } from "./features/recommendations/RecommendationsPanel";
@@ -15,14 +16,11 @@ import { QueriesWorkspace } from "./features/queries/QueriesWorkspace";
 import { QueryCapabilityChips } from "./features/queries/QueryCapabilityChips";
 import { SqlAnalysisWorkspace, type SqlAnalysisWorkspaceStage } from "./features/plan/SqlAnalysisWorkspace";
 import { advanceSqlExecutionAttempt, attemptForConnection, canDispatchSqlExecution, createSqlExecutionAttempt, emptySqlWorkspaceDraft, type SqlExecutionAttempt, type SqlWorkspaceDraft } from "./app-sql-workspace-state";
-import { useLocale, type LocalizedText } from "./i18n/locale";
+import { useLocale } from "./i18n/locale";
 import { CONNECTION_EXPIRED_EVENT, doctorApi } from "./lib/api";
-import { CollectionCapsule, monitorGeneration, useHistoryStatus, type MonitoringTab } from "./features/history/history-status";
+import { monitorGeneration, useHistoryStatus } from "./features/history/history-status";
 import type { LoadFocus } from "./features/loads/LoadWorkspace";
-import { motion } from "motion/react";
-import { AppMotion, LAYOUT_SPRING, useEntrance } from "./features/shell/motion";
-import { useSegmentIndicators } from "./features/shell/motion-enhance";
-import { Icon, Tip, TooltipProvider } from "./features/shell/ui";
+import { AppMotion, useEntrance } from "./features/shell/motion";
 import { SettingsWorkspace, type SettingsSection } from "./features/settings/SettingsWorkspace";
 import { AlertsSummaryCard } from "./features/overview/AlertsSummaryCard";
 
@@ -32,7 +30,7 @@ const AuditWorkloadWorkspace = lazy(() => import("./features/audit/AuditWorkload
 const CompareWorkspace = lazy(() => import("./features/compare/CompareWorkspace").then((module) => ({ default: module.CompareWorkspace })));
 const PendingComparison = lazy(() => import("./features/compare/CompareWorkspace").then((module) => ({ default: module.PendingComparison })));
 const OfflineCompareForm = lazy(() => import("./features/compare/OfflineCompareForm").then((module) => ({ default: module.OfflineCompareForm })));
-const HistoryWorkspace = lazy(() => import("./features/history/HistoryWorkspace").then((module) => ({ default: module.HistoryWorkspace })));
+const TrendsWorkspace = lazy(() => import("./features/history/HistoryWorkspace").then((module) => ({ default: module.TrendsWorkspace })));
 const AlertsWorkspace = lazy(() => import("./features/history/MonitoringWorkspaces").then((module) => ({ default: module.AlertsWorkspace })));
 const GovernanceWorkspace = lazy(() => import("./features/history/MonitoringWorkspaces").then((module) => ({ default: module.GovernanceWorkspace })));
 const LoadWorkspace = lazy(() => import("./features/loads/LoadWorkspace").then((module) => ({ default: module.LoadWorkspace })));
@@ -161,7 +159,7 @@ export function App(): JSX.Element {
   const [overviewTab, setOverviewTab] = useState<"performance" | "trends">("performance");
   const openDoctor = (mode: DoctorMode) => { setDoctorMode(mode); setWorkspace("Doctor"); };
   const contentRef = useRef<HTMLElement>(null);
-  useSegmentIndicators();
+  const swapControllerRef = useRef<AbortController | null>(null);
   useEntrance(contentRef, workspace === "Doctor" ? `Doctor:${doctorMode}` : workspace === "Alerts" ? `Alerts:${alertsView}` : workspace);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [queryMode, setQueryMode] = useState<QueryMode | null>(null);
@@ -285,7 +283,6 @@ export function App(): JSX.Element {
   const doctorReport = doctorEvidence?.value.outcome.report ?? report;
   const doctorReportOrigin = doctorEvidence?.value.input_origin ?? reportOrigin;
   const history = useHistoryStatus(readySessionId);
-  const [monitoringTab, setMonitoringTab] = useState<MonitoringTab>("trends");
   const [trendFocus, setTrendFocus] = useState<string | null>(null);
   const [governanceFocus, setGovernanceFocus] = useState<string | null>(null);
   // The cluster the monitoring views show: the user's pick, else the one this
@@ -297,7 +294,7 @@ export function App(): JSX.Element {
   // Review: "collection and history" entries open that section, not the default one.
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("notify");
   const openSettings = (section: SettingsSection) => { setSettingsSection(section); setWorkspace("Settings"); };
-  const openTrends = (templateKey: string, target: string) => { if (target) setPickedTarget(target); setTrendFocus(templateKey); setMonitoringTab("trends"); setOverviewTab("trends"); setWorkspace("Overview"); };
+  const openTrends = (templateKey: string, target: string) => { if (target) setPickedTarget(target); setTrendFocus(templateKey); setOverviewTab("trends"); setWorkspace("Overview"); };
   const openGovernanceItem = (itemId: string) => { setGovernanceFocus(itemId); setAlertsView("governance"); setWorkspace("Alerts"); };
   const openAlerts = Number(history.status?.open_alerts ?? "0");
   // Paused Routine Load jobs as the load workspace last read them; a new session starts unknown.
@@ -592,10 +589,22 @@ export function App(): JSX.Element {
     const current = connectedComparison;
     const generation = current?.baseline.query.discovery_generation ?? null;
     if (!current || !connectionSession || generation === null || current.baseline.query.connection_id !== connectionSession.connection_id) return;
+    // A late swap response must never overwrite a newer comparison.
+    swapControllerRef.current?.abort();
+    const controller = new AbortController();
+    swapControllerRef.current = controller;
+    const isCurrent = () => swapControllerRef.current === controller && !controller.signal.aborted;
     setSwapError(null);
-    doctorApi.compareConnectedProfiles({ connection_id: connectionSession.connection_id, baseline_query_id: current.candidate.query.query_id, candidate_query_id: current.baseline.query.query_id, discovery_generation: generation })
-      .then(acceptConnectedComparison)
-      .catch(() => setSwapError(text("The swapped comparison could not be read; refresh the query list and compare again.", "交换后的对比读取失败；请刷新查询列表后重新对比。")));
+    doctorApi.compareConnectedProfiles({ connection_id: connectionSession.connection_id, baseline_query_id: current.candidate.query.query_id, candidate_query_id: current.baseline.query.query_id, discovery_generation: generation }, controller.signal)
+      .then((next) => { if (isCurrent()) acceptConnectedComparison(next); })
+      .catch(() => { if (isCurrent()) setSwapError(text("The swapped comparison could not be read; refresh the query list and compare again.", "交换后的对比读取失败；请刷新查询列表后重新对比。")); })
+      .finally(() => { if (swapControllerRef.current === controller) swapControllerRef.current = null; });
+  };
+  const replaceComparison = () => {
+    swapControllerRef.current?.abort();
+    setComparison(null);
+    setConnectedComparison(null);
+    setSwapError(null);
   };
   const setBaselineFromProfile = (profile: ProfileFetchResponse) => {
     const query = doctorQueryForAcceptedProfile(profile, connectionSession);
@@ -620,69 +629,114 @@ export function App(): JSX.Element {
 
   // The first-run page carries its own import card, so the header drops its import button (design board 05).
   const firstRun = workspace === "Queries" && !connectionSession;
-  // Both views open without an analysis: diagnosis offers the import, comparison the offline form.
-  const doctorModes: { id: DoctorMode; label: string; disabled: boolean }[] = [
-    { id: "diagnosis", label: text("Diagnosis", "诊断"), disabled: false },
-    { id: "compare", label: text("Compare", "对比"), disabled: false },
-  ];
-  const doctorModeSwitch = <div aria-label={text("Doctor view", "诊断视图")} className="seg-tabs doctor-modes" role="tablist">
-    {doctorModes.map((mode) => <button aria-selected={doctorMode === mode.id} className={doctorMode === mode.id ? "active" : ""} disabled={mode.disabled} key={mode.id} onClick={() => { if (mode.id === "diagnosis") setImporting(false); setDoctorMode(mode.id); }} role="tab" type="button">{mode.label}</button>)}
-  </div>;
-  const alertsViewSwitch = <div aria-label={text("Alert views", "告警视图")} className="seg-tabs alerts-views" role="tablist">
-    {(["alerts", "governance"] as AlertsView[]).map((item) => <button aria-selected={alertsView === item} className={alertsView === item ? "active" : ""} key={item} onClick={() => setAlertsView(item)} role="tab" type="button">{item === "alerts" ? text("Alerts", "告警") : text("Governance queue", "治理队列")}</button>)}
-  </div>;
-  const navCount = (item: Workspace): number | null => item === "Alerts" && openAlerts > 0 ? openAlerts : item === "Loads" && pausedLoadCount > 0 ? pausedLoadCount : null;
+  const canSwapComparison = Boolean(connectedComparison && connectedComparison.baseline.query.connection_id === connectionSession?.connection_id);
+  const alertsViewSwitch = (
+    <SegTabs<AlertsView>
+      aria-label={text("Alert views", "告警视图")}
+      className="alerts-views"
+      items={[
+        { value: "alerts", label: text("Alerts", "告警") },
+        { value: "governance", label: text("Governance queue", "治理队列") },
+      ]}
+      onValueChange={(next) => { setGovernanceFocus(null); setAlertsView(next); }}
+      value={alertsView}
+    />
+  );
+  const doctorContextActions = doctorMode === "diagnosis" ? (
+    <>
+      {doctorBaseline ? (
+        <Button
+          onClick={() => {
+            setCompareBaseline(doctorBaseline);
+            setComparison(null);
+            setConnectedComparison(null);
+            setDoctorMode("compare");
+          }}
+          size="sm"
+          variant="secondary"
+        >
+          {text("Set as baseline and compare", "设为基线并对比")}
+        </Button>
+      ) : null}
+      {doctorReport && !importing ? (
+        <ReportExportButton label={text("Export report", "导出报告")} request={{ kind: "analysis", snapshot: doctorReport }} />
+      ) : null}
+    </>
+  ) : (
+    <>
+      {canSwapComparison ? (
+        <Button
+          onClick={swapConnectedComparison}
+          size="sm"
+          title={text("Swap baseline and candidate Profiles", "交换基线与候选 Profile 并重新比较")}
+          variant="secondary"
+        >
+          ⇄ <span className="hide-lt-1440">{text("Swap baseline / candidate", "交换基线/候选")}</span>
+        </Button>
+      ) : null}
+      {comparison ? (
+        <Button onClick={replaceComparison} size="sm" variant="secondary">{text("Replace Profiles", "替换 Profile")}</Button>
+      ) : null}
+      {comparison ? (
+        <ReportExportButton label={text("Export comparison", "导出对比报告")} request={{ kind: "comparison", snapshot: comparison }} />
+      ) : null}
+    </>
+  );
   return (
-    <AppMotion><TooltipProvider>
+    <AppMotion>
     <main className="app-shell">
-      <header className="app-header">
-        <div className="product-lockup">
-          <svg aria-hidden="true" height="18" viewBox="0 0 18 18" width="18"><rect fill="currentColor" height="18" rx="5" width="18" /><path d="M5 5.5h8M5 9h8M5 12.5h8" stroke="#fff" strokeLinecap="round" strokeWidth="1.6" /></svg>
-          <strong>SR Doctor</strong>
-        </div>
-        <nav className="workspace-nav" aria-label={text("Workspaces", "工作区")}>
-          {workspaces.map((item) => {
-            const current = workspace === item;
-            const count = navCount(item);
-            return <button aria-current={current ? "page" : undefined} disabled={item === "Doctor" && firstRun && !doctorReport} key={item} onClick={() => { if (item === "Doctor") setImporting(false); if (item === "Loads") setLoadFocus(null); setWorkspace(item); }} type="button">
-              {current ? <motion.span aria-hidden="true" className="nav-indicator" layoutId="nav-indicator" transition={LAYOUT_SPRING} /> : null}
-              <span>{workspaceLabel(item, text)}</span>
-              {count !== null ? <span className="nav-count" aria-label={item === "Alerts" ? text(`${count} new alerts`, `${count} 条新告警`) : text(`${count} paused jobs`, `${count} 个作业已暂停`)}>{count}</span> : null}
-            </button>;
-          })}
-        </nav>
-        <div className="header-actions">
-          <CollectionCapsule onOpen={() => openSettings("history")} status={history.status} />
-          <button aria-describedby="connection-pill-status" aria-expanded={dialogOpen} aria-haspopup="dialog" aria-label={connected ? text("Manage connection", "管理连接") : text("Connect", "连接")} className={`connection-pill ${connectionTone(connection)}`} onClick={() => setDialogOpen(true)} ref={connectionTriggerRef} title={localizedSessionStatus(connection, text)} type="button"><span id="connection-pill-status"><HeaderStatusText value={localizedSessionStatus(connection, text)} /></span></button>
-          {firstRun ? null : <button className="button secondary header-import" onClick={openImport} title={text("Import profile", "导入 Profile")} type="button"><Icon name="upload" /><span className="header-detail">{text("Import profile", "导入 Profile")}</span></button>}
-          <Tip content={text("Settings", "设置")} side="bottom">
-            <button aria-current={workspace === "Settings" ? "page" : undefined} aria-label={text("Settings", "设置")} className="icon-button" onClick={() => openSettings("notify")} type="button"><Icon name="settings" size={18} /></button>
-          </Tip>
-        </div>
-      </header>
-      {doctorReport && workspace === "Doctor" && doctorMode === "diagnosis" && !importing ? <ContextBar
-        actions={<>
-          {doctorModeSwitch}
-          <ReportExportButton label={text("Export report", "导出报告")} request={{ kind: "analysis", snapshot: doctorReport }} />
-          {doctorBaseline
-            ? <button className="button secondary" onClick={() => { setCompareBaseline(doctorBaseline); setComparison(null); setConnectedComparison(null); setDoctorMode("compare"); }} type="button">{text("Set as baseline and compare", "设为基线并对比")}</button>
-            : null}
-        </>}
-        inputOrigin={doctorReportOrigin}
-        observedAtUtc={currentDoctorQuery?.observed_at_utc ?? null}
-        onReturnToQueries={() => setWorkspace("Queries")}
-        report={doctorReport}
-      /> : null}
-      {workspace === "Doctor" && (doctorMode === "compare" || !doctorReport || importing) ? <div className="doctor-mode-bar">{doctorModeSwitch}</div> : null}
+      <TopBar
+        connected={connected}
+        connection={connection}
+        connectionTriggerRef={connectionTriggerRef}
+        dialogOpen={dialogOpen}
+        firstRun={firstRun}
+        hasDoctorReport={Boolean(doctorReport)}
+        historyStatus={history.status}
+        onImport={openImport}
+        onOpenCollection={() => openSettings("history")}
+        onOpenConnection={() => setDialogOpen(true)}
+        onOpenSettings={() => openSettings("notify")}
+        onSelectWorkspace={(item) => {
+          if (item === "Doctor") setImporting(false);
+          if (item === "Loads") setLoadFocus(null);
+          setWorkspace(item);
+        }}
+        openAlerts={openAlerts}
+        pausedLoadCount={pausedLoadCount}
+        workspace={workspace}
+      />
+      {workspace === "Doctor" ? (
+        <ContextBar
+          actions={doctorContextActions}
+          compareBaselineQueryId={compareBaseline?.query.query_id ?? null}
+          comparison={comparison}
+          connectedComparison={connectedComparison}
+          importing={importing}
+          inputOrigin={doctorReportOrigin}
+          mode={doctorMode}
+          observedAtUtc={currentDoctorQuery?.observed_at_utc ?? null}
+          onModeChange={(nextMode) => {
+            if (nextMode === "diagnosis") setImporting(false);
+            setDoctorMode(nextMode);
+          }}
+          onReturnToQueries={() => setWorkspace("Queries")}
+          report={doctorReport}
+        />
+      ) : null}
       <section className={`workspace-content workspace-${workspace === "Doctor" && doctorMode !== "diagnosis" ? doctorMode : workspace.toLowerCase()}`} ref={contentRef}>
-        <Suspense fallback={<p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}>
-        {workspace === "Overview" && <div className="overview-bar">
-          <div aria-label={text("Overview view", "总览视图")} className="seg-tabs" role="tablist">
-            <button aria-selected={overviewTab === "performance"} className={overviewTab === "performance" ? "active" : ""} onClick={() => setOverviewTab("performance")} role="tab" type="button">{text("Performance", "性能")}</button>
-            <button aria-selected={overviewTab === "trends"} className={overviewTab === "trends" ? "active" : ""} onClick={() => setOverviewTab("trends")} role="tab" type="button">{text("Template trends", "模板趋势")}</button>
-          </div>
-          {overviewTab === "performance" && !overviewAudit ? <span className="overview-bar-note">{connectionSession ? text("This connection has no audit table; the history store's trends are shown.", "当前连接没有审计表，显示历史库的趋势。") : text("Connect to see the audit performance overview; the history store's trends are shown.", "连接后显示审计性能概览；当前显示历史库的趋势。")}</span> : null}
-          {overviewTab === "performance" && !connectionSession ? <button className="button secondary" onClick={() => setDialogOpen(true)} type="button">{text("Connect", "连接")}</button> : null}
+        {workspace === "Overview" && <div className="workspace-bar overview-bar">
+          <SegTabs<"performance" | "trends">
+            aria-label={text("Overview view", "总览视图")}
+            items={[
+              { value: "performance", label: text("Performance overview", "性能概览") },
+              { value: "trends", label: text("30-day template trends", "30 天模板趋势") },
+            ]}
+            onValueChange={setOverviewTab}
+            value={overviewTab}
+          />
+          {overviewTab === "performance" && !overviewAudit ? <span className="card-subtitle overview-bar-note">{connectionSession ? text("This connection has no audit table; the history store's trends are shown.", "当前连接没有审计表，显示历史库的趋势。") : text("Connect to see the audit performance overview; the history store's trends are shown.", "连接后显示审计性能概览；当前显示历史库的趋势。")}</span> : null}
+          {overviewTab === "performance" && !connectionSession ? <div className="workspace-bar-right"><Button onClick={() => setDialogOpen(true)} size="sm" variant="secondary">{text("Connect", "连接")}</Button></div> : null}
         </div>}
         {/* Kept mounted: the query list, selection and filters survive a round trip to Doctor. */}
         <div className="queries-shell" hidden={!(workspace === "Queries" || overviewAudit)}>
@@ -690,13 +744,19 @@ export function App(): JSX.Element {
           {/* No session: offer offline import and the read-only connection side by side. */}
           {!connectionSession ? <FirstRunPage connection={connection} dispatch={dispatchUserConnection} maxInputBytes={maxInputBytes} onReport={acceptReport} onSessionEnded={invalidateConnectedArtifacts} onSessionExpired={expireConnection} /> : <>
           <AuditFallbackBanner session={connectionSession} workspace={workspace} />
-          <div className="queries-toolbar" hidden={workspace !== "Queries"}>
+          <div className="workspace-bar queries-toolbar" hidden={workspace !== "Queries"}>
             {/* Task 64: the three lists are one switch; the SQL workspace is the action at the end of the row. */}
-            <div className="query-modes seg-tabs" role="tablist" aria-label={text("How to pick a query", "选择查询的方式")}>
-              {queryModes.filter((mode) => mode.available && mode.id !== "sql").map((mode) => <button aria-selected={activeQueryMode === mode.id} className={activeQueryMode === mode.id ? "active" : ""} key={mode.id} onClick={() => switchQueryMode(mode.id)} role="tab" type="button">{mode.label}</button>)}
+            <SegTabs<QueryMode>
+              aria-label={text("How to pick a query", "选择查询的方式")}
+              className="query-modes"
+              items={queryModes.filter((mode) => mode.available && mode.id !== "sql").map((mode) => ({ value: mode.id, label: mode.label }))}
+              onValueChange={switchQueryMode}
+              value={activeQueryMode}
+            />
+            <div className="workspace-bar-right">
+              <QueryCapabilityChips session={connectionSession} />
+              <Button aria-pressed={activeQueryMode === "sql"} className="query-run-sql" onClick={() => switchQueryMode("sql")} size="sm" variant={activeQueryMode === "sql" ? "primary" : "secondary"}><Icon name="play" size={14} />{text("Run SQL", "运行 SQL")}</Button>
             </div>
-            <QueryCapabilityChips session={connectionSession} />
-            <button aria-pressed={activeQueryMode === "sql"} className={`button ${activeQueryMode === "sql" ? "accent" : "secondary"} query-run-sql`} onClick={() => switchQueryMode("sql")} type="button"><Icon name="play" size={14} />{text("Run SQL", "运行 SQL")}</button>
           </div>
           {/* Its own boundary: loading one view keeps the mode tabs above it in place. */}
           <div className={`queries-view queries-view-${overviewAudit ? "audit" : activeQueryMode}`} ref={queryViewRef}><Suspense fallback={<p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}>
@@ -720,10 +780,13 @@ export function App(): JSX.Element {
               planSnapshot={currentExplainSnapshot}
               sql={currentExecutionAttempt?.sqlSnapshot ?? sqlDraft.value}
               stage={sqlWorkspaceStage}
-            /> : <section className="panel"><h2>{text("SQL workspace", "SQL 工作区")}</h2><p className="muted">{text("Connect to a database to view a plan or capture a Profile.", "连接数据库后可查看计划或采集 Profile。")}</p><button className="button secondary" onClick={() => setDialogOpen(true)} type="button">{text("Connect", "连接")}</button></section>)}
+            /> : <Card footer={<Button onClick={() => setDialogOpen(true)} size="sm" variant="primary">{text("Connect", "连接")}</Button>} title={text("SQL workspace", "SQL 工作区")} variant="detail"><p className="muted">{text("Connect to a database to view a plan or capture a Profile.", "连接数据库后可查看计划或采集 Profile。")}</p></Card>)}
           </Suspense></div>
           </>}
         </div>
+        {/* Lazy workspaces suspend here, outside the kept-mounted query shell: hiding that shell would
+            re-run its effects, reload the audit list and clear a comparison just opened from it. */}
+        <Suspense fallback={<p className="workspace-loading" role="status">{text("Loading…", "正在加载…")}</p>}>
         {workspace === "Doctor" && doctorMode === "diagnosis" && <DoctorWorkspace
           focusNodeId={focusNodeId}
           importing={importing}
@@ -750,29 +813,30 @@ export function App(): JSX.Element {
             candidateOrigin={comparison ? connectedComparison?.candidate.input_origin ?? "offline_import" : null}
             comparison={comparison}
             connectedComparison={connectedComparison}
-            onReplace={comparison ? () => { setComparison(null); setConnectedComparison(null); setSwapError(null); } : undefined}
+            onReplace={comparison ? replaceComparison : undefined}
             onSwap={connectedComparison && connectedComparison.baseline.query.connection_id === connectionSession?.connection_id ? swapConnectedComparison : undefined}
           />
         </>}
-        {workspace === "Overview" && !overviewAudit && <HistoryWorkspace connectionId={readySessionId} focusTemplate={trendFocus} history={history} onOpenDoctor={acceptConnectedReport} onOpenItem={openGovernanceItem} onOpenQueries={() => setWorkspace("Queries")} onSessionExpired={expireConnection} onTab={(tab) => { if (tab === "collection") openSettings("history"); else setMonitoringTab(tab); }} onTarget={setPickedTarget} onTargets={setKnownTargets} tab="trends" target={monitorTarget} />}
+        {workspace === "Overview" && !overviewAudit && <TrendsWorkspace connectionId={readySessionId} focusTemplate={trendFocus} history={history} onOpenDoctor={acceptConnectedReport} onOpenItem={openGovernanceItem} onOpenQueries={() => setWorkspace("Queries")} onSessionExpired={expireConnection} onTarget={setPickedTarget} onTargets={setKnownTargets} target={monitorTarget} />}
         {workspace === "Settings" && <SettingsWorkspace
-          onSection={setSettingsSection}
-          section={settingsSection}
-          collection={<HistoryWorkspace connectionId={readySessionId} focusTemplate={null} history={history} onOpenDoctor={acceptConnectedReport} onOpenItem={openGovernanceItem} onOpenQueries={() => setWorkspace("Queries")} onSessionExpired={expireConnection} onTab={(tab) => { if (tab === "trends") { setOverviewTab("trends"); setWorkspace("Overview"); } }} onTarget={setPickedTarget} onTargets={setKnownTargets} tab="collection" target={monitorTarget} />}
+          connectionId={readySessionId}
           connectionStatus={localizedSessionStatus(connection, text)}
+          history={history}
           locale={locale}
           onLocale={setLocale}
           onOpenConnection={() => setDialogOpen(true)}
+          onSection={setSettingsSection}
+          section={settingsSection}
+          tlsMode={connectionSession?.tls_mode ?? null}
         />}
-        {workspace === "Alerts" && alertsView === "governance" && alertsViewSwitch}
         {workspace === "Alerts" && alertsView === "alerts" && <AlertsWorkspace leading={alertsViewSwitch} generation={monitorGeneration(history.status)} initialCategory={alertCategory} key={alertCategory} onChanged={history.refresh} onOpenItem={openGovernanceItem} onOpenLoadHistory={(focus) => openLoads({ view: "history", ...focus })} onOpenQueries={() => setWorkspace("Queries")} onOpenTrends={openTrends} onRetryStatus={history.refresh} store={history.status?.store} target={monitorTarget} targets={knownTargets} onTarget={setPickedTarget} />}
-        {workspace === "Loads" && <LoadWorkspace connectionId={readySessionId} focus={loadFocus} key={readySessionId ?? "none"} onOpenAlerts={openLoadAlerts} onOpenQueries={() => setWorkspace("Queries")} onPaused={(count) => { if (readySessionId) setPausedLoads({ connectionId: readySessionId, count }); }} />}
-        {workspace === "Alerts" && alertsView === "governance" && <GovernanceWorkspace focusId={governanceFocus} onOpenQueries={() => setWorkspace("Queries")} onOpenTrends={openTrends} onRetryStatus={history.refresh} store={history.status?.store} target={monitorTarget} targets={knownTargets} onTarget={setPickedTarget} />}
+        {workspace === "Loads" && <LoadWorkspace connectionId={readySessionId} focus={loadFocus} key={readySessionId ?? "none"} onConnect={() => setDialogOpen(true)} onSessionExpired={expireConnection} onOpenAlerts={openLoadAlerts} onOpenQueries={() => setWorkspace("Queries")} onPaused={(count) => { if (readySessionId) setPausedLoads({ connectionId: readySessionId, count }); }} />}
+        {workspace === "Alerts" && alertsView === "governance" && <GovernanceWorkspace leading={alertsViewSwitch} focusId={governanceFocus} onOpenQueries={() => setWorkspace("Queries")} onOpenTrends={openTrends} onRetryStatus={history.refresh} store={history.status?.store} target={monitorTarget} targets={knownTargets} onTarget={setPickedTarget} />}
         </Suspense>
       </section>
       <ConnectionDialog dispatch={dispatchUserConnection} onClose={closeConnectionDialog} onSessionEnded={invalidateConnectedArtifacts} onSessionExpired={expireConnection} open={dialogOpen} state={connection} />
     </main>
-    </TooltipProvider></AppMotion>
+    </AppMotion>
   );
 }
 
@@ -803,35 +867,4 @@ export function AuditFallbackBanner({ session, workspace }: { session: Connectio
   const { text } = useLocale();
   if (workspace !== "Queries" || !session || session.state !== "ready" || session.capabilities.audit === "available") return null;
   return <p className="capability-error" role="status">{text("Audit queries are not available on this connection. You can still select an existing Profile or import one to analyze.", "当前连接暂不支持审计查询。你仍可选择已有 Profile，或导入文件进行分析。")}</p>;
-}
-
-function workspaceLabel(workspace: Workspace, text: LocalizedText): string {
-  const labels: Record<Workspace, [string, string]> = {
-    Overview: ["Overview", "总览"],
-    Queries: ["Queries", "查询"],
-    Doctor: ["Doctor", "诊断"],
-    Alerts: ["Alerts", "告警"],
-    Loads: ["Loads", "导入"],
-    Settings: ["Settings", "设置"],
-  };
-  return text(...labels[workspace]);
-}
-
-function connectionTone(connection: ReturnType<typeof connectionReducer>): string {
-  if (connection.phase === "ready" && connection.session) return "connected";
-  if (connection.phase === "unsupported" || connection.phase === "expired" || connection.phase === "failed") return "warning";
-  return "";
-}
-
-function localizedSessionStatus(connection: ReturnType<typeof connectionReducer>, text: LocalizedText): string {
-  if ((connection.phase === "ready" || connection.phase === "unsupported") && connection.session) {
-    const version = connection.session.detected_version?.value ?? text("version unknown", "版本未知");
-    return `${connection.phase === "ready" ? text("Connected", "已连接") : text("Limited", "受限")} · ${version} · ${text("read-only", "只读")}`;
-  }
-  if (connection.phase === "connecting") return text("Connecting…", "连接中…");
-  if (connection.phase === "expired") return connection.message === "remote_timeout"
-    ? text("Query timed out · reconnect", "查询超时已断开 · 请重连")
-    : text("Session expired · reconnect", "会话已过期 · 请重连");
-  if (connection.phase === "failed") return text("Connection failed", "连接失败");
-  return text("Not connected", "未连接");
 }

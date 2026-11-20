@@ -131,6 +131,26 @@ const labels: Record<string, [string, string]> = {
 
 /** Localize closed product enums; preserve unregistered backend text verbatim. */
 export function localizedEnum(value: string, text: LocalizedText): string {
-  const label = labels[value];
+  if (typeof value !== "string") return "";
+  const label = Object.prototype.hasOwnProperty.call(labels, value) ? labels[value] : undefined;
   return label ? text(...label) : value;
+}
+
+/**
+ * Safe enum label lookup: returns the mapped bilingual label when known, or falls
+ * back to `localizedEnum` / verbatim string so an unknown backend enum value
+ * never produces `undefined` or crashes the UI.
+ */
+export function lookupEnumLabel<K extends string>(
+  map: Record<K, readonly [string, string]>,
+  value: string,
+  text: LocalizedText,
+): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return localizedEnum("unknown", text);
+  }
+  const entry = Object.prototype.hasOwnProperty.call(map, value)
+    ? map[value as K]
+    : undefined;
+  return entry ? text(entry[0], entry[1]) : localizedEnum(value, text);
 }

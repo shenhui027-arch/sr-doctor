@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { sr3514ConnectedContractGolden } from "../../../../contracts/generated/connected-contract-fixtures";
 import { LocaleProvider } from "../../i18n/locale";
+import { QueryCapabilityChips } from "./QueryCapabilityChips";
 import { connectedComparisonRequest, isConnectionExpiredFailure, isCurrentRequest, profileForSelectedQuery, QueriesWorkspace, queryListRequest, queryRowKey, reportForSelectedQuery } from "./QueriesWorkspace";
 
 const noopApi = {
@@ -47,9 +48,9 @@ describe("QueriesWorkspace", () => {
     expect(html).toContain("Source kind");
     expect(html).not.toContain("Source hash");
     expect(html).toContain("Analysis key");
-    // Absent Profile facts keep their text but render as a dashed tag, never as a value.
-    expect(html).toContain('<dt>Source kind</dt><dd class="fact-missing"><span class="fact-missing-tag">unavailable</span></dd>');
-    expect(html).toContain('<dt>Baseline slot</dt><dd class="fact-missing"><span class="fact-missing-tag">not selected</span></dd>');
+    // Absent Profile facts keep their text inside a stamp tag, never as a value.
+    expect(html).toContain('<dt>Source kind</dt><dd class="fact-missing"><span class="state-stamp fact-missing-tag">unavailable</span></dd>');
+    expect(html).toContain('<dt>Baseline slot</dt><dd class="fact-missing"><span class="state-stamp fact-missing-tag">not selected</span></dd>');
     expect(html).toContain("Set baseline");
     expect(html).toContain("Set candidate");
     expect(html).toContain("Plan Check");
@@ -66,7 +67,7 @@ describe("QueriesWorkspace", () => {
     expect(queryListRequest("conn_opaque_3514", " finished ", "", true)).toEqual({ connection_id: "conn_opaque_3514", limit: 100, status: "finished", digest: null, statement_filter: "exclude_doctor_and_non_query" });
     expect(queryListRequest("conn_opaque_3514", "", " a0b1 ", false)).toEqual({ connection_id: "conn_opaque_3514", limit: 100, status: null, digest: "a0b1", statement_filter: "all" });
     const html = renderToStaticMarkup(<QueriesWorkspace api={noopApi} initialResponse={sr3514ConnectedContractGolden.query_response} onConnect={() => undefined} session={sr3514ConnectedContractGolden.connection} />);
-    expect(html).toContain('<label class="query-statement-filter"><input type="checkbox" checked=""/>Hide this tool&#x27;s queries and non-query statements</label>');
+    expect(html).toContain('<label class="check-inline query-statement-filter"><input type="checkbox" checked=""/><span>Hide this tool&#x27;s queries and non-query statements</span></label>');
   });
 
   it.each([
@@ -88,7 +89,7 @@ describe("QueriesWorkspace", () => {
     expect(html).not.toContain("3aeb9a126d70be2f");
     expect(html).toContain("The raw Profile bytes stay on the server.");
     expect(html).not.toContain(">raw_connector_profile_bytes_not_returned_by_connected_fetch_response");
-    expect(html).not.toMatch(/disabled[^>]*>Open Doctor<\/button>/);
+    expect(html).not.toMatch(/disabled[^>]*><span>Open Doctor<\/span><\/button>/);
   });
 
   it("renders a bilingual reason when Plan Check is unavailable instead of leaving a dead control", () => {
@@ -182,5 +183,20 @@ describe("QueriesWorkspace", () => {
     expect(html).toContain("基线槽位");
     expect(html).toContain("候选槽位");
     expect(html).toContain("产品只发送查询引用，不执行 SQL。");
+  });
+
+  it("renders unknown capability states and TLS modes in QueryCapabilityChips without throwing or rendering undefined (correctness fix #6)", () => {
+    const futureSession = {
+      ...sr3514ConnectedContractGolden.connection,
+      tls_mode: "future_tls_mode" as never,
+      capabilities: {
+        ...sr3514ConnectedContractGolden.connection.capabilities,
+        audit: "future_cap_state" as never,
+      },
+    };
+    const html = renderToStaticMarkup(<QueryCapabilityChips session={futureSession} />);
+    expect(html).toContain("AuditLoader future_cap_state");
+    expect(html).toContain("future_tls_mode");
+    expect(html).not.toContain("undefined");
   });
 });

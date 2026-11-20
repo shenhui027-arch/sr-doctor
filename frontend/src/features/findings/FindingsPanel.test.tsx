@@ -1,16 +1,31 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { sr3514JsonMinimal } from "../../../../contracts/generated/contract-fixtures";
 import type { AnalysisSnapshotReport } from "../../../../contracts/generated/doctor-contracts";
-import { SelectionProvider } from "../selection/selection-store";
 import { LocaleProvider } from "../../i18n/locale";
-import { EvidenceGaps, FindingInspector, FindingsPanel, heldBackEvaluations } from "./FindingsPanel";
 import { ProvenanceFacts } from "../doctor/DoctorDetails";
+import { DoctorFindingDrawer } from "../doctor/DoctorWorkspace";
 import { recommendationFixture } from "../recommendations/recommendation-fixture";
+import { SelectionProvider } from "../selection/selection-store";
+import { EvidenceGaps, FindingsPanel, heldBackEvaluations, locateSuppressedNode } from "./FindingsPanel";
 
-/** The Doctor findings column and the inspector, as the workbench renders them. */
-function DoctorFindings({ report }: { report: AnalysisSnapshotReport }) {
-  return <><FindingsPanel report={report} /><EvidenceGaps report={report} /><FindingInspector report={report} /></>;
+/** The Doctor findings column and detail drawer, as the workbench renders them when a finding is opened. */
+function DoctorFindings({ report, openFirst = true }: { report: AnalysisSnapshotReport; openFirst?: boolean }) {
+  const first = openFirst ? report.findings[0] ?? null : null;
+  return (
+    <SelectionProvider
+      initialSelection={{
+        sourceRef: null,
+        subjectRef: first?.subject_ref ?? null,
+        findingId: first?.finding_id ?? null,
+        nodeId: null,
+      }}
+    >
+      <FindingsPanel report={report} />
+      <EvidenceGaps report={report} />
+      <DoctorFindingDrawer report={report} />
+    </SelectionProvider>
+  );
 }
 
 describe("FindingsPanel", () => {
@@ -52,9 +67,10 @@ describe("FindingsPanel", () => {
         finding_id: "finding:operator-0:time-share",
       }],
     };
-    const html = renderToStaticMarkup(<SelectionProvider><DoctorFindings report={report} /></SelectionProvider>);
+    const html = renderToStaticMarkup(<DoctorFindings report={report} />);
 
     expect(html).toMatch(/class="severity-tag [a-z]+">Moderate</);
+    expect(html).toContain('aria-label="Moderate · Operator time distribution"');
     expect(html).toContain("Confidence High");
     expect(html).toContain("Exact typed inputs");
     expect(html).toContain("Evidence completeness");
@@ -65,29 +81,73 @@ describe("FindingsPanel", () => {
     expect(html).toContain("Triggered");
     expect(html).toContain("threshold:0.5");
     expect(html).toContain("metric:operator-0:OperatorTotalTime");
+    expect(html).toContain('<span class="metric-sub" title="OperatorTotalTime">OperatorTotalTime</span>');
     expect(html).toContain("Inspect predicates, partition pruning, index, rows, bytes and I/O context");
-    // The only finding is selected by default, so the inspector is never empty while findings exist.
-    expect(html).toContain('aria-pressed="true" class="finding-item selected"');
-    expect(html).toContain('class="panel finding-inspector"');
-    expect(html).toContain('<details class="technical-disclosure"><summary>Evidence and rule details</summary>');
-    expect(html.indexOf('class="inspector-direction"')).toBeLessThan(html.indexOf('class="technical-disclosure"'));
+    // When selected, the finding opens in the right-side detail drawer rather than a stacked inspector card;
+    // the trigger button is a dialog opener (aria-haspopup="dialog") with selected styling, not a toggle button (no aria-pressed).
+    expect(html).toContain('aria-haspopup="dialog" aria-label="Moderate · Operator time distribution" class="item-btn finding-item is-selected selected"');
+    expect(html).not.toContain("aria-pressed");
+    expect(html).toContain("modal-card modal-card--sheet modal-card--wide");
+    expect(html).not.toContain("finding-inspector");
+    expect(html).toContain('<details class="disclosure technical-disclosure"><summary>Evidence and rule details</summary>');
+    expect(html.indexOf('class="finding-recommendation"')).toBeLessThan(html.indexOf('class="disclosure technical-disclosure"'));
     // operator-0 is not a row of this report: no graph location is invented.
     expect(html).not.toContain("Show in execution graph");
+    // No slogan in the v1.1 card header.
+    expect(html).not.toContain("By severity · not a health score");
   });
 
-  it("names the located plan node and its backend time share in the finding title", async () => {
+  it("translates evidence_completeness_reasons in the finding detail drawer with localizedFindingText instead of localizedEnum (fix #4)", () => {
+    const report: AnalysisSnapshotReport = {
+      ...sr3514JsonMinimal,
+      findings: [{
+        finding_id: "finding:completeness-reasons",
+        rule_id: "SR3514.SCAN_TIME_SHARE",
+        rule_version: "0.1.0",
+        category: "operator_time_distribution",
+        severity: "high",
+        confidence: "medium",
+        confidence_reasons: ["bounded_typed_inputs"],
+        evidence_completeness: "partial",
+        evidence_completeness_reasons: ["bounded_typed_inputs", "required_evidence_unavailable"],
+        subject_ref: "operator-0",
+        evidence: ["metric:operator-0:OperatorTotalTime"],
+        limitations: [],
+        recommendation: recommendationFixture({ risk: "r", expected_direction: "d", validation_steps: [] }),
+        related_finding_refs: [],
+        rule_trace_ref: "rule-trace:completeness",
+        measurements: [],
+      }],
+      rule_evaluations: [],
+    };
+
+    const html = renderToStaticMarkup(
+      <LocaleProvider initialLocale="zh">
+        <DoctorFindings report={report} />
+      </LocaleProvider>,
+    );
+
+    expect(html).toContain('title="输入已类型化并带边界 · 必需证据不可用"');
+    expect(html).not.toContain("required_evidence_unavailable");
+    expect(html).not.toContain("bounded_typed_inputs");
+  });
+
+  it("names the located plan node and its backend time share in the finding title and puts actions in the drawer footer", async () => {
     const { sr3514ExecutionGraph } = await import("../../../../contracts/generated/execution-graph-fixture");
     const row = sr3514ExecutionGraph.operator_rows.find((candidate) => candidate.plan_node_id === "0")!;
     const report: AnalysisSnapshotReport = {
       ...sr3514ExecutionGraph,
-      findings: [{ finding_id: "f:scan", rule_id: "SR3514.SCAN_TIME_SHARE", rule_version: "0.1.0", category: "operator_time_distribution", severity: "high", confidence: "high", confidence_reasons: [], evidence_completeness: "complete", evidence_completeness_reasons: [], subject_ref: row.operator_ref, evidence: [], limitations: [], recommendation: recommendationFixture({ risk: "r", expected_direction: "d", validation_steps: [] }), related_finding_refs: [], rule_trace_ref: "t", measurements: [] }],
+      findings: [{ finding_id: "f:scan", rule_id: "SR3514.SCAN_TIME_SHARE", rule_version: "0.1.0", category: "operator_time_distribution", severity: "high", confidence: "high", confidence_reasons: [], evidence_completeness: "complete", evidence_completeness_reasons: [], subject_ref: row.operator_ref, evidence: [row.metric_cells[0].metric_cell_ref], limitations: [], recommendation: recommendationFixture({ risk: "r", expected_direction: "d", validation_steps: [] }), related_finding_refs: [], rule_trace_ref: "t", measurements: [] }],
       rule_evaluations: [],
     };
-    const html = renderToStaticMarkup(<LocaleProvider initialLocale="zh"><SelectionProvider><DoctorFindings report={report} /></SelectionProvider></LocaleProvider>);
+    const html = renderToStaticMarkup(<LocaleProvider initialLocale="zh"><DoctorFindings report={report} /></LocaleProvider>);
     expect(html).toContain("finding-subject");
     expect(html).toMatch(/class="finding-subject">SCAN[^<]* · Plan 0<\/span>/);
     expect(html).toContain("占算子总耗时 99.96% · 4.229 s");
     expect(html).toContain("查询总耗时 8.099 s");
+    expect(html).toContain('class="card-ft"');
+    expect(html).toContain('class="inspector-footer-actions"');
+    expect(html).toContain("查看原文");
     expect(html).toContain("在图中定位");
   });
 
@@ -130,7 +190,7 @@ describe("FindingsPanel", () => {
       }],
     };
 
-    const html = renderToStaticMarkup(<LocaleProvider initialLocale="zh"><SelectionProvider><DoctorFindings report={report} /></SelectionProvider></LocaleProvider>);
+    const html = renderToStaticMarkup(<LocaleProvider initialLocale="zh"><DoctorFindings report={report} /></LocaleProvider>);
 
     expect(html).toContain("算子时间分布");
     expect(html).toContain(">中等<");
@@ -164,12 +224,13 @@ describe("FindingsPanel suppressed share signals", () => {
     limitations: [],
     finding_id: null,
   };
-  const render = (evaluations: AnalysisSnapshotReport["rule_evaluations"]): string => renderToStaticMarkup(<LocaleProvider initialLocale="en"><SelectionProvider><DoctorFindings report={{ ...sr3514JsonMinimal, findings: [], rule_evaluations: evaluations }} /></SelectionProvider></LocaleProvider>);
+  const render = (evaluations: AnalysisSnapshotReport["rule_evaluations"]): string => renderToStaticMarkup(<LocaleProvider initialLocale="en"><DoctorFindings report={{ ...sr3514JsonMinimal, findings: [], rule_evaluations: evaluations }} /></LocaleProvider>);
 
   it("lists backend-suppressed signals with the floor from the evaluation, not a client threshold", () => {
     const html = render([suppressed]);
     expect(html).toContain('Findings <span class="findings-count">0</span>');
-    expect(html).toContain("No finding to inspect");
+    expect(html).toContain("No reportable issues were found in this Profile.");
+    expect(html).not.toContain('role="dialog"');
     expect(html).toContain("1 share signal(s) below the 100 ms floor, not reported");
     expect(html).toContain("Scan time share");
   });
@@ -177,6 +238,30 @@ describe("FindingsPanel suppressed share signals", () => {
   it("stays silent when nothing was suppressed", () => {
     const html = render([{ ...suppressed, status: "not_triggered", comparisons: ["ratio_all_not_greater_than_15_percent"] }]);
     expect(html).not.toContain("findings-suppressed");
+  });
+
+  it("reveals a located suppressed evaluation in the execution graph via revealNode instead of selectNode", async () => {
+    const { sr3514ExecutionGraph } = await import("../../../../contracts/generated/execution-graph-fixture");
+    const row = sr3514ExecutionGraph.operator_rows.find((candidate) => candidate.plan_node_id === "0")!;
+    const report: AnalysisSnapshotReport = {
+      ...sr3514ExecutionGraph,
+      findings: [],
+      rule_evaluations: [{ ...suppressed, subject_ref: row.operator_ref }],
+    };
+    const html = renderToStaticMarkup(
+      <LocaleProvider initialLocale="zh">
+        <SelectionProvider>
+          <EvidenceGaps report={report} />
+        </SelectionProvider>
+      </LocaleProvider>,
+    );
+    expect(html).toContain("扫描耗时占比 · SCAN #0");
+    expect(html).toContain('<button class="reference-button" type="button">在图中定位</button>');
+
+    const revealNode = vi.fn();
+    locateSuppressedNode({ revealNode }, "0");
+    expect(revealNode).toHaveBeenCalledTimes(1);
+    expect(revealNode).toHaveBeenCalledWith("0");
   });
 });
 
@@ -205,25 +290,26 @@ describe("FindingsPanel real-Profile usability (v0.6-04)", () => {
   }
 
   it("leads a why-finding with the rule's own measurement and condition, not the node time share", async () => {
-    const html = renderToStaticMarkup(<LocaleProvider initialLocale="en"><SelectionProvider><DoctorFindings report={await skewReport()} /></SelectionProvider></LocaleProvider>);
-    const card = html.slice(html.indexOf('class="finding-item'), html.indexOf("</button>", html.indexOf('class="finding-item')));
+    const html = renderToStaticMarkup(<LocaleProvider initialLocale="en"><DoctorFindings report={await skewReport()} /></LocaleProvider>);
+    const start = html.indexOf('class="item-btn finding-item');
+    const card = html.slice(start, html.indexOf("</button>", start));
     expect(card).toContain("SCAN · Plan 0");
     expect(card).toContain("Slowest driver vs. mean 10.3–10.4×");
     expect(card).not.toContain("Share of operator time");
-    // Inspector: every measurement with its operator and the rule's condition, and a single-cell measurement names its evidence row.
+    // Drawer: every measurement with its operator and the rule's condition, and a single-cell measurement names its evidence row.
     expect(html).toContain("rule: &gt; 2×");
     expect(html).toContain("Slowest driver<small> · HASH_JOIN_PROBE</small>");
     expect(html).toMatch(/inspector-metric"[^>]*>Slowest driver</);
-    // The rule id is a technical detail, not the inspector headline.
-    expect(html.indexOf("SR3514.OPERATOR_TIME_SKEW</code>")).toBeGreaterThan(html.indexOf('class="technical-disclosure"'));
+    // The rule id is a technical detail, not the drawer headline.
+    expect(html.indexOf("SR3514.OPERATOR_TIME_SKEW</code>")).toBeGreaterThan(html.indexOf('class="disclosure technical-disclosure"'));
   });
 
   it("does not call a Profile clean when no rule could be evaluated", () => {
     const notApplicable = { rule_id: "SR3514.SCAN_TIME_SHARE", rule_version: "0.2.0", status: "not_applicable" as const, evidence_completeness: "unavailable" as const, evidence_completeness_reasons: [], subject_ref: null, applicability_checks: [], input_observation_refs: [], comparisons: [], threshold_receipts: [], missing_prerequisites: ["execution_summary_unavailable"], evidence_refs: [], limitations: [], finding_id: null };
-    const html = renderToStaticMarkup(<LocaleProvider initialLocale="en"><SelectionProvider><DoctorFindings report={{ ...sr3514JsonMinimal, findings: [], rule_evaluations: [notApplicable] }} /></SelectionProvider></LocaleProvider>);
+    const html = renderToStaticMarkup(<LocaleProvider initialLocale="en"><DoctorFindings report={{ ...sr3514JsonMinimal, findings: [], rule_evaluations: [notApplicable] }} /></LocaleProvider>);
     expect(html).not.toContain("No reportable issues were found");
     expect(html).toContain("Rules were not evaluated for this Profile");
-    expect(html).toContain("Rules not evaluated");
+    expect(html).not.toContain('role="dialog"');
   });
 
   it("shows no topology contradiction when the graph itself is unavailable", () => {
@@ -232,7 +318,7 @@ describe("FindingsPanel real-Profile usability (v0.6-04)", () => {
       findings: [],
       graph_view: { ...sr3514JsonMinimal.graph_view, state: "unavailable", unresolved_relations: [{ relation_ref: "topology", reason: "graph_unavailable", source_refs: [] }] },
     };
-    const html = renderToStaticMarkup(<LocaleProvider initialLocale="en"><SelectionProvider><DoctorFindings report={report} /></SelectionProvider></LocaleProvider>);
+    const html = renderToStaticMarkup(<LocaleProvider initialLocale="en"><DoctorFindings report={report} /></LocaleProvider>);
     expect(html).not.toContain("Contradiction");
   });
 
@@ -247,18 +333,18 @@ describe("FindingsPanel groups findings on one plan node (v0.6-07)", () => {
   it("lists several findings of one node under one heading and keeps single findings as they are", async () => {
     const { sr3514ExecutionGraph } = await import("../../../../contracts/generated/execution-graph-fixture");
     const row = sr3514ExecutionGraph.operator_rows.find((candidate) => candidate.plan_node_id === "0")!;
-    const finding = (id: string, ruleId: string, subject: string | null): AnalysisSnapshotReport["findings"][number] => ({
-      finding_id: id, rule_id: ruleId, rule_version: "0.1.0", category: "operator_time_distribution", severity: "moderate", confidence: "medium", confidence_reasons: [],
+    const finding = (id: string, ruleId: string, category: string, subject: string | null): AnalysisSnapshotReport["findings"][number] => ({
+      finding_id: id, rule_id: ruleId, rule_version: "0.1.0", category, severity: "moderate", confidence: "medium", confidence_reasons: [],
       evidence_completeness: "partial", evidence_completeness_reasons: [], subject_ref: subject, evidence: [], limitations: [],
       recommendation: recommendationFixture({ risk: "r", expected_direction: "d", validation_steps: [] }), related_finding_refs: [], rule_trace_ref: "t", measurements: [],
     });
     const report: AnalysisSnapshotReport = {
       ...sr3514ExecutionGraph,
       findings: [
-        finding("f:1", "SR3514.JOIN_PROBE_FANOUT", row.operator_ref),
-        finding("f:query", "SR3514.QUERY_WIDE", null),
-        finding("f:2", "SR3514.NODE_TIME_SHARE", row.operator_ref),
-        finding("f:3", "SR3514.ROW_FLOW_AMPLIFICATION", row.operator_ref),
+        finding("f:1", "SR3514.JOIN_PROBE_FANOUT", "join_fanout", row.operator_ref),
+        finding("f:query", "SR3514.QUERY_WIDE", "Query wide check", null),
+        finding("f:2", "SR3514.NODE_TIME_SHARE", "operator_time_distribution", row.operator_ref),
+        finding("f:3", "SR3514.ROW_FLOW_AMPLIFICATION", "runtime_row_flow_amplification", row.operator_ref),
       ],
       rule_evaluations: [],
     };
@@ -266,8 +352,12 @@ describe("FindingsPanel groups findings on one plan node (v0.6-07)", () => {
     expect(html.match(/class="finding-group"/g)).toHaveLength(1);
     expect(html).toContain('aria-label="SCAN #0" class="finding-group" role="group"');
     expect(html).toContain("3 findings");
-    // The group sits where its first finding is delivered; the node is named once, by the heading.
-    const order = ["SR3514.JOIN_PROBE_FANOUT", "SR3514.NODE_TIME_SHARE", "SR3514.ROW_FLOW_AMPLIFICATION", "SR3514.QUERY_WIDE"].map((rule) => html.indexOf(`aria-label="Finding ${rule}"`));
+    const order = [
+      "Moderate · Join fan-out",
+      "Moderate · Operator time distribution",
+      "Moderate · Runtime row-flow amplification",
+      "Moderate · Query wide check",
+    ].map((label) => html.indexOf(`aria-label="${label}"`));
     expect(order.every((index, position) => index > 0 && (position === 0 || index > order[position - 1]))).toBe(true);
     expect(html.match(/finding-subject/g)).toHaveLength(1);
   });

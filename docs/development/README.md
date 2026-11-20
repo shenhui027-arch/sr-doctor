@@ -109,7 +109,7 @@ pwsh -NoProfile -File scripts/ci/local-ci.ps1 -IncludeDockerE2E
 
 ### 视觉比对
 
-`tests/visual/pixel-parity.mjs` 与 `layout-diff.mjs` 在同一视口下比对产品与设计稿：先固定视口与数据，再逐区比较像素与布局，偏差逐项记录；不为凑像素伪造后端不产出的内容。
+`tests/visual/capture-boards.mjs` 用可视化夹具（`frontend/visual-harness.html`，真实 App 加 Demo 数据）在 1920/1440/1280/1024/768 五个断点截取各画板，并报告横向滚动与渲染失败；加 `--compare <上次截图目录>` 时逐张给出像素差异比例与范围。先启动前端开发服务器，再与 `docs/v1.1/design/boards/` 的设计稿在同一视口逐项对照，偏差逐项记录；不为凑像素伪造后端不产出的内容。
 
 ## 修改契约
 

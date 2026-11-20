@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HistoryStatusResponse } from "../../../../contracts/generated/doctor-contracts";
-import { CollectionPanel, collectionLabel } from "./CollectionPanel";
+import { LocaleProvider } from "../../i18n/locale";
+import { CollectionPanel, collectionLabel, formatHistoryBytes } from "./CollectionPanel";
 
 const english = (value: string): string => value;
 const status = (overrides: Partial<HistoryStatusResponse> = {}): HistoryStatusResponse => ({
@@ -23,10 +24,23 @@ const status = (overrides: Partial<HistoryStatusResponse> = {}): HistoryStatusRe
   limitations: [],
   ...overrides,
 } as HistoryStatusResponse);
-const render = (value: HistoryStatusResponse) => renderToStaticMarkup(<CollectionPanel busy={false} onClear={() => undefined} onToggle={() => undefined} status={value} text={english} />);
 
-describe("collection and history panel (design board B)", () => {
-  it("renders the DTO's coverage, partial and gap reads without inventing zeros", () => {
+const render = (value: HistoryStatusResponse, initialConfirmOpen = false) =>
+  renderToStaticMarkup(
+    <LocaleProvider initialLocale="en">
+      <CollectionPanel
+        busy={false}
+        initialConfirmOpen={initialConfirmOpen}
+        onClear={() => undefined}
+        onToggle={() => undefined}
+        status={value}
+        text={english}
+      />
+    </LocaleProvider>,
+  );
+
+describe("collection and history panel (boards/08-settings)", () => {
+  it("renders three side-by-side cards with DTO coverage, partial and gap reads without inventing zeros", () => {
     const html = render(status());
     expect(html).toContain("Collecting");
     expect(html).toContain("Pause");
@@ -34,7 +48,7 @@ describe("collection and history panel (design board B)", () => {
     expect(html).toContain("Partial · row limit reached");
     expect(html).toContain("Not read · beyond catch-up");
     expect(html).toContain("Not collected: not zero executions");
-    expect(html.match(/<li class="(complete|partial|not_collected)"/g)).toHaveLength(3);
+    expect(html.match(/data-coverage-state="(complete|partial|not_collected)"/g)).toHaveLength(3);
   });
 
   it("leaves the production budget unmeasured until the pilot measures it", () => {
@@ -54,14 +68,30 @@ describe("collection and history panel (design board B)", () => {
     expect(html).not.toContain(">Resume<");
   });
 
-  it("states what the store keeps and never keeps, and hides it when history is off", () => {
+  it("states what the store keeps and never keeps, places Clear history… in the footer with a danger Dialog, and hides it when history is off", () => {
     const html = render(status());
     expect(html).toContain("30 days, expired data deleted automatically");
     expect(html).toContain("2.4 MB");
     expect(html).toContain("Never keeps: SQL literals, Profile text. StarRocks passwords are not kept unless you tick saving");
+    expect(html).toContain(">Clear history…</button>");
+
+    const confirmHtml = render(status(), true);
+    expect(confirmHtml).toContain('role="dialog"');
+    expect(confirmHtml).toContain("modal-card--danger");
+    expect(confirmHtml).toContain("Delete all local history?");
+    expect(confirmHtml).toContain("saved StarRocks connection");
+
     const off = render(status({ store: { state: "disabled" }, collection: { state: "stopped", reason: "history_disabled" } }));
     expect(off).toContain("History is off in this setup (DOCTOR_HISTORY=off); nothing is collected.");
     expect(off).not.toContain("Clear history");
+  });
+
+  it("reuses the shared BigInt bytesText formatter instead of float division capped at GB (regression)", () => {
+    expect(formatHistoryBytes(null)).toBe("—");
+    expect(formatHistoryBytes("0")).toBe("0 B");
+    expect(formatHistoryBytes("1589248")).toBe("1.516 MB");
+    expect(formatHistoryBytes("5497558138880")).toBe("5 TB");
+    expect(formatHistoryBytes("1152921504606846976")).toBe("1 EB");
   });
 
   it("offers resume for a paused collector", () => {

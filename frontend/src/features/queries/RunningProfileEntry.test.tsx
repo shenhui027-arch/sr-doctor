@@ -23,11 +23,11 @@ describe("RunningProfileEntry SSR", () => {
     expect(html).not.toContain("MOCK");
     expect(html).toContain("Read running queries");
     // Hiding this tool's own statements is on by default, as in the Profile list.
-    expect(html).toContain('<label class="running-profile-statement-filter"><input type="checkbox" checked=""/>Hide this tool&#x27;s queries</label>');
+    expect(html).toContain('<label class="check-inline running-profile-statement-filter"><input type="checkbox" checked=""/><span>Hide this tool&#x27;s queries</span></label>');
     expect(html).toContain("Nothing here executes SQL.");
     // The selected-query panel opens only after a query is chosen.
     expect(html).not.toContain("running-profile-context");
-    expect(html).toContain('class="running-profile-grid no-selection"');
+    expect(html).toContain('class="workbench-split running-profile-grid no-selection"');
     expect(html).not.toContain(sr3514ConnectedContractGolden.connection.connection_id);
     expect(html).not.toContain("textarea");
     expect(client.readRunningProfileCandidates).not.toHaveBeenCalled();

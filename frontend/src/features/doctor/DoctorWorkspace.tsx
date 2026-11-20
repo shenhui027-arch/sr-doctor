@@ -1,16 +1,27 @@
 import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type { AnalysisSnapshotReport, MetricCell } from "../../../../contracts/generated/doctor-contracts";
+import { AnimatedFigure, Button, Dialog, KpiCard, MetricName, SegTabs, StateStamp } from "../../design";
 import { localizedEnum } from "../../i18n/enum-label";
+import { localizedFindingText } from "../../i18n/finding-text";
 import { useLocale, type LocalizedText } from "../../i18n/locale";
 import { metricReasonText } from "../../i18n/metric-label";
 import { ExecutionGraph, type FindingTarget } from "../execution/ExecutionGraph";
 import { OfficialProfilePanel, type OfficialProfileContext } from "../execution/OfficialProfilePanel";
-import { EvidenceGaps, FindingInspector, FindingsPanel, findingContext, selectedFinding } from "../findings/FindingsPanel";
-import { localizedFindingText } from "../../i18n/finding-text";
+import { summaryUnavailableText } from "../execution/plan-node-summary";
+import {
+  EvidenceGaps,
+  findingContext,
+  findingHasFooterActions,
+  FindingInspectorBody,
+  FindingInspectorFooter,
+  FindingsPanel,
+  findingTitleText,
+  selectedFinding,
+} from "../findings/FindingsPanel";
 import { ImportPanel } from "../import/ImportPanel";
 import { SelectionProvider, useSelection } from "../selection/selection-store";
-import { DoctorDetails } from "./DoctorDetails";
-import { AnimatedFigure } from "../shell/motion-enhance";
+import { SourcePanel } from "../source/SourcePanel";
+import { honestCellState, MetricTable, OperatorTable, ProvenanceAndPlanCheck } from "./DoctorDetails";
 import "./doctor.css";
 
 export type DoctorWorkspaceProps = {
@@ -19,119 +30,313 @@ export type DoctorWorkspaceProps = {
   officialContext?: OfficialProfileContext;
   /** Plan node to select on entry (e.g. "locate" from a recommendation). */
   focusNodeId?: string | null;
+  /** Optional finding opened in the right-side detail drawer (defaults to null: closed on page load). */
+  initialFindingId?: string | null;
   onReport(report: AnalysisSnapshotReport): void;
   onCancelImport?(): void;
-  /** Opens the before/after comparison from a finding's recommendation. */
+  /** Kept for App.tsx compatibility; `设为基线并对比` lives only in ContextBar in v1.1. */
   onOpenCompare?(): void;
-  /** Rendered under the findings by the app (the Official Advisor guide); never fed to product rules. */
+  /** Rendered in Provenance & plan check (existing Official Advisor cache linked to the query); never fed to product rules. */
   findingsFooter?: ReactNode;
 };
 
-export function DoctorWorkspace({ report, importing = false, officialContext, focusNodeId = null, onReport, onCancelImport, onOpenCompare, findingsFooter = null }: DoctorWorkspaceProps): JSX.Element {
+type DoctorMainTab = "graph" | "operators" | "metrics" | "source" | "provenance";
+
+export function DoctorWorkspace({
+  report,
+  importing = false,
+  officialContext,
+  focusNodeId = null,
+  initialFindingId = null,
+  onReport,
+  onCancelImport,
+  findingsFooter = null,
+}: DoctorWorkspaceProps): JSX.Element {
   const { text } = useLocale();
-  if (!report || importing) return <SelectionProvider><div className="doctor-import">
-    <ImportPanel onCancel={report ? onCancelImport : undefined} onReport={onReport} />
-    {/* Review: when connected, the online path is an action, not a faint hint. */}
-    {officialContext?.session && officialContext.onReturnToQueries
-      ? <p className="doctor-import-hint doctor-import-connected">{text("No query selected yet.", "尚未选择查询。")} <button className="button secondary" onClick={officialContext.onReturnToQueries} type="button">{text("Pick one in Queries", "前往查询选择")}</button></p>
-      : <p className="muted doctor-import-hint">{text("Or connect to a database and pick a query in Queries.", "也可以连接数据库，在“查询”页选择一条查询。")}</p>}
-  </div></SelectionProvider>;
-  return <DoctorReportView findingsFooter={findingsFooter} focusNodeId={focusNodeId} officialContext={officialContext} onOpenCompare={onOpenCompare} report={report} />;
+  if (!report || importing) {
+    return (
+      <SelectionProvider>
+        <div className="workspace-stage doctor-import">
+          <ImportPanel onCancel={report ? onCancelImport : undefined} onReport={onReport} />
+          {officialContext?.session && officialContext.onReturnToQueries ? (
+            <div className="card doctor-import-hint-card">
+              <div className="card-bd doctor-import-connected">
+                <span>{text("No query selected yet.", "尚未选择查询。")}</span>
+                <Button onClick={officialContext.onReturnToQueries} size="sm" variant="secondary">
+                  {text("Pick one in Queries", "前往查询选择")}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="doctor-import-hint">
+              {text("Or connect to a database and pick a query in Queries.", "也可以连接数据库，在「查询」页选择一条查询。")}
+            </p>
+          )}
+        </div>
+      </SelectionProvider>
+    );
+  }
+
+  return (
+    <DoctorReportView
+      findingsFooter={findingsFooter}
+      focusNodeId={focusNodeId}
+      initialFindingId={initialFindingId}
+      officialContext={officialContext}
+      report={report}
+    />
+  );
 }
 
-function DoctorReportView({ report, officialContext, focusNodeId, onOpenCompare, findingsFooter }: { report: AnalysisSnapshotReport; officialContext?: OfficialProfileContext; focusNodeId: string | null; onOpenCompare?(): void; findingsFooter: ReactNode }): JSX.Element {
+function DoctorReportView({
+  report,
+  officialContext,
+  focusNodeId,
+  initialFindingId,
+  findingsFooter,
+}: {
+  report: AnalysisSnapshotReport;
+  officialContext?: OfficialProfileContext;
+  focusNodeId: string | null;
+  initialFindingId: string | null;
+  findingsFooter: ReactNode;
+}): JSX.Element {
   const { text } = useLocale();
-  const initialSelection = { sourceRef: null, subjectRef: null, findingId: null, nodeId: focusNodeId };
-  // Task 65 (board 5): one screen. Left, the execution structure and its details behind tabs;
-  // right, the findings with each one's evidence and recommendation. Each side scrolls on its own.
-  return <SelectionProvider initialSelection={initialSelection} key={`${report.analysis_key}:${focusNodeId ?? ""}`}>
-    <div className="doctor-layout">
-      <DoctorSummary report={report} />
-      <ProfileStateNotice report={report} />
-      {/* Reading order stays summary → findings → structure → details; the grid shows the findings on the right. */}
-      <div className="doctor-workbench">
-        <aside aria-label={text("Findings", "发现")} className="doctor-findings-column">
-          <FindingsPanel report={report}>
-            <FindingInspector onOpenCompare={onOpenCompare} report={report} />
-            <EvidenceGaps report={report} />
-            {findingsFooter}
-          </FindingsPanel>
-        </aside>
-        <DoctorStructure focusNodeId={focusNodeId} officialContext={officialContext} report={report} />
+  const initialFinding = initialFindingId
+    ? report.findings.find((candidate) => candidate.finding_id === initialFindingId) ?? null
+    : null;
+  const initialSelection = {
+    sourceRef: null,
+    subjectRef: initialFinding?.subject_ref ?? null,
+    findingId: initialFinding?.finding_id ?? null,
+    nodeId: focusNodeId,
+  };
+  return (
+    <SelectionProvider initialSelection={initialSelection} key={`${report.analysis_key}:${focusNodeId ?? ""}:${initialFindingId ?? ""}`}>
+      <div className="workspace-stage doctor-layout">
+        <DoctorSummary report={report} />
+        <ProfileStateNotice report={report} />
+        <div className="workbench-split doctor-workbench">
+          <DoctorMainCard
+            findingsFooter={findingsFooter}
+            focusNodeId={focusNodeId}
+            officialContext={officialContext}
+            report={report}
+          />
+          <aside aria-label={text("Findings", "发现")} className="doctor-findings-column">
+            <FindingsPanel report={report}>
+              {report.findings.length === 0 ? <EvidenceGaps embedded report={report} /> : null}
+            </FindingsPanel>
+          </aside>
+        </div>
+        <DoctorFindingDrawer includeEvidenceGaps report={report} />
       </div>
-    </div>
-  </SelectionProvider>;
+    </SelectionProvider>
+  );
 }
 
-/** The execution structure and its tables share one card; evidence links and "show in graph" pick the tab. */
-function DoctorStructure({ report, officialContext, focusNodeId }: { report: AnalysisSnapshotReport; officialContext?: OfficialProfileContext; focusNodeId: string | null }): JSX.Element {
+export function DoctorFindingDrawer({
+  report,
+  includeEvidenceGaps = false,
+}: {
+  report: AnalysisSnapshotReport;
+  includeEvidenceGaps?: boolean;
+}): JSX.Element {
   const { text } = useLocale();
-  const { sourceRef, revealCount } = useSelection();
-  const [tab, setTab] = useState<"graph" | "details">("graph");
-  // The graph header hosts the official-reading trigger next to its view switch.
+  const { findingId, findingOpen, restoreFindingFocus, closeFinding } = useSelection();
+  const finding = findingId
+    ? report.findings.find((candidate) => candidate.finding_id === findingId) ?? null
+    : null;
+  const open = findingOpen && finding !== null;
+  const hasFooter = finding !== null && findingHasFooterActions(report, finding);
+
+  return (
+    <Dialog
+      footer={finding && hasFooter ? <FindingInspectorFooter finding={finding} report={report} /> : undefined}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) closeFinding();
+      }}
+      open={open}
+      placement="right"
+      restoreFocus={restoreFindingFocus}
+      title={finding ? findingTitleText(finding, text) : ""}
+      width="lg"
+    >
+      {finding ? (
+        <div className="inspector-body" key={finding.finding_id}>
+          <FindingInspectorBody
+            finding={finding}
+            includeEvidenceGaps={includeEvidenceGaps}
+            report={report}
+          />
+        </div>
+      ) : null}
+    </Dialog>
+  );
+}
+
+function DoctorMainCard({
+  report,
+  officialContext,
+  focusNodeId,
+  findingsFooter,
+}: {
+  report: AnalysisSnapshotReport;
+  officialContext?: OfficialProfileContext;
+  focusNodeId: string | null;
+  findingsFooter: ReactNode;
+}): JSX.Element {
+  const { text } = useLocale();
+  const { sourceRef, sourceRevealCount, revealCount } = useSelection();
+  const [tab, setTab] = useState<DoctorMainTab>("graph");
   const [viewSlot, setViewSlot] = useState<HTMLSpanElement | null>(null);
   const firstReveal = useRef(revealCount);
-  useEffect(() => { if (sourceRef !== null) setTab("details"); }, [sourceRef]);
-  useEffect(() => { if (revealCount !== firstReveal.current) setTab("graph"); }, [revealCount]);
-  return <section aria-label={text("Execution structure", "执行结构")} className="doctor-structure">
-    <div aria-label={text("Structure views", "结构视图")} className="seg-tabs doctor-structure-tabs" role="tablist">
-      <button aria-selected={tab === "graph"} className={tab === "graph" ? "active" : ""} onClick={() => setTab("graph")} role="tab" type="button">{text("Execution graph", "结构图")}</button>
-      <button aria-selected={tab === "details"} className={tab === "details" ? "active" : ""} onClick={() => setTab("details")} role="tab" type="button">{text("Operators and source", "算子与原文")}</button>
-    </div>
-    <div className="doctor-graph" hidden={tab !== "graph"}>
-      <DoctorGraph report={report} viewExtra={officialContext ? <span className="graph-view-slot" ref={setViewSlot} /> : null} />
-      {officialContext ? <OfficialProfilePanel context={officialContext} report={report} triggerSlot={viewSlot} /> : null}
-    </div>
-    <div className="doctor-structure-details" hidden={tab !== "details"}><DoctorDetails focusNodeId={focusNodeId} report={report} /></div>
-  </section>;
+  const firstSourceReveal = useRef(sourceRevealCount);
+
+  useEffect(() => {
+    if (sourceRef !== null) setTab("source");
+  }, [sourceRef]);
+
+  useEffect(() => {
+    if (sourceRevealCount !== firstSourceReveal.current) {
+      firstSourceReveal.current = sourceRevealCount;
+      setTab("source");
+    }
+  }, [sourceRevealCount]);
+
+  useEffect(() => {
+    if (revealCount !== firstReveal.current) {
+      firstReveal.current = revealCount;
+      setTab("graph");
+    }
+  }, [revealCount]);
+
+  const metricCount = report.derived_metric_cells.length + report.operator_rows.reduce((sum, row) => sum + row.metric_cells.length, 0);
+
+  return (
+    <section aria-label={text("Execution structure", "执行结构")} className="card card--table doctor-main-card">
+      <div className="card-hd doctor-main-hd">
+        <div className="card-hd-main">
+          <SegTabs
+            aria-label={text("Structure views", "结构视图")}
+            items={[
+              { value: "graph", label: text("Execution graph", "执行结构图") },
+              { value: "operators", label: text("Operators", "算子"), count: report.graph_view.nodes.length },
+              { value: "metrics", label: text("Metrics", "指标"), count: metricCount },
+              { value: "source", label: text("Original Profile", "Profile 原文") },
+              { value: "provenance", label: text("Provenance & plan check", "溯源与计划检查") },
+            ]}
+            onValueChange={setTab}
+            size="sm"
+            value={tab}
+          />
+        </div>
+        {tab === "graph" && officialContext ? (
+          <div className="card-hd-actions">
+            <span className="graph-view-slot" ref={setViewSlot} />
+          </div>
+        ) : null}
+      </div>
+      <div className="card-bd card-bd--flush doctor-main-body">
+        {tab === "graph" ? (
+          <div className="doctor-graph">
+            {report.execution_summary.state !== "available" ? (
+              <p className="doctor-summary-unavailable muted" role="status">
+                {summaryUnavailableText(report.execution_summary, text)}
+              </p>
+            ) : null}
+            <DoctorGraph report={report} />
+            {officialContext ? <OfficialProfilePanel context={officialContext} report={report} triggerSlot={viewSlot} /> : null}
+          </div>
+        ) : tab === "operators" ? (
+          <OperatorTable focusNodeId={focusNodeId} report={report} />
+        ) : tab === "metrics" ? (
+          <MetricTable report={report} />
+        ) : tab === "source" ? (
+          <SourcePanel diagnostics={report.diagnostics} provenanceIndex={report.provenance_index} sourceView={report.source_view} />
+        ) : (
+          <ProvenanceAndPlanCheck planCheckExtra={findingsFooter} report={report} />
+        )}
+      </div>
+    </section>
+  );
 }
 
-/** The Doctor graph, told where each finding sits so a finding and its node point at each other. */
-function DoctorGraph({ report, viewExtra = null }: { report: AnalysisSnapshotReport; viewExtra?: ReactNode }): JSX.Element {
+function DoctorGraph({ report }: { report: AnalysisSnapshotReport }): JSX.Element {
   const { text } = useLocale();
-  const targets = useMemo<FindingTarget[]>(() => report.findings.flatMap((finding) => {
-    const nodeId = findingContext(report, finding).nodeId;
-    return nodeId ? [{
-      findingId: finding.finding_id,
-      subjectRef: finding.subject_ref,
-      nodeId,
-      title: localizedFindingText(finding.rule_id, "category", finding.category, text),
-      severity: localizedEnum(finding.severity, text),
-    }] : [];
-  }), [report, text]);
-  return <ExecutionGraph defaultFindingId={selectedFinding(report, null)?.finding_id ?? null} findingTargets={targets} graph={report.graph_view} graphKey={report.analysis_key} sourceView={report.source_view} summary={report.execution_summary} viewExtra={viewExtra} />;
+  const targets = useMemo<FindingTarget[]>(
+    () =>
+      report.findings.flatMap((finding) => {
+        const nodeId = findingContext(report, finding).nodeId;
+        return nodeId
+          ? [
+              {
+                findingId: finding.finding_id,
+                subjectRef: finding.subject_ref,
+                nodeId,
+                title: localizedFindingText(finding.rule_id, "category", finding.category, text),
+                severity: localizedEnum(finding.severity, text),
+                severityCode: finding.severity,
+              },
+            ]
+          : [];
+      }),
+    [report, text],
+  );
+  return (
+    <ExecutionGraph
+      defaultFindingId={selectedFinding(report, null)?.finding_id ?? null}
+      embedded
+      findingTargets={targets}
+      graph={report.graph_view}
+      graphKey={report.analysis_key}
+      sourceView={report.source_view}
+      summary={report.execution_summary}
+    />
+  );
 }
 
-/**
- * A Profile the rules can not read (Level 2, or a snapshot of a running
- * query) is stated up front with the next capture step, so an empty findings
- * list is never read as a healthy query. Reads only the backend ProfileContext.
- */
 function ProfileStateNotice({ report }: { report: AnalysisSnapshotReport }): JSX.Element | null {
   const { text } = useLocale();
   const context = report.profile_context;
-  if (context.profile_level === "level_2" || context.merge_state === "unmerged") return <section className="profile-state-notice" role="note" aria-label={text("Profile notice", "Profile 提示")}>
-    <strong>{text("Level 2 Profile: per-node analysis is not available", "Level 2 Profile：无法按计划节点分析")}</strong>
-    <p>{text(
-      "This Profile was captured with pipeline_profile_level=2, so its counters are reported per instance and are not merged per plan node. Node time, the execution graph and the diagnosis rules are not evaluated; an empty findings list here does not mean the query is healthy.",
-      "该 Profile 以 pipeline_profile_level=2 采集，计数器按实例上报、未按计划节点合并，因此不计算节点耗时、不生成执行图、不评估诊断规则；这里没有发现不代表查询正常。",
-    )}</p>
-    <p className="profile-state-next">{text(
-      "Next: run SET pipeline_profile_level = 1 (the default) in the session, rerun the query and import that Profile.",
-      "下一步：在会话中执行 SET pipeline_profile_level = 1（默认值），重跑查询后导入新的 Profile。",
-    )}</p>
-  </section>;
-  if (context.query_state === "running" || context.snapshot_kind === "runtime") return <section className="profile-state-notice" role="note" aria-label={text("Profile notice", "Profile 提示")}>
-    <strong>{text("Running-query snapshot: values are provisional", "运行中查询的快照：数值为临时值")}</strong>
-    <p>{text(
-      "This Profile was taken while the query was still running, and some instances had not reported. The totals above are a point-in-time snapshot; node time and the diagnosis rules are not evaluated.",
-      "该 Profile 采集时查询仍在运行，部分实例尚未上报。上方汇总只是某一时刻的快照，不计算节点耗时、不评估诊断规则。",
-    )}</p>
-    <p className="profile-state-next">{text(
-      "Next: fetch the Profile again after the query finishes and analyze that final Profile.",
-      "下一步：等查询结束后重新获取 Profile，分析最终 Profile。",
-    )}</p>
-  </section>;
+  if (context.profile_level === "level_2" || context.merge_state === "unmerged") {
+    return (
+      <section aria-label={text("Profile notice", "Profile 提示")} className="notice-banner notice-banner--warn profile-state-notice" role="note">
+        <div>
+          <strong>{text("Level 2 Profile: per-node analysis is not available", "Level 2 Profile：无法按计划节点分析")}</strong>{" "}
+          <span>
+            {text(
+              "Captured with pipeline_profile_level=2; counters are not merged per plan node, so node time, execution graph and diagnosis rules are not evaluated.",
+              "该 Profile 以 pipeline_profile_level=2 采集，未按计划节点合并，不计算节点耗时、不生成执行图、不评估诊断规则；没有发现不代表查询正常。",
+            )}{" "}
+            {text(
+              "Next: run SET pipeline_profile_level = 1, rerun the query and import that Profile.",
+              "下一步：执行 SET pipeline_profile_level = 1，重跑查询后导入新 Profile。",
+            )}
+          </span>
+        </div>
+      </section>
+    );
+  }
+  if (context.query_state === "running" || context.snapshot_kind === "runtime") {
+    return (
+      <section aria-label={text("Profile notice", "Profile 提示")} className="notice-banner notice-banner--warn profile-state-notice" role="note">
+        <div>
+          <strong>{text("Running-query snapshot: values are provisional", "运行中查询的快照：数值为临时值")}</strong>{" "}
+          <span>
+            {text(
+              "Taken while the query was still running; node time and diagnosis rules are not evaluated.",
+              "采集时查询仍在运行，部分实例尚未上报，不计算节点耗时、不评估诊断规则。",
+            )}{" "}
+            {text(
+              "Next: fetch the Profile again after the query finishes.",
+              "下一步：等查询结束后重新获取 Profile，分析最终 Profile。",
+            )}
+          </span>
+        </div>
+      </section>
+    );
+  }
   return null;
 }
 
@@ -141,7 +346,6 @@ export function queryMetric(report: AnalysisSnapshotReport, metricId: string): M
   return cells.length === 1 && cells[0].state === "exact" ? cells[0] : null;
 }
 
-/** Display text of an exact value, or the typed state that replaces it (never 0). */
 type SummaryFact = { value: string } | { state: string };
 
 function cellFact(report: AnalysisSnapshotReport, metricId: string): SummaryFact {
@@ -151,35 +355,96 @@ function cellFact(report: AnalysisSnapshotReport, metricId: string): SummaryFact
   return cells[0].state === "exact" ? { value: cells[0].display_text } : { state: cells[0].state };
 }
 
-/** The cell's backend reason codes, translated; the caveat is never inferred here. */
 function cellReasons(report: AnalysisSnapshotReport, metricId: string, text: LocalizedText): string | undefined {
   const cells = report.derived_metric_cells.filter((cell) => cell.metric_id === metricId);
-  return cells.length === 1 && cells[0].reasons.length ? cells[0].reasons.map((code) => metricReasonText(code, text)).join(" ") : undefined;
+  return cells.length === 1 && cells[0].reasons.length
+    ? cells[0].reasons.map((code) => metricReasonText(code, text)).join(" ")
+    : undefined;
 }
 
-/** A summary value the Profile did not print reads as missing (never 0). */
 function summaryFact(value: { state: string; display_text: string | null }): SummaryFact {
   return value.state === "exact" && value.display_text ? { value: value.display_text } : { state: "missing" };
 }
 
+type DoctorMetricSpec = {
+  key: string;
+  label: string;
+  official: string;
+  fact: SummaryFact;
+  info?: string;
+  caveat?: string;
+};
+
 function DoctorSummary({ report }: { report: AnalysisSnapshotReport }): JSX.Element {
   const { text } = useLocale();
   const summary = report.execution_summary;
-  // [label, fact, hint, note]: the note names the Profile counter (or says why it is absent).
-  const facts: Array<[string, SummaryFact, string | undefined, string]> = [
-    [text("Total time", "总耗时"), summaryFact(summary.query_total_time), undefined, "QueryTotalTime"],
-    [text("Planning", "规划"), cellFact(report, "QueryPlanningTime"), cellReasons(report, "QueryPlanningTime", text), "QueryPlanningTime"],
-    [text("Execution (wall)", "执行（墙钟）"), cellFact(report, "QueryExecutionWallTime"), cellReasons(report, "QueryExecutionWallTime", text), "QueryExecutionWallTime"],
-    [text("Operator time (sum)", "算子累计耗时"), summaryFact(summary.cumulative_operator_time), text("Sum over operators running in parallel; not wall time.", "并行算子的耗时之和，不是墙钟时间。"), text("Sum in parallel, not wall time", "并行之和，非墙钟")],
-    [text("CPU (sum)", "CPU 累计"), cellFact(report, "QueryCumulativeCpuTime"), cellReasons(report, "QueryCumulativeCpuTime", text), "QueryCumulativeCpuTime"],
-    [text("Peak memory / node", "单节点峰值内存"), cellFact(report, "QueryPeakMemoryUsagePerNode"), cellReasons(report, "QueryPeakMemoryUsagePerNode", text), text("PerNode peak", "PerNode 峰值")],
-    [text("Rows returned", "返回行数"), summaryFact(summary.result_rows), undefined, "ResultRows"],
+  const specs: DoctorMetricSpec[] = [
+    {
+      key: "total",
+      label: text("Total time", "总耗时"),
+      official: "QueryTotalTime",
+      fact: summaryFact(summary.query_total_time),
+    },
+    {
+      key: "planning",
+      label: text("Planning time", "规划耗时"),
+      official: "QueryPlanningTime",
+      fact: cellFact(report, "QueryPlanningTime"),
+      caveat: cellReasons(report, "QueryPlanningTime", text),
+    },
+    {
+      key: "execution",
+      label: text("Execution wall time", "执行墙钟"),
+      official: "QueryExecutionWallTime",
+      fact: cellFact(report, "QueryExecutionWallTime"),
+      caveat: cellReasons(report, "QueryExecutionWallTime", text),
+    },
+    {
+      key: "operator_sum",
+      label: text("Operator time (sum)", "算子累计耗时"),
+      official: "QueryCumulativeOperatorTime",
+      fact: summaryFact(summary.cumulative_operator_time),
+      info: text("Sum over operators running in parallel; not wall time.", "并行算子的耗时之和，不是墙钟时间。"),
+    },
+    {
+      key: "cpu",
+      label: text("CPU (sum)", "CPU 累计"),
+      official: "QueryCumulativeCpuTime",
+      fact: cellFact(report, "QueryCumulativeCpuTime"),
+      caveat: cellReasons(report, "QueryCumulativeCpuTime", text),
+    },
+    {
+      key: "peak_memory",
+      label: text("Peak memory / node", "单节点峰值内存"),
+      official: "QueryPeakMemoryUsagePerNode",
+      fact: cellFact(report, "QueryPeakMemoryUsagePerNode"),
+      caveat: cellReasons(report, "QueryPeakMemoryUsagePerNode", text),
+    },
+    {
+      key: "result_rows",
+      label: text("Rows returned", "返回行数"),
+      official: "ResultRows",
+      fact: summaryFact(summary.result_rows),
+    },
   ];
-  return <section className="doctor-summary" aria-label={text("Query summary", "查询概要")}>
-    <dl className="doctor-summary-facts">{facts.map(([label, fact, hint, note]) => <div key={label} title={hint ?? note}>
-      <dt>{label}</dt>
-      <dd>{"value" in fact ? <AnimatedFigure value={fact.value} /> : <span className="metric-state-badge" data-state={fact.state}>{fact.state === "missing" ? text("Missing · not 0", "缺失 · 非 0") : localizedEnum(fact.state, text)}</span>}</dd>
-      <dd className="doctor-summary-note">{"value" in fact || fact.state !== "missing" ? note : text("Not in the Profile", "Profile 未提供")}</dd>
-    </div>)}</dl>
-  </section>;
+
+  return (
+    <section aria-label={text("Query summary", "查询概要")} className="kpi-grid kpi-grid--7 doctor-summary">
+      {specs.map((spec) => (
+        <KpiCard
+          foot={spec.caveat ? <span title={spec.caveat}>{spec.caveat}</span> : undefined}
+          info={spec.info}
+          key={spec.key}
+          label={<MetricName label={spec.label} official={spec.official} />}
+          value={
+            "value" in spec.fact ? (
+              <AnimatedFigure value={spec.fact.value} />
+            ) : (
+              <StateStamp state={honestCellState(spec.fact.state)} />
+            )
+          }
+        />
+      ))}
+    </section>
+  );
 }

@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { AuditFingerprintFamilyResponse, AuditOverviewResponse, AuditScope } from "../../../../contracts/generated/doctor-contracts";
 import { LocaleProvider } from "../../i18n/locale";
 import { mainMembers, mainOverview } from "../../visual/demo-session";
-import { AuditFamilyAside, AuditFamilyList, AuditFingerprintFamilyList, AuditKpiStrip, inFlightSamples } from "./AuditOverviewPanels";
+import { AuditFamilyList, AuditFingerprintFamilyList, AuditKpiStrip, inFlightSamples } from "./AuditOverviewPanels";
+import { AuditFamilyDrawer } from "./AuditWorkloadWorkspace";
 
 const english = (value: string): string => value;
 const scope: AuditScope = { window: { start_seconds: 1_700_000_000, end_seconds: 1_700_003_600 }, state: null, user: null, native_digest: null, catalog: null, database: "demo", resource_group: null, statement_filter: "exclude_doctor_and_non_query" };
@@ -18,7 +19,7 @@ describe("design board 01 panels", () => {
     expect(html).toContain("2h 47m");
     expect(html).toContain("5.6 TB");
     expect(html).toContain("3 records lack this field");
-    expect(html).toContain('class="audit-kpi audit-kpi-critical"');
+    expect(html).toContain('class="kpi-val kpi-val--critical"');
   });
 
   it("samples the server step series at 30 instants without aggregating, and says so when it is unavailable", () => {
@@ -34,13 +35,21 @@ describe("design board 01 panels", () => {
   });
 
   it("shows each family's audited SQL sample, the server share, and a missing scan as a dashed tag, never 0", () => {
-    const html = renderToStaticMarkup(<LocaleProvider initialLocale="en"><AuditFamilyList families={families} familyTop={overview.family_top} onSelect={() => undefined} selectedKey={null} sort="cumulative_query_time_desc" text={english} /></LocaleProvider>);
+    const selectedKey = families[0].membership.state === "exact_native_digest" ? families[0].membership.family_key : null;
+    const ungrouped = { ...families[0], membership: { state: "ungrouped" } as unknown as (typeof families)[number]["membership"] };
+    const html = renderToStaticMarkup(<LocaleProvider initialLocale="en"><AuditFamilyList families={[...families, ungrouped]} familyTop={overview.family_top} onSelect={() => undefined} selectedKey={selectedKey} sort="cumulative_query_time_desc" text={english} /></LocaleProvider>);
     expect(html).toContain("SELECT region, AVG(price) FROM sales");
     expect(html).toContain("Cumulative query time\u00a0↓");
     expect(html).toContain('style="width:61%"');
-    expect(html).toContain('class="audit-missing-tag"');
+    expect(html).toContain('data-honest-state="missing"');
     expect(html).toContain("1h 08m");
     expect(html).toContain('class="num last failed"');
+    expect(html).toContain('class="is-selected"');
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).not.toContain("aria-pressed");
+    expect(html).not.toContain("aria-selected");
+    expect(html).not.toContain('aria-label="Select query family "');
+    expect(html).toContain('<button class="row-pick-btn mono" disabled="" type="button">Not grouped</button>');
   });
 
   it("labels a family without a usable statement sample instead of inventing SQL", () => {
@@ -56,26 +65,26 @@ describe("design board 01 panels", () => {
 
   it("lists the top four members with server Profile states and keeps actions disabled until allowed", () => {
     const members = mainMembers({ ...scope, native_digest: "0f1e", catalog: "default_catalog" });
-    const html = renderToStaticMarkup(<AuditFamilyAside canDiagnose={false} canPlanCheck={false} error={null} family={families[0]} fetchedQueryIds={new Set()} loading={false} members={members} onClose={() => undefined} onDiagnose={() => undefined} onSelectMember={() => undefined} onShowMembers={() => undefined} profileLoading={false} selectedMemberKey={null} text={english} />);
+    const html = renderToStaticMarkup(<AuditFamilyDrawer canDiagnose={false} canPlanCheck={false} error={null} family={families[0]} fetchedQueryIds={new Set()} loading={false} members={members} onClose={() => undefined} onDiagnose={() => undefined} onSelectMember={() => undefined} onShowMembers={() => undefined} open profileLoading={false} selectedMemberKey={null} text={english} />);
     expect(html).toContain("top 4 of 412");
     expect(html).toContain("7e8c3a91…4d73");
     expect(html).toContain("1.10 B rows");
     expect(html).toContain("— missing");
     expect(html).toContain("Profile fetched");
     expect(html).toContain("Not fetchable yet");
-    expect(html).toMatch(/<button class="button accent primary" disabled="" type="button">Fetch Profile and diagnose/);
-    expect(html).toMatch(/<button class="button secondary" disabled="" type="button">Set as baseline/);
+    expect(html).toContain('<button class="btn btn-primary btn--sm" type="button" disabled="">Fetch Profile and diagnose</button>');
+    expect(html).toContain('<button class="btn btn-secondary btn--sm" type="button" disabled="">Set as baseline</button>');
     expect(html).toContain("SELECT customer_id,\n       SUM(amount)");
   });
 
   it("turns the baseline button into compare once a baseline from this list is set", () => {
     const members = mainMembers({ ...scope, native_digest: '0f1e', catalog: 'default_catalog' });
-    const aside = (baseline: 'none' | 'selected' | 'comparable' | 'elsewhere') => renderToStaticMarkup(<AuditFamilyAside baseline={baseline} canDiagnose canPlanCheck error={null} family={families[0]} fetchedQueryIds={new Set()} loading={false} members={members} onClose={() => undefined} onCompareWithBaseline={() => undefined} onDiagnose={() => undefined} onSelectMember={() => undefined} onSetBaseline={() => undefined} onShowMembers={() => undefined} profileLoading={false} selectedMemberKey={null} text={english} />);
-    expect(aside('none')).toContain('>Set as baseline</button>');
-    expect(aside('selected')).toContain('<button class="button secondary" disabled="" type="button">Baseline set</button>');
-    expect(aside('comparable')).toContain('>Compare with baseline</button>');
-    expect(aside('comparable')).not.toContain('>Set as baseline</button>');
-    expect(aside('elsewhere')).toContain('title="The current baseline is not in this list; this execution would replace it"');
+    const drawer = (baseline: 'none' | 'selected' | 'comparable' | 'elsewhere') => renderToStaticMarkup(<AuditFamilyDrawer baseline={baseline} canDiagnose canPlanCheck error={null} family={families[0]} fetchedQueryIds={new Set()} loading={false} members={members} onClose={() => undefined} onCompareWithBaseline={() => undefined} onDiagnose={() => undefined} onSelectMember={() => undefined} onSetBaseline={() => undefined} onShowMembers={() => undefined} open profileLoading={false} selectedMemberKey={null} text={english} />);
+    expect(drawer('none')).toContain('>Set as baseline<');
+    expect(drawer('selected')).toContain('<button class="btn btn-secondary btn--sm" type="button" disabled="">Baseline set</button>');
+    expect(drawer('comparable')).toContain('>Compare with baseline<');
+    expect(drawer('comparable')).not.toContain('>Set as baseline<');
+    expect(drawer('elsewhere')).toContain('title="The current baseline is not in this list; this execution would replace it"');
   });
 
   it("labels fingerprint groups unofficial, shows only templates and server counts, and never turns a missing metric into 0", () => {
@@ -125,14 +134,33 @@ describe("query family SQL reading", () => {
   it("marks a truncated aside sample, copies only the returned prefix and offers a member's full SQL", () => {
     const members = mainMembers({ ...scope, native_digest: "0f1e", catalog: "default_catalog" });
     const family = { ...families[0], statement_sample: { state: "text" as const, value: "SELECT 1", truncated: true } };
-    const props = { canDiagnose: false, canPlanCheck: false, error: null, family, fetchedQueryIds: new Set<string>(), loading: false, members, onClose: () => undefined, onDiagnose: () => undefined, onSelectMember: () => undefined, onShowMembers: () => undefined, profileLoading: false, text: english };
-    const closed = renderToStaticMarkup(<AuditFamilyAside {...props} onViewMemberSql={() => undefined} selectedMemberKey={null} />);
+    const props = { canDiagnose: false, canPlanCheck: false, error: null, family, fetchedQueryIds: new Set<string>(), loading: false, members, onClose: () => undefined, onDiagnose: () => undefined, onSelectMember: () => undefined, onShowMembers: () => undefined, open: true, profileLoading: false, text: english };
+    const closed = renderToStaticMarkup(<AuditFamilyDrawer {...props} onViewMemberSql={() => undefined} selectedMemberKey={null} />);
     expect(closed).toContain("sample truncated (prefix only)");
     expect(closed).toContain(">Copy returned prefix</button>");
-    expect(closed).toMatch(/<button aria-expanded="false" class="button secondary" disabled="" type="button">View member full SQL<\/button>/);
-    const open = renderToStaticMarkup(<AuditFamilyAside {...props} memberSql={"SELECT full\nFROM t"} onViewMemberSql={() => undefined} selectedMemberKey="k" />);
+    expect(closed).toMatch(/<button aria-expanded="false" class="btn btn-secondary btn--sm" disabled="" type="button">View member full SQL<\/button>/);
+    const open = renderToStaticMarkup(<AuditFamilyDrawer {...props} memberSql={"SELECT full\nFROM t"} onViewMemberSql={() => undefined} selectedMemberKey="k" />);
     expect(open).toContain('aria-controls="audit-family-member-sql"');
     expect(open).toContain('id="audit-family-member-sql"');
     expect(open).toContain("SELECT full\nFROM t");
+  });
+
+  it("handles unknown fingerprint unavailable reasons without throwing or rendering undefined (correctness fix #6)", () => {
+    const response: AuditFingerprintFamilyResponse = {
+      schema_version: "audit-workload.v1", connection_id: "c", scope,
+      cluster_identity: { state: "session_scoped", connection_id: "c", detected_version: "3.5.14" },
+      audit_timestamp_time_zone: null, authority: "product_unofficial", fingerprint_version: "sr-doctor-fingerprint.v1",
+      rows: [],
+      coverage: {
+        eligible_event_count: "2", read_limit: 500, read_event_count: "2", source: { state: "complete" },
+        fingerprinted_event_count: "0", partial_event_count: "0",
+        unavailable: [{ reason: "future_parser_reason" as AuditFingerprintFamilyResponse["coverage"]["unavailable"][number]["reason"], count: "2" }],
+        family_count: "0",
+      },
+      top: { requested_limit: 20, returned_count: 0, full_window_count: "0", truncated: false }, limitations: [],
+    };
+    const html = renderToStaticMarkup(<AuditFingerprintFamilyList error={null} loading={false} response={response} text={english} />);
+    expect(html).toContain("future_parser_reason 2");
+    expect(html).not.toContain("undefined");
   });
 });

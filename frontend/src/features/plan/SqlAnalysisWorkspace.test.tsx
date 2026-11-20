@@ -55,4 +55,38 @@ describe("SQL workspace", () => {
     expect(planFailureLabel("connection_expired", text)).toContain("重新连接");
     expect(planFailureLabel("remote_timeout", text)).toContain("超时");
   });
+
+  it("warns explicitly that password and SQL are not encrypted in transit on plaintext connections (correctness fix #5)", () => {
+    const plaintextConfirm = render({
+      stage: "confirm",
+      connection: { connectionId: "c", tlsMode: "plaintext", detectedVersion: "3.5.14" },
+    });
+    expect(plaintextConfirm).toContain("口令与 SQL 不加密传输");
+    expect(plaintextConfirm).not.toContain("TLS <code>plaintext</code>");
+
+    const loopbackConfirm = render({
+      stage: "confirm",
+      connection: { connectionId: "c", tlsMode: "docker_loopback_plaintext", detectedVersion: "3.5.14" },
+    });
+    expect(loopbackConfirm).toContain("口令与 SQL 不加密传输");
+
+    const tlsConfirm = render({
+      stage: "confirm",
+      connection: { connectionId: "c", tlsMode: "verify_full", detectedVersion: "3.5.14" },
+    });
+    expect(tlsConfirm).toContain("TLS verify-full");
+    expect(tlsConfirm).not.toContain("口令与 SQL 不加密传输");
+  });
+
+  it("shows an unavailable stamp instead of 0 Fragment · 0 个节点 when the plan graph is unavailable (correctness fix #4)", () => {
+    const base = sr3514ConnectedContractGolden.explain_response.snapshot;
+    const unavailableSnapshot = {
+      ...base,
+      graph_view: { ...base.graph_view, state: "unavailable" as const, nodes: [], root_node_ids: [] },
+    };
+    const html = render({ planSnapshot: unavailableSnapshot, planResultMode: "logical", planMode: "logical" });
+    expect(html).toContain('data-honest-state="unavailable"');
+    expect(html).not.toContain("0 Fragment");
+    expect(html).not.toContain("0 个节点");
+  });
 });

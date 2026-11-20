@@ -93,7 +93,7 @@ async function walkSample(sample) {
     await shot(`${sample.id}-why-finding`);
     if (assertMode) assertWhy(sample, record.views.why);
     // Finding -> node: "Show in execution graph" opens the node and keeps this finding.
-    await evaluate(`[...document.querySelectorAll(".finding-inspector button")].find((b) => /Show in execution graph|在图中定位/.test(b.innerText))?.click()`);
+    await evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find((b) => /Show in execution graph|在图中定位/.test(b.innerText))?.click()`);
     await wait(500);
     record.views.located = await doctorProjection();
     await shot(`${sample.id}-why-located`);
@@ -133,12 +133,12 @@ async function walkSample(sample) {
 async function walkCompare(baseline, candidate) {
   await openFresh();
   await clickNav("Compare");
-  await waitFor(`!!document.querySelector(".offline-compare-form")`, "Compare form");
-  await setFile(0, baseline.file, ".offline-compare-form");
-  await setFile(1, candidate.file, ".offline-compare-form");
-  await evaluate(`[...document.querySelectorAll(".offline-compare-form button[type=submit]")][0].click()`);
+  await waitFor(`!!document.querySelector(".offline-compare-card")`, "Compare form");
+  await setFile(0, baseline.file, ".offline-compare-card");
+  await setFile(1, candidate.file, ".offline-compare-card");
+  await evaluate(`[...document.querySelectorAll(".offline-compare-card button[type=submit]")][0].click()`);
   try {
-    await waitFor(`!!document.querySelector(".compare-workspace .compare-main")`, "Compare result", 60_000);
+    await waitFor(`!!document.querySelector(".compare-workspace .cmp-main-card")`, "Compare result", 60_000);
   } catch (error) {
     await shot("compare-timeout");
     throw error;
@@ -146,16 +146,18 @@ async function walkCompare(baseline, candidate) {
   await wait(800);
   const visible = await evaluate(`document.querySelector("main")?.innerText ?? ""`);
   await shot("c17-vs-c21-compare");
-  const metricNames = await evaluate(`[...document.querySelectorAll(".compare-metric-name strong")].map((item) => item.innerText)`);
-  const findingChanges = await evaluate(`[...document.querySelectorAll(".compare-finding-list li")].map((item) => item.innerText.replace(/\\s+/g, " "))`);
-  await evaluate(`document.querySelector(".compare-findings")?.scrollIntoView({ block: "start" })`);
+  const metricNames = await evaluate(`[...document.querySelectorAll(".cmp-metric-title")].map((item) => item.innerText)`);
+  const findingChanges = await evaluate(`[...document.querySelectorAll(".cmp-finding-list li")].map((item) => item.innerText.replace(/\\s+/g, " "))`);
+  await evaluate(`document.querySelector(".cmp-findings-card")?.scrollIntoView({ block: "start" })`);
   await wait(300);
   await shot("c17-vs-c21-compare-findings");
-  // Expand the first operator group so its counter names are on screen.
-  await evaluate(`(() => { const group = document.querySelector(".compare-operator-group"); if (group) { group.open = true; group.scrollIntoView({ block: "start" }); } })()`);
+  // Switch to Operator counters and expand the first operator group so its counter names are on screen.
+  await evaluate(`[...document.querySelectorAll('.compare-workspace [role="tab"]')].find((tab) => /Operator counters|算子计数/.test(tab.innerText))?.click()`);
+  await wait(200);
+  await evaluate(`(() => { const group = document.querySelector(".cmp-op-group"); if (group) { group.open = true; group.scrollIntoView({ block: "start" }); } })()`);
   await wait(300);
   await shot("c17-vs-c21-compare-operators");
-  const operatorNames = await evaluate(`[...document.querySelectorAll(".compare-operators .compare-metric-name strong")].map((item) => item.innerText)`);
+  const operatorNames = await evaluate(`[...document.querySelectorAll(".compare-operators .cmp-metric-title")].map((item) => item.innerText)`);
   if (assertMode) {
     assertNoInternalIds("compare", "compare", visible);
     // A metric id is one CamelCase token; a readable name has a space or CJK text.
@@ -179,17 +181,17 @@ async function doctorProjection() {
     const selectedNode = document.querySelector(".react-flow__node.selected")?.innerText ?? null;
     const planId = (element) => element?.querySelector("header span:last-child")?.innerText ?? null;
     return {
-      visible_text: [".doctor-summary", ".profile-state-notice", ".findings-panel", ".evidence-gaps", ".finding-inspector", ".doctor-graph .graph-state, .doctor-graph .execution-graph-empty"].map(text).join("\\n"),
+      visible_text: [".doctor-summary", ".profile-state-notice", ".findings-panel", ".evidence-gaps", '[role="dialog"] .inspector-body', ".doctor-graph .execution-graph-status"].map(text).join("\\n"),
       cards,
-      inspector: text(".finding-inspector"),
+      inspector: text('[role="dialog"] .inspector-body'),
       evidence_gaps: text(".evidence-gaps"),
       graph: text(".doctor-graph"),
       selected_node: selectedNode,
-      focus_node_id: planId(document.querySelector(".plan-card.finding-focus")),
-      inspector_title: text(".finding-inspector h2"),
+      focus_node_id: planId(document.querySelector(".exec-node.is-focused")),
+      inspector_title: text('[role="dialog"] .card-title'),
       node_inspector: text(".node-inspector"),
       // Visually clipped facts keep their full innerText; compare box widths instead.
-      facts_clipped: [...document.querySelectorAll(".finding-inspector .inspector-facts dd, .finding-inspector .inspector-facts dt")].some((cell) => cell.scrollWidth > cell.clientWidth + 1),
+      facts_clipped: [...document.querySelectorAll('[role="dialog"] .inspector-facts dd, [role="dialog"] .inspector-facts dt')].some((cell) => cell.scrollWidth > cell.clientWidth + 1),
     };
   })()`);
 }

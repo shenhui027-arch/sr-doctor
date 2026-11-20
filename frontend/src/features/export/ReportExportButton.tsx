@@ -1,7 +1,8 @@
 import { useEffect, useState, type JSX } from "react";
 import type { ExportRequest } from "../../../../contracts/generated/doctor-contracts";
-import { doctorApi, type ApiFailure, type ReportDownload } from "../../lib/api";
+import { Button } from "../../design";
 import { useLocale, type LocalizedText } from "../../i18n/locale";
+import { doctorApi, type ApiFailure, type ReportDownload } from "../../lib/api";
 
 type ExportState =
   | { phase: "idle" }
@@ -24,16 +25,21 @@ export function ReportExportButton({ label, request }: { label: string; request:
     setState(await runReportExport(request, (value) => doctorApi.exportReport(value), saveReportDownload));
   };
 
-  return <button
-    aria-busy={state.phase === "exporting"}
-    aria-live="polite"
-    className="report-export-button"
-    data-phase={state.phase}
-    disabled={!request || state.phase === "exporting"}
-    onClick={() => { void exportCurrent(); }}
-    title={exportTitle(state, text)}
-    type="button"
-  >{exportLabel(label, state, text)}</button>;
+  return (
+    <Button
+      aria-busy={state.phase === "exporting"}
+      aria-live="polite"
+      className="report-export-button"
+      data-phase={state.phase}
+      disabled={!request || state.phase === "exporting"}
+      onClick={() => { void exportCurrent(); }}
+      size="sm"
+      title={exportTitle(state, text)}
+      variant="secondary"
+    >
+      {exportLabel(label, state, text)}
+    </Button>
+  );
 }
 
 export async function runReportExport(request: ExportRequest, exporter: ReportExporter, save: ReportSaver): Promise<ExportState> {
@@ -72,7 +78,7 @@ function exportLabel(label: string, state: ExportState, text: LocalizedText): st
 }
 
 function exportTitle(state: ExportState, text: LocalizedText): string {
-  if (state.phase === "success") return `${text("Downloaded deterministic report", "已下载确定性报告")} · manifest ${state.manifestHash}`;
+  if (state.phase === "success") return `${text("Downloaded deterministic report · contains no raw Profile text, SQL literals or passwords", "已下载确定性报告 · 不含原始 Profile 文本、SQL 字面量或口令")} · manifest ${state.manifestHash}`;
   if (state.phase === "failure") return `${text("Report download failed", "报告下载失败")} · ${state.messageId}`;
-  return text("Download the backend-generated, redacted report", "下载由后端生成并脱敏的报告");
+  return text("Download the backend-generated, redacted report (contains no raw Profile text, SQL literals or passwords)", "下载由后端生成并脱敏的报告（不含原始 Profile 文本、SQL 字面量或口令）");
 }

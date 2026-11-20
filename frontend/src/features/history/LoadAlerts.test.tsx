@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { LoadAlertView, LoadAlertsResponse } from "../../../../contracts/generated/doctor-contracts";
-import { LoadAlertsPanel, loadAlertTitle, ratePercent } from "./LoadAlertsPanel";
+import { LocaleProvider } from "../../i18n/locale";
+import { kindText, LoadAlertsPanel, loadAlertTitle, ratePercent } from "./LoadAlertsPanel";
 import { loadViewAt } from "./MonitoringWorkspaces";
 
 const chinese = (_english: string, value: string): string => value;
@@ -113,5 +114,54 @@ describe("load alerts (design boards I12-I13)", () => {
     const empty = renderToStaticMarkup(<LoadAlertsPanel alerts={response([])} busy={false} onAction={noop} onOpenHistory={noop} onSelect={noop} selectedId={null} text={chinese} />);
     expect(empty).toContain("这个状态下没有导入告警");
     expect(empty).toContain("导入告警规则（试运行）");
+  });
+
+  it("renders a missing lag as StateStamp(missing) instead of 0 条消息 (correctness fix #3)", () => {
+    const missingLag = base("10", "open", "medium", {
+      rule: "lag_growing",
+      job_id: "10301",
+      name: "orders_rl",
+      database: "ods",
+      table: "orders_rt",
+      ratio_permille: 2_000,
+      hours: [],
+    });
+    const html = renderToStaticMarkup(
+      <LocaleProvider initialLocale="zh">
+        <LoadAlertsPanel alerts={response([missingLag])} busy={false} onAction={noop} onOpenHistory={noop} onSelect={noop} selectedId="10" text={chinese} />
+      </LocaleProvider>,
+    );
+    expect(html).toContain('data-honest-state="missing"');
+    expect(html).not.toContain("0 条消息");
+    expect(html).not.toContain("0 messages");
+  });
+
+  it("handles unknown load kinds, severities and rule variants without throwing or rendering undefined (correctness fix #6)", () => {
+    expect(kindText("future_load_kind" as never)).toBe("future_load_kind");
+    expect(loadAlertTitle({ rule: "future_rule" } as never, chinese)).toBe("future_rule");
+
+    const unknownKindAlert = base("11", "open", "future_severity" as never, {
+      ...(failure.detail as Extract<LoadAlertView["detail"], { rule: "failure_rate" }>),
+      kind: "future_load_kind" as never,
+    });
+    const unknownRuleAlert = base("12", "open", "low", {
+      rule: "future_rule",
+      database: "ods",
+      table: "events",
+    } as never);
+    const html = renderToStaticMarkup(
+      <LoadAlertsPanel
+        alerts={response([unknownKindAlert, unknownRuleAlert])}
+        busy={false}
+        onAction={noop}
+        onOpenHistory={noop}
+        onSelect={noop}
+        selectedId="12"
+        text={chinese}
+      />,
+    );
+    expect(html).toContain("future_load_kind");
+    expect(html).toContain("future_rule");
+    expect(html).not.toContain("undefined");
   });
 });

@@ -148,7 +148,7 @@ test("Formal harness keeps the legacy flow and uses shared screenshot redaction"
   assert.match(main, /else if \(runningProfileOptions\)/);
   assert.match(main, /await clickButton\("Queries"\);\n      await topologyAndRuntimeCoverage\(\);/);
   assert.match(module, /await capture\("running-r4-retained-stale", \{ redactSql: true \}\)/);
-  assert.match(main, /\.running-profile-connection code/);
+  assert.match(main, /\.running-profile-entry code/);
   assert.match(main, /\.running-profile-entry pre\.official-profile-display-text/);
   assert.match(module, /document\.querySelectorAll\('\.running-profile-retained button'\)/);
   assert.match(module, /Open diagnosis/);

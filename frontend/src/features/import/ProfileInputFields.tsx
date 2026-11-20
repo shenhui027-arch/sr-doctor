@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ChangeEvent, Dispatch, DragEvent, JSX } from "react";
+import { Icon } from "../../design";
 import { useLocale } from "../../i18n/locale";
 import { bytesText } from "../../lib/duration-display";
 import {
@@ -38,10 +39,14 @@ export function handleProfileFileChange(
   input.value = "";
 }
 
+function nonBreakingBytes(bytes: number): string | null {
+  const formatted = bytesText(String(bytes));
+  return formatted ? formatted.replace(/\s+/g, "\u00A0") : null;
+}
+
 /**
- * Drop or choose a file, or paste the text (design board 05). Both stay
- * visible; the last one provided is the input, and the backend detects the
- * format, so there is no mode switch or source-kind picker.
+ * Drop or choose a file, or paste the text (boards/01-connect.html). Both stay
+ * visible; the last one provided is the input.
  */
 export function ProfileInputFields({
   disabled = false,
@@ -54,8 +59,9 @@ export function ProfileInputFields({
 }: ProfileInputFieldsProps): JSX.Element {
   const { text } = useLocale();
   const [dragging, setDragging] = useState(false);
-  const limit = maxInputBytes ? bytesText(String(maxInputBytes)) : null;
+  const limit = maxInputBytes ? nonBreakingBytes(maxInputBytes) : null;
   const pasteId = `${idPrefix}-paste`;
+  const fileId = `${idPrefix}-file`;
 
   function onDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
@@ -64,32 +70,51 @@ export function ProfileInputFields({
     dispatch({ type: "choose_file", file: event.dataTransfer.files.item(0) ?? null });
   }
 
-  return <fieldset className="profile-input-fields" disabled={disabled}>
-    <legend className={showLegend ? undefined : "visually-hidden"}>{label}</legend>
-    <label
-      className={`file-drop${dragging ? " dragging" : ""}${state.mode === "file" && state.file ? " chosen" : ""}`}
-      onDragLeave={() => setDragging(false)}
-      onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
-      onDrop={onDrop}
-    >
-      <svg aria-hidden="true" fill="none" height="32" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="32"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M12 18v-6M9 15l3-3 3 3" /></svg>
-      <span className="file-drop-title">{state.mode === "file" && state.file ? state.file.name : text("Drop a Profile file here, or click to choose", "拖入 Profile 文件，或点击选择")}</span>
-      <span className="file-drop-hint">
-        {state.mode === "file" && state.file
-          ? `${bytesText(String(importByteLength(state)))} · ${text("held in memory", "仅保留在内存中")}`
-          : `${text("ANALYZE PROFILE text and get_query_profile() output", "支持 ANALYZE PROFILE 文本与 get_query_profile() 输出")}${limit ? ` · ${text("up to", "最大")} ${limit}` : ""}`}
-      </span>
-      <input accept={PROFILE_FILE_ACCEPT} className="visually-hidden" onChange={(event) => handleProfileFileChange(event, dispatch)} type="file" />
-    </label>
-    <label className="paste-field" htmlFor={pasteId}>
-      {text("Or paste the Profile text", "或粘贴 Profile 原文")}
-      <textarea
-        id={pasteId}
-        onChange={(event) => dispatch({ type: "paste", text: event.target.value })}
-        placeholder={"Query:\n  Summary:\n     - Query ID: …"}
-        rows={4}
-        value={state.pastedText}
-      />
-    </label>
-  </fieldset>;
+  return (
+    <fieldset className="profile-input-fields" disabled={disabled}>
+      <legend className={showLegend ? "field-label" : "sr-only"}>{label}</legend>
+      <label
+        className={`file-drop${dragging ? " dragging" : ""}${state.mode === "file" && state.file ? " chosen" : ""}`}
+        htmlFor={fileId}
+        onDragLeave={() => setDragging(false)}
+        onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+        onDrop={onDrop}
+      >
+        <Icon name="upload" size={20} />
+        <span className="file-drop-title">
+          {state.mode === "file" && state.file
+            ? state.file.name
+            : text("Drop a Profile file here, or click to choose", "拖入 Profile 文件，或点击选择本地文件")}
+        </span>
+        <span className="card-subtitle mono file-drop-hint">
+          {state.mode === "file" && state.file
+            ? `${nonBreakingBytes(importByteLength(state)) ?? "0\u00A0B"} · ${text("in memory", "仅保留在内存中")}`
+            : `${limit ? `${text("Up to", "上限")} ${limit} · ` : ""}.txt / .json / .profile`}
+        </span>
+        <input
+          accept={PROFILE_FILE_ACCEPT}
+          className="sr-only"
+          id={fileId}
+          onChange={(event) => handleProfileFileChange(event, dispatch)}
+          type="file"
+        />
+      </label>
+
+      <div className="field paste-field">
+        <div className="paste-field-hd">
+          <label className="field-label" htmlFor={pasteId}>{text("Raw Profile text", "Profile 原文")}</label>
+          <span className="card-subtitle mono">StarRocks 3.1+</span>
+        </div>
+        <textarea
+          className="textarea paste-textarea"
+          id={pasteId}
+          onChange={(event) => dispatch({ type: "paste", text: event.target.value })}
+          placeholder={"Query:\n  Summary:\n     - Query ID: …"}
+          rows={5}
+          spellCheck={false}
+          value={state.pastedText}
+        />
+      </div>
+    </fieldset>
+  );
 }

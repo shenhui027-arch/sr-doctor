@@ -1,170 +1,162 @@
-/* Doctor: summary strip, then findings | execution structure | inspector, then plan nodes and source. */
-.doctor-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 20px 28px; }
-.doctor-import { display: grid; gap: 8px; max-width: 880px; padding: 16px 20px; }
-.doctor-import-hint { margin: 0; }
-.doctor-import-connected { display: flex; align-items: center; gap: 12px; color: var(--text); font: 400 14px/20px var(--sans); }
-/* Flex like the design board: the graph takes the slack, the side columns keep their (fractional) share. */
-.doctor-workbench { display: flex; gap: 12px; align-items: stretch; }
-.doctor-findings-column { flex: 1 1 300px; max-width: 360px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
-.doctor-findings-column > .evidence-gaps { flex: 0 0 auto; }
-/* No finding: the inspector's empty note sits under the gaps at its content height. */
-.doctor-findings-column .findings-body > .finding-inspector-empty { gap: 4px; padding: 12px 14px; }
-.doctor-findings-column .findings-body > .finding-inspector-empty h2 { font-size: 13px; line-height: 20px; }
-.doctor-findings-column .findings-body > .finding-inspector-empty p { font-size: 12px; line-height: 18px; }
-.doctor-graph { flex: 999 1 560px; display: grid; gap: 12px; min-width: 0; }
-.doctor-workbench > .finding-inspector { flex: 1 1 340px; max-width: 400px; min-width: 0; }
-
-/* Seven query-level facts in one strip; a non-exact value shows its state, never 0. */
-.doctor-summary { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
-.doctor-summary-facts { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; margin: 0; background: var(--border); }
-.doctor-summary-facts > div { min-width: 0; padding: 10px 14px; background: var(--surface); }
-.doctor-summary-facts dt { overflow: hidden; color: var(--muted); font: 400 12px/18px var(--sans); text-overflow: ellipsis; white-space: nowrap; }
-.doctor-summary-facts dd { margin: 2px 0 0; color: var(--text); font: 500 20px/28px var(--mono); letter-spacing: -.02em; white-space: nowrap; }
-.doctor-summary-facts dd:has(.metric-state-badge) { margin-top: 4px; font-size: 0; line-height: 0; }
-.doctor-summary-facts .metric-state-badge { height: 24px; line-height: 22px; }
-.doctor-summary-facts dd.doctor-summary-note { margin: 0; overflow: hidden; color: var(--muted); font: 400 11px/16.5px var(--sans); letter-spacing: 0; text-overflow: ellipsis; }
-.metric-state-badge { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; color: var(--muted); border: 1px dashed var(--dashed); border-radius: 4px; font: 400 12px/18px var(--sans); }
-.metric-state-badge[data-state="invalid"] { color: var(--critical); border-color: #e8a29b; }
-.metric-state-badge[data-state="partial"] { color: var(--warning); border-color: var(--hot-soft); }
-
-
-
-@media (max-width: 1280px) {
-  .doctor-workbench { display: grid; grid-template-columns: minmax(260px, 300px) minmax(0, 1fr); }
-  .doctor-workbench > .doctor-findings-column { max-width: none; }
-  .doctor-workbench > .finding-inspector { grid-column: 1 / -1; position: static; max-width: none; max-height: none; }
+/* Doctor workspace (boards/04-doctor.html): one-screen >=1280px, stacked <1280px. */
+.workspace-content.workspace-doctor {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 1920px;
+  margin: 0 auto;
+  padding: var(--shell-pad-y) var(--shell-pad-x);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
-@media (max-width: 1100px) {
-  .doctor-summary-facts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+@media (max-width: 1279px) {
+  .workspace-content.workspace-doctor {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
 }
-@media (max-width: 760px) { .doctor-layout { padding: 12px 16px 20px; } }
 
-/* Fail-closed Profile states (Level 2, running snapshot): what is not evaluated and what to capture next. */
-.profile-state-notice { display: grid; gap: 4px; padding: 12px 16px; color: var(--text); background: var(--warning-tint); border: 1px solid var(--warning); border-radius: 8px; }
-.profile-state-notice strong { font: 500 14px/20px var(--sans); }
-.profile-state-notice p { margin: 0; color: var(--text-2); font-size: 13px; line-height: 20px; }
-.profile-state-notice .profile-state-next { color: var(--text); font-weight: 500; }
+.doctor-import {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
 
-/* Entry to the official ANALYZE PROFILE reading, under the execution graph. */
-.official-profile-entry { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; color: var(--muted); font-size: 12px; line-height: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
-.official-profile-entry .official-profile-open { flex: none; }
+.doctor-import-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
 
-/* Details (design board 02, bottom): tabs over the operator table, metrics, source text and provenance. */
-.doctor-details { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
-.doctor-details-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--border); }
-.doctor-details-tabs [role="tab"] { height: 40px; padding: 0 10px; color: var(--text-2); background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; font: 400 13px/19.5px var(--sans); cursor: pointer; }
-.doctor-details-tabs [role="tab"][aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }
-.doctor-details-tabs [role="tab"] > span { margin-left: 4px; color: var(--muted); font: 500 13px/19.5px var(--mono); }
-.doctor-details-hint { align-self: center; margin-left: auto; color: var(--muted); font: 400 12px/18px var(--sans); }
-/* Operators and metrics scroll inside the card under a sticky header, so a long metric list never becomes a page of its own. */
-.doctor-details-table-wrap { max-height: max(360px, calc(100vh - 160px)); overflow: auto; }
-.doctor-details-empty { margin: 0; padding: 14px; color: var(--muted); font: 12px/18px var(--sans); }
-.doctor-details .plan-node-table, .doctor-details .raw-metrics-table { min-width: 900px; font: 400 12px/18px var(--sans); }
-.doctor-details .plan-node-table th, .doctor-details .raw-metrics-table th { position: sticky; top: 0; z-index: 1; padding: 8px 10px; color: var(--muted); background: var(--surface); border-bottom: 1px solid var(--border); font: 500 12px/18px var(--sans); }
-.doctor-details .plan-node-table td, .doctor-details .raw-metrics-table td { padding: 8px 10px; color: var(--text); border-bottom: 1px solid var(--border-soft); }
-.doctor-details .plan-node-table :is(th, td):first-child, .doctor-details .plan-node-table :is(th, td):last-child { padding-inline: 14px; }
-.doctor-details .plan-node-table tbody tr { cursor: pointer; }
-.doctor-details .plan-node-table tr.selected td { background: #f3f6fe; }
-.doctor-details .plan-node-table tr.hot-most td:first-child, .doctor-details .plan-node-table tr.hot-second td:first-child { box-shadow: none; }
-.doctor-details .num { text-align: right; font-family: var(--mono); }
-.doctor-details .plan-node-link { color: var(--text); font: 400 12px/18px var(--mono); }
-.doctor-details .plan-node-link small { color: var(--muted); font: inherit; }
-.doctor-details td.plan-node-fact { max-width: 280px; color: var(--text-2); }
-.doctor-details .plan-node-table th.share { width: 160px; }
-.doctor-details .plan-node-share { display: flex; gap: 8px; }
-.doctor-details .plan-node-share .share-bar { flex: 1 1 auto; background: var(--border-soft); }
-.doctor-details .plan-node-share .share-bar > span { background: var(--dashed); border-radius: 3px; }
-.doctor-details .hot-second .plan-node-share .share-bar > span { background: var(--hot-soft); }
-.doctor-details .hot-most .plan-node-share .share-bar > span { background: var(--hot); }
-.doctor-details .plan-node-share b { width: 40px; text-align: right; font: 400 12px/18px var(--mono); }
-.doctor-details tr.hot-most :is(td.time, .plan-node-share b) { color: var(--hot); }
-.doctor-details .metric-unavailable, .doctor-details tr.unmeasured .plan-node-share b { color: var(--muted); }
-.structure-source { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 10px; font: 400 11px/16.5px var(--sans); white-space: nowrap; }
-.structure-source.explicit { color: #18794e; background: #e7f5ee; }
-.structure-source.derived { color: #1743b8; background: #eaf0fe; }
-.structure-source.unavailable { color: var(--muted); background: var(--surface); border: 1px dashed var(--dashed); }
-.doctor-details .source-panel { margin: 0; border: 0; border-radius: 0 0 10px 10px; }
-.doctor-provenance { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1px; margin: 0; padding: 0; background: var(--border-soft); border-radius: 0 0 10px 10px; overflow: hidden; }
-.doctor-provenance > div { padding: 10px 14px; background: var(--surface); }
-.doctor-provenance dt { color: var(--muted); font: 400 12px/18px var(--sans); }
-.doctor-provenance dd { margin: 2px 0 0; overflow-wrap: anywhere; color: var(--text); font: 400 12px/18px var(--mono); }
+.doctor-import-connected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
 
-/* Task 65 (board 5): the analysis is one screen. Summary on top; the execution structure (graph or
-   tables) on the left fills the rest; the findings column on the right scrolls on its own. */
-.workspace-doctor:has(> .doctor-layout) { overflow: hidden; }
-.doctor-layout { height: 100%; display: flex; flex-direction: column; gap: 16px; padding: 16px 24px 24px; }
-.doctor-layout > * { flex: 0 0 auto; }
-.doctor-workbench { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 420px; grid-template-rows: minmax(0, 1fr); gap: 16px; align-items: stretch; }
-.doctor-workbench > .doctor-findings-column { grid-column: 2; grid-row: 1; max-width: none; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 2px; scrollbar-width: thin; }
-.doctor-workbench > .doctor-findings-column > * { flex: 0 0 auto; }
-.doctor-structure { grid-column: 1; grid-row: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.doctor-structure-tabs { align-self: flex-start; flex: 0 0 auto; }
-.doctor-structure > .doctor-graph { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.doctor-structure > .doctor-graph[hidden], .doctor-structure-details[hidden] { display: none; }
-.doctor-structure > .doctor-graph > .execution-graph { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.doctor-structure .is-doctor .execution-graph-canvas { min-height: 0; }
-.doctor-structure-details { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.doctor-structure-details > .doctor-details { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-card); box-shadow: var(--shadow-1); }
-.doctor-structure-details .doctor-details-table-wrap { flex: 1 1 auto; max-height: none; min-height: 0; }
-.doctor-structure-details .source-panel { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.doctor-summary { box-shadow: var(--shadow-1); }
-.doctor-summary-facts > div { padding: 12px 16px; }
-.doctor-summary-facts dd { font: 500 20px/28px var(--sans); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
-.doctor-mode-bar + .workspace-doctor .doctor-import { padding: 24px; }
+.doctor-layout {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--grid-gap);
+  min-height: 0;
+  overflow: hidden;
+}
 
-/* The recommendation inside a finding's detail (task 65). */
-.finding-recommendation { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
-.finding-recommendation-head { display: flex; align-items: center; gap: 8px; }
-.finding-recommendation-head h3 { margin: 0 !important; color: var(--text) !important; font: 500 13px/20px var(--sans) !important; }
-.finding-recommendation-source { color: var(--muted); font: 400 12px/16px var(--mono); }
-.finding-recommendation-head .ui-info { margin-left: auto; }
-.finding-recommendation-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
-.finding-recommendation-steps li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; }
-.finding-recommendation-steps li > span { color: var(--muted); font: 400 12px/20px var(--mono); }
-.finding-recommendation-steps strong { display: block; color: var(--text); font: 400 13px/20px var(--sans); }
-.finding-recommendation-steps p { margin: 0 !important; color: var(--text-2) !important; font: 400 12px/18px var(--sans); }
-.finding-recommendation-expected { margin: 0 !important; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; color: var(--text-2) !important; font: 400 12px/18px var(--mono); }
-.finding-recommendation-expected > span:first-child { color: var(--muted); font-family: var(--sans); }
-.finding-recommendation-verify summary { color: var(--text-2); font: 400 13px/20px var(--sans); cursor: pointer; }
-.finding-recommendation-verify ol { margin: 6px 0 0; padding-left: 18px; color: var(--text-2); font: 400 12px/18px var(--sans); }
-.finding-recommendation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+@media (max-width: 1279px) {
+  .doctor-layout {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
+}
 
-/* Task 69 card contract: the findings column is one card. "Findings · N" and its filter stay on top;
-   the list, the selected finding's detail, the evidence gaps and the Official Advisor are sections of
-   its one scrolling body. */
-.doctor-workbench > .doctor-findings-column { gap: 0; padding-right: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-1); }
-/* Review: the heading is outside the scrolling body, so it stays whatever is scrolled into view. */
-.doctor-findings-column > .findings-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 0; margin: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
-.doctor-findings-column > .findings-panel > .findings-heading { flex: 0 0 auto; margin: 0; padding: 12px 16px 10px; background: var(--surface); border-bottom: 1px solid var(--border-soft); }
-.doctor-findings-column .findings-body { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-width: thin; display: flex; flex-direction: column; }
-.doctor-findings-column .findings-body > * { flex: 0 0 auto; }
-.findings-body > :is(.panel, .advisor-guide-panel) { margin: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
-.findings-body > :is(.panel, .advisor-guide-panel, .evidence-gaps) { border-top: 1px solid var(--border) !important; }
+.doctor-workbench {
+  flex: 1 1 auto;
+  min-height: 0;
+}
 
-/* Task 70: the official ANALYZE PROFILE reading is a card in the structure column: its title,
-   query, return button and scope switch stay on top; the reading scrolls below. */
-.doctor-graph:has(> .official-profile-dialog) > .execution-graph { display: none; }
-.official-profile-dialog { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-1); animation: ui-rise 320ms var(--ease) both; }
-.official-profile-dialog > * { flex: 0 0 auto; }
-.official-profile-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 14px 16px 10px; }
-.official-profile-dialog > header .eyebrow { margin: 0; color: var(--muted); font: 400 12px/16px var(--sans); }
-.official-profile-dialog > header h3 { margin: 2px 0 0; color: var(--text); font: 500 16px/24px var(--sans); }
-.official-profile-query { margin: 2px 0 0; display: flex; gap: 8px; color: var(--muted); font: 400 12px/16px var(--sans); }
-.official-profile-query code { color: var(--text-2); font: 400 12px/16px var(--mono); }
-.official-profile-scope { margin: 0 16px; align-self: flex-start; }
-.official-profile-scope > button { height: 28px; padding: 0 10px; color: var(--text-2); background: transparent; border: 0; border-radius: 6px; font: 400 13px/20px var(--sans); }
-.official-profile-scope > button[aria-pressed="true"] { color: var(--text); font-weight: 500; }
-.official-profile-scope > button:disabled { color: var(--faint); }
-.official-profile-boundary { margin: 8px 16px 0; padding-bottom: 10px; color: var(--muted); font: 400 12px/16px var(--sans); border-bottom: 1px solid var(--border); }
-.official-profile-body { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-width: thin; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
-.official-profile-body > * { flex: 0 0 auto; margin: 0; }
-.official-profile-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; background: var(--page); border-radius: var(--radius-control); }
-.official-profile-action p, .official-profile-state { margin: 0; color: var(--text-2); font: 400 13px/20px var(--sans); }
-.official-profile-actions { display: flex; gap: 8px; }
-.official-profile-result { display: flex; flex-direction: column; gap: 10px; }
-.official-profile-result-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.official-profile-display-text { margin: 0; padding: 12px 14px; overflow-x: auto; color: var(--text); background: var(--page); border: 1px solid var(--border); border-radius: var(--radius-control); font: 400 12px/18px var(--mono); white-space: pre; }
-.official-profile-metadata { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; font: 400 12px/16px var(--sans); }
-.official-profile-metadata dt { color: var(--muted); }
-.official-profile-metadata dd { margin: 0; color: var(--text-2); font-family: var(--mono); overflow-wrap: anywhere; }
-.official-profile-raw-source summary, .official-profile-technical summary { color: var(--text-2); font: 400 13px/20px var(--sans); cursor: pointer; }
+@media (min-width: 1280px) {
+  .doctor-workbench {
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
+.doctor-findings-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.doctor-main-card {
+  min-height: 0;
+}
+
+.doctor-main-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.doctor-graph {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.doctor-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.doctor-details-bar {
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.operator-node-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.operator-row-id {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.operator-row-sub,
+.operator-sql-fact {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.operator-share-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 112px;
+}
+
+.operator-share-cell .share-track {
+  flex: 1 1 auto;
+}
+
+.operator-share-text {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.operator-share-text--high {
+  color: var(--heat-high);
+  font-weight: var(--weight-semibold);
+}
+
+.provenance-plan-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.provenance-section h3 {
+  margin: 0 0 var(--space-2);
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.provenance-note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
