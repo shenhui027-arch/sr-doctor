@@ -1444,7 +1444,7 @@ function FindingChanges({
                 <li key={item.key}>
                   <button
                     aria-haspopup="dialog"
-                    aria-label={`${item.label} · ${item.title}`}
+                    aria-label={[item.label, item.title, item.subjectLabel].filter(Boolean).join(" · ")}
                     className={`item-btn cmp-finding-item${active ? " is-selected" : ""}`}
                     onClick={() => onOpenFinding(item.key)}
                     title={item.leadText}

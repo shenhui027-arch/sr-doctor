@@ -1043,7 +1043,7 @@ describe("drawer lifecycle, navigation closing, and member selection", () => {
     );
     expect(sixthSelectedHtml).toContain('title="audit-query-6"');
     expect(sixthSelectedHtml).toMatch(/aria-current="true" class="item-btn is-selected" title="audit-query-6"/);
-    expect(sixthSelectedHtml).toContain('<span class="muted">900 次中前 4</span>');
+    expect(sixthSelectedHtml).toContain('<span class="muted">900 次中前 4 + 当前已选</span>');
     expect(sixthSelectedHtml).not.toContain("全部成员与耗时分布");
   });
 });

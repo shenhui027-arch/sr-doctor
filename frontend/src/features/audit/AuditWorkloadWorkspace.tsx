@@ -1158,7 +1158,10 @@ export function AuditFamilyDrawer({
   const sample = family?.statement_sample ?? null;
   const rows = familyDrawerMemberRows(members, selectedMemberKey);
   const topCount = Math.min(members?.rows.length ?? 0, 4);
-  const shownOf = text(`top ${topCount} of ${family?.execution_count ?? "—"}`, `${family?.execution_count ?? "—"} 次中前 ${topCount}`);
+  const hasSelectedOutsideTop = !onShowMembers && rows.length > topCount;
+  const shownOf = hasSelectedOutsideTop
+    ? text(`top ${topCount} + selected of ${family?.execution_count ?? "—"}`, `${family?.execution_count ?? "—"} 次中前 ${topCount} + 当前已选`)
+    : text(`top ${topCount} of ${family?.execution_count ?? "—"}`, `${family?.execution_count ?? "—"} 次中前 ${topCount}`);
 
   return (
     <Dialog

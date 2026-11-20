@@ -123,7 +123,7 @@ docker compose up -d --build
 <table>
   <tr>
     <td width="50%"><img src="docs/assets/screenshots/01-first-run.png" alt="首次进入"><br><sub><b>首次进入</b>：离线导入 Profile，或只读连接 StarRocks</sub></td>
-    <td width="50%"><img src="docs/assets/screenshots/03-recommendations.png" alt="优化建议"><br><sub><b>优化建议</b>：关联发现项、算子与原文证据</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/03-recommendations.png" alt="优化建议"><br><sub><b>发现详情与优化建议</b>：右侧抽屉联动关联发现项、修复建议、算子与原文证据</sub></td>
   </tr>
   <tr>
     <td><img src="docs/assets/screenshots/04-compare.png" alt="前后对比"><br><sub><b>前后对比</b>：实测区间、发现项变化与不可比较项</sub></td>
@@ -138,7 +138,7 @@ docker compose up -d --build
     <td><img src="docs/assets/screenshots/08-collection.png" alt="采集与历史"><br><sub><b>采集与历史</b>：水位、读取预算与覆盖率</sub></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/assets/screenshots/11-topology.png" alt="执行结构"><br><sub><b>执行结构</b>：Fragment 容器、算子类别配色、有发现项的节点红框标出，连线上是上游输出行数与 Join 的探测/构建输入</sub></td>
+    <td colspan="2"><img src="docs/assets/screenshots/11-topology.png" alt="执行结构"><br><sub><b>执行结构</b>：Fragment 容器、算子类别色标、耗时占比热力条与高危发现徽标，连线上是上游输出行数与 Join 的探测/构建输入</sub></td>
   </tr>
   <tr>
     <td><img src="docs/assets/screenshots/09-alerts.png" alt="告警"><br><sub><b>告警</b>：回归判定与证据链</sub></td>
@@ -205,6 +205,7 @@ flowchart LR
 | | 状态 |
 |---|---|
 | 最近发布 | **v1.0.4**（2026-10-31），见 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。服务器部署统一用 Docker，不提供安装包 |
+| 开发主线 | `main` 分支推进 **v1.1** 前端架构升级（响应式多断点卡片网格、右侧详情抽屉、零敏感 URL Hash 深链），全套界面截图已基于当前 `main` 在本机 3.5.14 夹具与离线语料重拍，离线与官方 3.5.14 浏览器 E2E 通过 |
 | v1.0.0 | SQL 质量监控阶段 A～D 已完成开发与本机验收；全项目审计的 19 个问题已修复 |
 | v1.0.1 | 新增审计概览（时间窗性能图表与 30 天负载视图）和多渠道告警通知；本地 CI 与官方 3.5.14 E2E 通过（邮件经本地 SMTP 接收端验证）；飞书、钉钉、阿里云与腾讯云短信的真实发送 **待验证** |
 | v1.0.2 | 新增导入工作区（概览、Routine Load、导入记录、错误日志）与审计概览里的导入摘要卡，修复 3.1～3.3 无法连接；官方 3.5.14 + Kafka E2E 与 3.2～4.1 官方镜像导入冒烟通过 |

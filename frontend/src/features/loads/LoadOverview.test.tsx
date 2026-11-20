@@ -832,3 +832,46 @@ describe("audit overview load card (design board O3)", () => {
     expect(v32).toContain("3.2 没有积压数据");
   });
 });
+
+describe("loads & history stylesheet alignment (v1.1-90)", () => {
+  const loadCssText = async (fileName: string): Promise<string> => {
+    const fsSpecifier = "node:fs";
+    const fsModule = (await import(/* @vite-ignore */ fsSpecifier)) as {
+      readFileSync(path: URL, encoding: "utf8"): string;
+    };
+    return fsModule.readFileSync(new URL(`./${fileName}`, import.meta.url), "utf8");
+  };
+
+  it("defines the chart, type-view and 30-day history selectors rendered by TSX", async () => {
+    const combined = `${await loadCssText("loads.css")}\n${await loadCssText("load-history.css")}`;
+    for (const selector of [
+      ".load-hour-chart",
+      ".load-hour-plot",
+      ".load-unknown-zone",
+      ".load-earliest",
+      ".load-phase-labels",
+      ".load-bars",
+      ".load-facts",
+      ".load-issues",
+      ".load-filter-chip",
+      ".load-summary-card",
+      ".load-history-chart",
+      ".load-history-plot",
+      ".load-history-lines",
+      ".cov-complete",
+      ".state-running",
+    ]) {
+      expect(combined).toContain(selector);
+    }
+  });
+
+  it("drops dead v1.1 prototype chart classes and removed v1.0 tokens", async () => {
+    const combined = `${await loadCssText("loads.css")}\n${await loadCssText("load-history.css")}`;
+    for (const deadSelector of [".load-hours-grid", ".load-hours-plot", ".load-axis--right"]) {
+      expect(combined).not.toContain(deadSelector);
+    }
+    for (const legacyToken of ["--sans", "--mono", "--text-2", "--border-soft", "--frame", "--chip", "--faint"]) {
+      expect(combined).not.toMatch(new RegExp(`${legacyToken}(?![a-zA-Z0-9_-])`));
+    }
+  });
+});

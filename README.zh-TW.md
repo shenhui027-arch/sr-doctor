@@ -125,7 +125,7 @@ docker compose up -d --build
 <table>
   <tr>
     <td width="50%"><img src="docs/assets/screenshots/01-first-run.png" alt="首次進入"><br><sub><b>首次進入</b>：離線匯入 Profile，或唯讀連線 StarRocks</sub></td>
-    <td width="50%"><img src="docs/assets/screenshots/03-recommendations.png" alt="最佳化建議"><br><sub><b>最佳化建議</b>：關聯發現項、運算子與原文證據</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/03-recommendations.png" alt="最佳化建議"><br><sub><b>發現詳情與最佳化建議</b>：右側抽屜聯動關聯發現項、修復建議、運算子與原文證據</sub></td>
   </tr>
   <tr>
     <td><img src="docs/assets/screenshots/04-compare.png" alt="前後對比"><br><sub><b>前後對比</b>：實測區間、發現項變化與不可比較項</sub></td>
@@ -136,7 +136,7 @@ docker compose up -d --build
     <td><img src="docs/assets/screenshots/12-history-load.png" alt="30 天負載"><br><sub><b>30 天負載</b>：每日柱狀圖、採集覆蓋與可比分段</sub></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/assets/screenshots/11-topology.png" alt="執行結構"><br><sub><b>執行結構</b>：Fragment 容器、運算子類別配色、有發現項的節點以紅框標出，連線上是上游輸出列數與 Join 的探測／建置輸入</sub></td>
+    <td colspan="2"><img src="docs/assets/screenshots/11-topology.png" alt="執行結構"><br><sub><b>執行結構</b>：Fragment 容器、運算子類別色標、耗時占比熱力條與高危發現徽標，連線上是上游輸出列數與 Join 的探測／建置輸入</sub></td>
   </tr>
   <tr>
     <td><img src="docs/assets/screenshots/07-trends.png" alt="範本趨勢"><br><sub><b>範本趨勢</b>：每小時中位數與基準帶</sub></td>
@@ -170,8 +170,9 @@ flowchart LR
 ## 安全與邊界
 
 - **連線唯讀**：不執行 DDL/DML、多語句或 `EXPLAIN ANALYZE`，不自動修改 SQL 或參數。
-- **憑證不落地**：StarRocks 密碼只保存在服務程序記憶體的短期工作階段裡，不回傳前端，不寫入日誌。
-- **歷史庫去識別化**：只存去識別化範本、指紋與每小時彙總，預設保留 30 天；不存 SQL 常值、Profile 原文或密碼。唯一的例外是匯入錯誤日誌：StarRocks 記錄的被拒絕列依約定以明文保存（30 天、總量 50 MB），只在點開時顯示，不進日誌、通知與匯出。
+- **憑證預設不落地**：StarRocks 密碼只保存在服務程序記憶體的短期工作階段裡，不回傳前端，不寫入日誌。
+- **可選保存一個連線**：連線時勾選「在本機加密保存密碼」後，密碼會以 AES-256-GCM 加密存入歷史庫（主金鑰來自 `DOCTOR_SECRET_KEY` 或歷史庫旁的 `secret.key`），只寫不讀。之後開啟頁面時自動連線，背景也會用單一連線持續採集、斷線自動重連；密碼失效時標為「需重新填寫」，不會反覆重試。凡可登入 SR Doctor 者皆能藉此連線查詢叢集，建議搭配唯讀帳號；網路模式仍使用預設登入密碼時禁止保存，亦可在「設定 › 連線」中忘記。
+- **歷史庫去識別化**：只存去識別化範本、指紋與每小時彙總，預設保留 30 天；不存 SQL 常值、Profile 原文或密碼。例外有兩項：使用者選擇保存的連線（密碼僅存密文）；匯入錯誤日誌：StarRocks 記錄的被拒絕列依約定以明文保存（30 天、總量 50 MB），只在點開時顯示，不進日誌、通知與匯出。
 - **存取控制**：伺服器部署要求登入，預設帳號 `admin` / `123456`，可在 `.env` 中修改；寫入請求還要求同源與 CSRF 驗證。所有使用者共用一個帳號，沒有權限區分。預設密碼人人都知道，服務暴露在不完全可信的網路時請先改密碼。
 - **傳輸**：預設明文，可連線任意可達主機，介面會明確標示；FE 開啟 SSL 時可選 TLS verify-full。
 
@@ -206,6 +207,7 @@ flowchart LR
 | | 狀態 |
 |---|---|
 | 最近發布 | **v1.0.4**（2026-10-31），見 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。伺服器部署統一使用 Docker，不提供安裝包 |
+| 開發主線 | `main` 分支推進 **v1.1** 前端架構升級（響應式多斷點卡片網格、右側詳情抽屜、零敏感 URL Hash 深鏈），全套介面截圖已依目前 `main` 於本機 3.5.14 測試環境與離線語料重拍，離線與官方 3.5.14 瀏覽器 E2E 通過 |
 | v1.0.0 | SQL 品質監控階段 A～D 已完成開發與本機驗收；全專案稽核的 19 個問題已修復 |
 | v1.0.1 | 新增稽核概覽（時間窗效能圖表與 30 天負載檢視）和多管道告警通知；本機 CI 與官方 3.5.14 E2E 通過（郵件經本機 SMTP 接收端驗證）；飛書、釘釘、阿里雲與騰訊雲簡訊的真實發送 **待驗證** |
 | v1.0.2 | 新增匯入工作區（概覽、Routine Load、匯入紀錄、錯誤日誌）與稽核概覽裡的匯入摘要卡，修復 3.1～3.3 無法連線；官方 3.5.14 + Kafka E2E 與 3.2～4.1 官方映像匯入冒煙通過 |

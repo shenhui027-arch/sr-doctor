@@ -94,7 +94,7 @@ try {
         -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 -e KAFKA_NUM_PARTITIONS=2 $kafkaImage | Select-Object -Last 1)
     if ($LASTEXITCODE -ne 0 -or $kafkaId -notmatch '^[0-9a-f]{64}$') { $kafkaId = $null; throw 'Kafka container did not start.' }
     $deadline = [DateTime]::UtcNow.AddSeconds(300)
-    do { Start-Sleep -Seconds 3; $ready = (& docker exec $srName sh -c "mysql -h127.0.0.1 -P9030 -uroot -N -e 'CREATE DATABASE IF NOT EXISTS lr' 2>/dev/null && echo ok") -eq 'ok' } while (-not $ready -and [DateTime]::UtcNow -lt $deadline)
+    do { Start-Sleep -Seconds 3; $ready = (& docker exec $srName sh -c "mysql -h127.0.0.1 -P9030 -uroot -e 'SHOW BACKENDS\G' 2>/dev/null | grep -q 'Alive: true' && mysql -h127.0.0.1 -P9030 -uroot -N -e 'CREATE DATABASE IF NOT EXISTS lr' 2>/dev/null && echo ok") -eq 'ok' } while (-not $ready -and [DateTime]::UtcNow -lt $deadline)
     Require $ready 'StarRocks did not become ready.'
     $summary.observed_version = (Invoke-Sql 'SELECT current_version();' | Select-Object -Last 1).Trim()
 

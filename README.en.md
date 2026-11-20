@@ -125,7 +125,7 @@ No cluster? **Import a Profile** on the first page to analyze a JSON or text Pro
 <table>
   <tr>
     <td width="50%"><img src="docs/assets/screenshots/01-first-run.png" alt="First run"><br><sub><b>First run</b>: import a Profile offline or connect read-only</sub></td>
-    <td width="50%"><img src="docs/assets/screenshots/03-recommendations.png" alt="Recommendations"><br><sub><b>Recommendations</b>: linked to findings, operators and source evidence</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/03-recommendations.png" alt="Recommendations"><br><sub><b>Findings &amp; recommendations</b>: right-side drawer linking findings, actions, operators and source evidence</sub></td>
   </tr>
   <tr>
     <td><img src="docs/assets/screenshots/04-compare.png" alt="Before / after"><br><sub><b>Before / after</b>: measured intervals, finding changes and incomparable items</sub></td>
@@ -136,7 +136,7 @@ No cluster? **Import a Profile** on the first page to analyze a JSON or text Pro
     <td><img src="docs/assets/screenshots/12-history-load.png" alt="30-day load"><br><sub><b>30-day load</b>: daily bars, collection coverage and comparable segments</sub></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/assets/screenshots/11-topology.png" alt="Execution structure"><br><sub><b>Execution structure</b>: fragment containers, operator category colours, nodes with findings outlined in red, upstream output rows and join probe/build inputs on the edges</sub></td>
+    <td colspan="2"><img src="docs/assets/screenshots/11-topology.png" alt="Execution structure"><br><sub><b>Execution structure</b>: fragment containers, operator category badges, runtime heat bars and severity badges on nodes, upstream output rows and join probe/build inputs on the edges</sub></td>
   </tr>
   <tr>
     <td><img src="docs/assets/screenshots/07-trends.png" alt="Template trends"><br><sub><b>Template trends</b>: hourly medians and the baseline band</sub></td>
@@ -170,8 +170,9 @@ One process serves both the pages and the API; the frontend renders what the bac
 ## Security and boundaries
 
 - **Read-only connections**: no DDL/DML, multi-statements or `EXPLAIN ANALYZE`; SQL and settings are never changed automatically.
-- **Credentials never touch disk**: StarRocks passwords live only in a short-lived in-memory session; they are never returned to the page or logged.
-- **Redacted history**: only redacted templates, fingerprints and hourly aggregates, kept 30 days by default; no SQL literals, raw Profiles or passwords. The one exception is load error logs: the rows StarRocks rejected are kept in plain text by agreement (30 days, 50 MB in all), shown only when opened, and never put in logs, notifications or exports.
+- **Credentials default to memory-only**: StarRocks passwords live only in a short-lived in-memory session; they are never returned to the page or logged.
+- **Optional single saved connection**: if "Save password encrypted locally" is checked when connecting, the password is stored encrypted with AES-256-GCM in the history store (master key from `DOCTOR_SECRET_KEY` or `secret.key` beside the store), write-only. The UI then reconnects automatically and a background collector polls on one connection with reconnect on drop; expired passwords are marked "re-enter required" without retrying. Anyone who can sign in to SR Doctor can query via this saved connection, so use a read-only account; saving is refused while network mode still uses the default login password, and can be forgotten under "Settings › Connections".
+- **Redacted history**: only redacted templates, fingerprints and hourly aggregates, kept 30 days by default; no SQL literals, raw Profiles or passwords. Two exceptions: the optional saved connection (encrypted password only) and load error logs, where rows StarRocks rejected are kept in plain text by agreement (30 days, 50 MB in all), shown only when opened, and never put in logs, notifications or exports.
 - **Access control**: a server deployment asks for a login, `admin` / `123456` by default and changeable in `.env`; writes also require same-origin and a CSRF token. All users share one account; there are no roles. Everyone knows the default password, so change it before exposing the server to a network you do not fully trust.
 - **Transport**: plaintext by default to any reachable host, clearly labelled in the UI; TLS verify-full when the FE has SSL enabled.
 
@@ -206,6 +207,7 @@ Connecting to 2.5 or 3.0 shows "unsupported version" and reads no audit or Profi
 | | Status |
 |---|---|
 | Latest release | **v1.0.4** (2026-10-31), see [Releases](https://github.com/shenhui027-arch/sr-doctor/releases). Servers are deployed with Docker; there is no installer |
+| Development line | `main` advances the **v1.1** frontend overhaul (responsive breakpoint card grid, right-side detail drawers, secret-free URL hash deep-linking); all 14 screenshots below are recaptured from current `main` against official 3.5.14 Docker fixtures and the offline corpus, with offline and 3.5.14 browser E2E passing |
 | v1.0.0 | SQL quality monitoring stages A–D developed and accepted locally; all 19 issues from the project-wide audit fixed |
 | v1.0.1 | Adds the audit overview (window performance charts and the 30-day load view) and multi-channel alert notifications; local CI and the official 3.5.14 E2E pass (email checked against a local SMTP receiver); real Feishu, DingTalk, Alibaba Cloud and Tencent Cloud delivery is **pending verification** |
 | v1.0.2 | Adds the load workspace (overview, Routine Load, load records, error logs) and a load card in the audit overview, and fixes connecting to 3.1–3.3; the official 3.5.14 + Kafka E2E and load smoke tests on official 3.2–4.1 images pass |

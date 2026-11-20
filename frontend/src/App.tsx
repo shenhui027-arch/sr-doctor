@@ -16,6 +16,7 @@ import { QueriesWorkspace } from "./features/queries/QueriesWorkspace";
 import { QueryCapabilityChips } from "./features/queries/QueryCapabilityChips";
 import { SqlAnalysisWorkspace, type SqlAnalysisWorkspaceStage } from "./features/plan/SqlAnalysisWorkspace";
 import { advanceSqlExecutionAttempt, attemptForConnection, canDispatchSqlExecution, createSqlExecutionAttempt, emptySqlWorkspaceDraft, type SqlExecutionAttempt, type SqlWorkspaceDraft } from "./app-sql-workspace-state";
+import { formatAppRouteHash, parseAppRouteHash } from "./app-route-hash";
 import { useLocale } from "./i18n/locale";
 import { CONNECTION_EXPIRED_EVENT, doctorApi } from "./lib/api";
 import { monitorGeneration, useHistoryStatus } from "./features/history/history-status";
@@ -152,17 +153,18 @@ export function focusQueryWorkspaceHeading(container: HTMLElement | null): void 
 
 export function App(): JSX.Element {
   const { locale, setLocale, text } = useLocale();
-  const [workspace, setWorkspace] = useState<Workspace>("Queries");
-  const [doctorMode, setDoctorMode] = useState<DoctorMode>("diagnosis");
-  const [alertsView, setAlertsView] = useState<AlertsView>("alerts");
+  const initialRoute = typeof window !== "undefined" ? parseAppRouteHash(window.location.hash) : null;
+  const [workspace, setWorkspace] = useState<Workspace>(initialRoute?.workspace ?? "Queries");
+  const [doctorMode, setDoctorMode] = useState<DoctorMode>(initialRoute?.doctorMode ?? "diagnosis");
+  const [alertsView, setAlertsView] = useState<AlertsView>(initialRoute?.alertsView ?? "alerts");
   /** Overview: the audit performance dashboard, or the 30-day template trends from the history store. */
-  const [overviewTab, setOverviewTab] = useState<"performance" | "trends">("performance");
+  const [overviewTab, setOverviewTab] = useState<"performance" | "trends">(initialRoute?.overviewTab ?? "performance");
   const openDoctor = (mode: DoctorMode) => { setDoctorMode(mode); setWorkspace("Doctor"); };
   const contentRef = useRef<HTMLElement>(null);
   const swapControllerRef = useRef<AbortController | null>(null);
   useEntrance(contentRef, workspace === "Doctor" ? `Doctor:${doctorMode}` : workspace === "Alerts" ? `Alerts:${alertsView}` : workspace);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
-  const [queryMode, setQueryMode] = useState<QueryMode | null>(null);
+  const [queryMode, setQueryMode] = useState<QueryMode | null>(initialRoute?.queryMode ?? null);
   const queryViewRef = useRef<HTMLDivElement>(null);
   const queryFocusRequested = useRef(false);
   const [importing, setImporting] = useState(false);
@@ -292,7 +294,45 @@ export function App(): JSX.Element {
   const monitorTarget = pickedTarget ?? history.status?.target ?? null;
   const [knownTargets, setKnownTargets] = useState<string[]>([]);
   // Review: "collection and history" entries open that section, not the default one.
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>("notify");
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>(initialRoute?.settingsSection ?? "notify");
+  const routeSyncMountedRef = useRef(false);
+  const popRouteRef = useRef(false);
+  useEffect(() => {
+    const applyHashRoute = () => {
+      const parsed = parseAppRouteHash(window.location.hash);
+      if (!parsed) return;
+      popRouteRef.current = true;
+      setWorkspace(parsed.workspace);
+      if (parsed.doctorMode !== undefined) {
+        if (parsed.doctorMode === "diagnosis") setImporting(false);
+        setDoctorMode(parsed.doctorMode);
+      }
+      if (parsed.alertsView !== undefined) setAlertsView(parsed.alertsView);
+      if (parsed.overviewTab !== undefined) setOverviewTab(parsed.overviewTab);
+      if (parsed.queryMode !== undefined) setQueryMode(parsed.queryMode);
+      if (parsed.settingsSection !== undefined) setSettingsSection(parsed.settingsSection);
+    };
+    window.addEventListener("popstate", applyHashRoute);
+    window.addEventListener("hashchange", applyHashRoute);
+    return () => {
+      window.removeEventListener("popstate", applyHashRoute);
+      window.removeEventListener("hashchange", applyHashRoute);
+    };
+  }, []);
+  useEffect(() => {
+    if (!routeSyncMountedRef.current) {
+      routeSyncMountedRef.current = true;
+      return;
+    }
+    if (popRouteRef.current) {
+      popRouteRef.current = false;
+      return;
+    }
+    const nextHash = formatAppRouteHash({ workspace, overviewTab, queryMode, doctorMode, alertsView, settingsSection });
+    if (window.location.hash !== nextHash) {
+      window.history.pushState(null, "", `${window.location.pathname}${window.location.search}${nextHash}`);
+    }
+  }, [workspace, overviewTab, queryMode, doctorMode, alertsView, settingsSection]);
   const openSettings = (section: SettingsSection) => { setSettingsSection(section); setWorkspace("Settings"); };
   const openTrends = (templateKey: string, target: string) => { if (target) setPickedTarget(target); setTrendFocus(templateKey); setOverviewTab("trends"); setWorkspace("Overview"); };
   const openGovernanceItem = (itemId: string) => { setGovernanceFocus(itemId); setAlertsView("governance"); setWorkspace("Alerts"); };

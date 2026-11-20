@@ -1204,6 +1204,9 @@ describe("CompareWorkspace v1.1 single finding-changes column and drawers", () =
     expect(occurrences(listZh, ">整条查询</code>")).toBe(1);
     expect(listZh).toContain(">Plan 26 · TOP_N</code>");
     expect(listZh).toContain(">RESULT_SINK</code>");
+    expect(listZh).toContain('aria-label="新增 · 广播数据量 · Plan 26 · TOP_N"');
+    expect(listZh).toContain('aria-label="新增 · 广播数据量 · RESULT_SINK"');
+    expect(listZh).toContain('aria-label="新增 · 广播数据量 · 整条查询"');
     expect(listZh).not.toContain("operator-group:");
     expect(listZh).not.toContain("Plan -1");
 
