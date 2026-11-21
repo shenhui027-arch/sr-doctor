@@ -15,7 +15,7 @@ Every conclusion comes with evidence; when the evidence is not enough, it says s
 [![StarRocks](https://img.shields.io/badge/StarRocks-3.1～4.1-1f55e0.svg)](docs/guide/faq.md)
 [![Backend](https://img.shields.io/badge/backend-Rust%20%2F%20Axum-b7410e.svg)](docs/development/architecture.md)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
-[![Status](https://img.shields.io/badge/v1.0.4-local%20verified%20·%20production%20pending-orange.svg)](#project-status)
+[![Status](https://img.shields.io/badge/v1.1.0-local%20verified%20·%20production%20pending-orange.svg)](#project-status)
 
 [What's new](#whats-new) · [Quick start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) · [Docs](#documentation) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
@@ -29,6 +29,7 @@ Every conclusion comes with evidence; when the evidence is not enough, it says s
 
 | Version | New |
 |---|---|
+| **v1.1.0** | Responsive card grid and right-side detail drawers (768–1920 breakpoints and URL hash deep-linking); optional encrypted saved connection for continuous background collection |
 | **v1.0.4** | Load history and load alerts: 30 days of load records kept; alerts when Routine Load pauses, lag grows or loads start failing more (on trial) |
 | **v1.0.3** | Load performance for Stream Load, INSERT and Routine Load, each on its own |
 | **v1.0.2** | Stream Load, Routine Load and INSERT monitoring: load counts, failures, durations, Routine Load lag, rejected rows and why |
@@ -206,13 +207,13 @@ Connecting to 2.5 or 3.0 shows "unsupported version" and reads no audit or Profi
 
 | | Status |
 |---|---|
-| Latest release | **v1.0.4** (2026-10-31), see [Releases](https://github.com/shenhui027-arch/sr-doctor/releases). Servers are deployed with Docker; there is no installer |
-| Development line | `main` advances the **v1.1** frontend overhaul (responsive breakpoint card grid, right-side detail drawers, secret-free URL hash deep-linking); all 14 screenshots below are recaptured from current `main` against official 3.5.14 Docker fixtures and the offline corpus, with offline and 3.5.14 browser E2E passing |
+| Latest release | **v1.1.0** (2026-11-21), see [Releases](https://github.com/shenhui027-arch/sr-doctor/releases). Servers are deployed with Docker; there is no installer |
 | v1.0.0 | SQL quality monitoring stages A–D developed and accepted locally; all 19 issues from the project-wide audit fixed |
 | v1.0.1 | Adds the audit overview (window performance charts and the 30-day load view) and multi-channel alert notifications; local CI and the official 3.5.14 E2E pass (email checked against a local SMTP receiver); real Feishu, DingTalk, Alibaba Cloud and Tencent Cloud delivery is **pending verification** |
 | v1.0.2 | Adds the load workspace (overview, Routine Load, load records, error logs) and a load card in the audit overview, and fixes connecting to 3.1–3.3; the official 3.5.14 + Kafka E2E and load smoke tests on official 3.2–4.1 images pass |
 | v1.0.3 | Splits the load overview into Stream Load / INSERT / Routine Load, each with only its own measures, and fixes Routine Load task phase times counted as 0; the official 3.5.14 + Kafka E2E passes and the official 3.1.17 image was checked in a browser |
 | v1.0.4 | Stores loads in the local history store (30-day statistics, Routine Load job history, copies of error logs) and adds five trial load alerts; history store schema 7; the official 3.5.14 + AuditLoader + Kafka E2E passes |
+| v1.1.0 | Responsive card grid and right-side detail drawers (768–1920 breakpoints and secret-free URL hash deep-linking); optional encrypted single saved connection and continuous background collection; fixes Runtime Top SQL guard and literal export bounds; local CI, browser E2E, all 14 homepage screenshots and 3.5.14 + Kafka load E2E pass |
 | Local verification | Local CI passes; on fixed-digest official `starrocks/*:3.5.14` Docker fixtures, the fingerprint, collection, trends, alerts and governance, multi-BE, release-audit and TLS verify-full E2E tests pass |
 | Production acceptance | **Pending**: the G1 read-only production pilot and G2 real-workload calibration have not been done, so it is not claimed to be production-safe; remote clusters are not collected by default and alert thresholds are marked as on trial |
 | Supported versions | StarRocks **3.1 and later** (audited 3.1–4.1); 2.5 and 3.0 are not supported. See [Supported StarRocks versions](#supported-starrocks-versions) |

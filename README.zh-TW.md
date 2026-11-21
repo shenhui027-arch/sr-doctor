@@ -15,7 +15,7 @@
 [![StarRocks](https://img.shields.io/badge/StarRocks-3.1～4.1-1f55e0.svg)](docs/guide/faq.md)
 [![Backend](https://img.shields.io/badge/backend-Rust%20%2F%20Axum-b7410e.svg)](docs/development/architecture.md)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2F%20TypeScript-3178c6.svg)](docs/development/architecture.md)
-[![Status](https://img.shields.io/badge/v1.0.4-local%20verified%20·%20production%20pending-orange.svg)](#專案狀態)
+[![Status](https://img.shields.io/badge/v1.1.0-local%20verified%20·%20production%20pending-orange.svg)](#專案狀態)
 
 [最近更新](#最近更新) · [快速開始](#快速開始) · [功能](#功能) · [截圖](#截圖) · [文件](#文件) · [安全](SECURITY.md) · [參與開發](CONTRIBUTING.md) · [更新日誌](CHANGELOG.md)
 
@@ -29,6 +29,7 @@
 
 | 版本 | 新增 |
 |---|---|
+| **v1.1.0** | 響應式卡片與右側抽屜介面重做（支援 768～1920 多斷點與 URL 深鏈）；可選加密保存連線，關閉頁面也能背景持續採集 |
 | **v1.0.4** | 匯入歷史與匯入告警：保存 30 天的匯入紀錄；Routine Load 暫停、積壓上漲、匯入失敗變多時自動提醒（試運行） |
 | **v1.0.3** | Stream Load、INSERT、Routine Load 分開看各自的匯入效能 |
 | **v1.0.2** | Stream Load、Routine Load、INSERT 匯入監控：匯入次數、失敗、耗時、Routine Load 積壓、被拒絕的資料和原因 |
@@ -206,13 +207,13 @@ flowchart LR
 
 | | 狀態 |
 |---|---|
-| 最近發布 | **v1.0.4**（2026-10-31），見 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。伺服器部署統一使用 Docker，不提供安裝包 |
-| 開發主線 | `main` 分支推進 **v1.1** 前端架構升級（響應式多斷點卡片網格、右側詳情抽屜、零敏感 URL Hash 深鏈），全套介面截圖已依目前 `main` 於本機 3.5.14 測試環境與離線語料重拍，離線與官方 3.5.14 瀏覽器 E2E 通過 |
+| 最近發布 | **v1.1.0**（2026-11-21），見 [Releases](https://github.com/shenhui027-arch/sr-doctor/releases)。伺服器部署統一使用 Docker，不提供安裝包 |
 | v1.0.0 | SQL 品質監控階段 A～D 已完成開發與本機驗收；全專案稽核的 19 個問題已修復 |
 | v1.0.1 | 新增稽核概覽（時間窗效能圖表與 30 天負載檢視）和多管道告警通知；本機 CI 與官方 3.5.14 E2E 通過（郵件經本機 SMTP 接收端驗證）；飛書、釘釘、阿里雲與騰訊雲簡訊的真實發送 **待驗證** |
 | v1.0.2 | 新增匯入工作區（概覽、Routine Load、匯入紀錄、錯誤日誌）與稽核概覽裡的匯入摘要卡，修復 3.1～3.3 無法連線；官方 3.5.14 + Kafka E2E 與 3.2～4.1 官方映像匯入冒煙通過 |
 | v1.0.3 | 匯入概覽按 Stream Load／INSERT／Routine Load 分開，每類只顯示自己的指標；修復 Routine Load 任務的階段耗時計成 0；官方 3.5.14 + Kafka E2E 通過，3.1.17 官方映像瀏覽器實測 |
 | v1.0.4 | 匯入資料存進本機歷史庫（30 天統計、Routine Load 作業歷史、錯誤日誌副本），新增五條試運行的匯入告警；歷史庫 schema 升到 7；官方 3.5.14 + AuditLoader + Kafka E2E 通過 |
+| v1.1.0 | 響應式卡片與右側抽屜介面重做（768～1920 多斷點與零敏感 URL Hash 深鏈）；可選加密保存單個連線與背景單連線持續採集；修復受控執行校驗與匯出字面量邊界；本機 CI、全量瀏覽器 E2E、14 張首頁截圖與 3.5.14 + Kafka 匯入 E2E 通過 |
 | 本機驗證 | 本地 CI 全部通過；固定 digest 的官方 `starrocks/*:3.5.14` Docker 測試環境上，指紋、採集、趨勢、告警治理、多 BE、發布級稽核、TLS verify-full 的 E2E 均通過 |
 | 正式環境驗收 | **待驗證**：G1 正式環境唯讀試點、G2 真實業務分布校準尚未進行。因此不宣稱 Production-safe；遠端叢集預設不採集，告警門檻標為「規則試行中」 |
 | 支援版本 | StarRocks **3.1 及以後**（已稽核 3.1～4.1），2.5、3.0 不支援；詳見[支援的 StarRocks 版本](#支援的-starrocks-版本) |

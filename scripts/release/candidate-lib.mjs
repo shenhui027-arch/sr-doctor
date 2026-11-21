@@ -290,18 +290,17 @@ function copyLicenseTexts({ sourceFiles, destinationRoot, family, packageIdentit
   return copied;
 }
 
-function auditedCargoLicenseEvidence(sourceRoot) {
+function auditedLicenseEvidence(sourceRoot) {
   const manifestPath = join(sourceRoot, "third_party", "license-evidence.json");
   ensureExistingFile(manifestPath, "audited third-party license evidence");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   if (manifest.schema_version !== 1 || !Array.isArray(manifest.packages)) fail("unsupported third-party license evidence schema");
-  const records = new Map();
+  const cargoRecords = new Map();
+  const npmRecords = new Map();
   for (const entry of manifest.packages) {
-    if (entry.ecosystem !== "cargo" || !entry.name || !entry.version || !entry.source || !entry.license_expression || !Array.isArray(entry.evidence)) {
-      fail("invalid audited Cargo license evidence entry");
+    if (!entry.ecosystem || !entry.name || !entry.version || !entry.license_expression || !Array.isArray(entry.evidence)) {
+      fail("invalid audited license evidence entry");
     }
-    const key = `${entry.name}@${entry.version} (${entry.source})`;
-    if (records.has(key)) fail(`duplicate audited Cargo license evidence: ${key}`);
     const files = entry.evidence.map((evidence) => {
       const relativePath = ensureSafeRelativePath(evidence.path, "license evidence path");
       const source = resolve(sourceRoot, ...relativePath.split("/"));
@@ -312,15 +311,28 @@ function auditedCargoLicenseEvidence(sourceRoot) {
       }
       return source;
     });
-    records.set(key, { licenseExpression: entry.license_expression, files });
+    if (entry.ecosystem === "cargo") {
+      if (!entry.source) fail("invalid audited Cargo license evidence entry");
+      const key = `${entry.name}@${entry.version} (${entry.source})`;
+      if (cargoRecords.has(key)) fail(`duplicate audited Cargo license evidence: ${key}`);
+      cargoRecords.set(key, { licenseExpression: entry.license_expression, files });
+    } else if (entry.ecosystem === "npm") {
+      if (!entry.package_path) fail("invalid audited npm license evidence entry");
+      const safePath = ensureSafeRelativePath(entry.package_path, "audited npm package path");
+      const key = `${safePath}@${entry.version}`;
+      if (npmRecords.has(key)) fail(`duplicate audited npm license evidence: ${key}`);
+      npmRecords.set(key, { licenseExpression: entry.license_expression, files });
+    } else {
+      fail(`unsupported audited license evidence ecosystem: ${entry.ecosystem}`);
+    }
   }
-  return records;
+  return { cargo: cargoRecords, npm: npmRecords };
 }
 
 function sanitizeCargoMetadata(metadata, destinationRoot, sourceRoot) {
   const packageIdentity = (pkg) => `${pkg.name}@${pkg.version}${pkg.source ? ` (${pkg.source})` : " (workspace)"}`;
   const identities = new Map(metadata.packages.map((pkg) => [pkg.id, packageIdentity(pkg)]));
-  const auditedEvidence = auditedCargoLicenseEvidence(sourceRoot);
+  const auditedEvidence = auditedLicenseEvidence(sourceRoot).cargo;
   const licenseTexts = [];
   const packages = metadata.packages.map((pkg) => {
     const manifestDirectory = pkg.manifest_path ? dirname(pkg.manifest_path) : null;
@@ -378,10 +390,11 @@ function normalizeNpmLicense(value) {
   return null;
 }
 
-function sanitizeNpmLock(frontendRoot, destinationRoot) {
+function sanitizeNpmLock(frontendRoot, destinationRoot, sourceRoot) {
   const lockPath = join(frontendRoot, "package-lock.json");
   const lock = JSON.parse(readFileSync(lockPath, "utf8"));
   const packageRecords = Object.entries(lock.packages ?? {}).filter(([packagePath, entry]) => packagePath !== "" && entry.dev !== true);
+  const auditedEvidence = auditedLicenseEvidence(sourceRoot).npm;
   const licenseTexts = [];
   const packages = packageRecords.map(([packagePath, entry]) => {
     const safeLockPath = ensureSafeRelativePath(packagePath, "npm package path");
@@ -391,13 +404,31 @@ function sanitizeNpmLock(frontendRoot, destinationRoot) {
     let installed = null;
     if (existsSync(packageJsonPath) && statSync(packageJsonPath).isFile()) installed = JSON.parse(readFileSync(packageJsonPath, "utf8"));
     const packageName = installed?.name ?? entry.name ?? safeLockPath.split("node_modules/").at(-1);
-    const identity = `${packageName}@${entry.version ?? installed?.version ?? "unknown"}`;
-    const copied = copyLicenseTexts({
+    const version = entry.version ?? installed?.version ?? "unknown";
+    const identity = `${packageName}@${version}`;
+    const licenseExpression = normalizeNpmLicense(entry.license ?? installed?.license ?? installed?.licenses);
+    let copied = copyLicenseTexts({
       sourceFiles: licenseSourceFiles(packageDirectory),
       destinationRoot,
       family: "npm",
       packageIdentity: identity,
     });
+    let licenseTextStatus = copied.length ? "copied_from_local_node_modules" : "not_found_locally";
+    if (!copied.length) {
+      const audited = auditedEvidence.get(`${safeLockPath}@${version}`);
+      if (audited) {
+        if (audited.licenseExpression !== licenseExpression) {
+          fail(`audited license expression mismatch: ${identity}`);
+        }
+        copied = copyLicenseTexts({
+          sourceFiles: audited.files,
+          destinationRoot,
+          family: "npm",
+          packageIdentity: identity,
+        });
+        licenseTextStatus = "copied_from_audited_evidence";
+      }
+    }
     licenseTexts.push(...copied);
     return {
       package_path: safeLockPath,
@@ -405,9 +436,9 @@ function sanitizeNpmLock(frontendRoot, destinationRoot) {
       version: entry.version ?? installed?.version ?? null,
       resolved: entry.resolved ?? null,
       integrity: entry.integrity ?? null,
-      license_expression: normalizeNpmLicense(entry.license ?? installed?.license ?? installed?.licenses),
+      license_expression: licenseExpression,
       installed_package_json: Boolean(installed),
-      license_text_status: copied.length ? "copied_from_local_node_modules" : "not_found_locally",
+      license_text_status: copied.length ? licenseTextStatus : "not_found_locally",
       license_texts: copied.map((item) => item.candidate_path),
     };
   }).sort((left, right) => left.package_path.localeCompare(right.package_path));
@@ -598,7 +629,7 @@ function writeLicenseArtifacts(candidateRoot, sourceRoot) {
   const cargoMetadata = JSON.parse(cargoRaw);
   const productVersion = productVersionFromSourceRoot(sourceRoot, cargoMetadata);
   const cargo = sanitizeCargoMetadata(cargoMetadata, candidateRoot, sourceRoot);
-  const npm = sanitizeNpmLock(join(sourceRoot, "frontend"), candidateRoot);
+  const npm = sanitizeNpmLock(join(sourceRoot, "frontend"), candidateRoot, sourceRoot);
   writeJson(join(candidateRoot, "sbom", "cargo-dependencies.json"), cargo);
   writeJson(join(candidateRoot, "sbom", "npm-dependencies.json"), npm);
   copyInto(join(sourceRoot, "Cargo.lock"), candidateRoot, "sbom/Cargo.lock");
